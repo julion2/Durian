@@ -10,8 +10,11 @@ import Combine
 
 struct ContentView: View {
     @StateObject private var model = Model()
+    @StateObject private var keymapsManager = KeymapsManager.shared
+    @StateObject private var keymapHandler = KeymapHandler.shared
     @State private var selectedFolderID: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
+    @State private var cancellables = Set<AnyCancellable>()
 
     var body: some View {
         NavigationSplitView {
@@ -105,6 +108,68 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
             }
         }
+        .onAppear {
+            setupKeyboardShortcuts()
+            registerKeymapHandlers()
+        }
+    }
+    
+    private func setupKeyboardShortcuts() {
+        if let reloadKeymap = keymapsManager.getKeymap(for: "reload_inbox") {
+            let modStr = reloadKeymap.modifiers.isEmpty ? "" : reloadKeymap.modifiers.joined(separator: "+") + "+"
+            print("🎹 Reload shortcut: \(modStr)\(reloadKeymap.key)")
+        }
+    }
+    
+    private func registerKeymapHandlers() {
+        // Capture model and keymapsManager
+        let imapClient = model.imapClient
+        let keymapsManager = self.keymapsManager
+        
+        // Register reload inbox handler
+        keymapHandler.registerHandler(for: "reload_inbox") {
+            await Self.handleReloadAction(
+                imapClient: imapClient, 
+                keymapsManager: keymapsManager
+            )
+        }
+        
+        print("🎹 Keymap handlers registered")
+        
+        // Re-register handlers when keymaps change
+        keymapsManager.$keymaps
+            .sink { [weak keymapHandler] _ in
+                print("🎹 Keymaps changed, re-registering handlers")
+                keymapHandler?.registerHandler(for: "reload_inbox") {
+                    await Self.handleReloadAction(
+                        imapClient: imapClient, 
+                        keymapsManager: keymapsManager
+                    )
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private static func handleReloadAction(
+        imapClient: IMAPClient, 
+        keymapsManager: KeymapsManager
+    ) async {
+        print("🎹 DEBUG: Reload action triggered!")
+        
+        let keymap = keymapsManager.getKeymap(for: "reload_inbox")
+        print("🎹 DEBUG: Keymap found: \(keymap != nil)")
+        print("🎹 DEBUG: Keymap enabled: \(keymap?.enabled ?? false)")
+        print("🎹 DEBUG: Global keymaps enabled: \(keymapsManager.keymaps.globalSettings.keymapsEnabled)")
+        
+        guard keymap?.enabled == true && keymapsManager.keymaps.globalSettings.keymapsEnabled else {
+            print("🎹 DEBUG: Keymap disabled, not executing")
+            return
+        }
+        
+        print("🎹 DEBUG: Executing reload for current folder: \(imapClient.selectedFolderName ?? "none")")
+        print("🎹 DEBUG: IMAP connected: \(imapClient.isConnected)")
+        
+        await imapClient.reloadCurrentFolder()
     }
 
     class Model: ObservableObject {

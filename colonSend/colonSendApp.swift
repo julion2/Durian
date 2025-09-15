@@ -20,6 +20,13 @@ struct colonSendApp: App {
                 }
                 .keyboardShortcut(",", modifiers: .command)
             }
+            
+            CommandGroup(after: .newItem) {
+                Button("Reload Keymaps") {
+                    KeymapsManager.shared.reloadKeymaps()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+            }
         }
     }
     

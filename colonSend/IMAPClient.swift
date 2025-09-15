@@ -383,6 +383,23 @@ class IMAPClient: ObservableObject {
         print("🔄 Refreshing \(folderName)...")
         await fetchEmails()
     }
+    
+    // MARK: - Public Methods
+    
+    func reloadCurrentFolder() async {
+        print("🔄 DEBUG: reloadCurrentFolder() called")
+        print("🔄 DEBUG: selectedFolder = \(selectedFolder ?? "nil")")
+        print("🔄 DEBUG: isConnected = \(isConnected)")
+        print("🔄 DEBUG: channel = \(channel != nil ? "available" : "nil")")
+        
+        guard let folderName = selectedFolder, isConnected else {
+            print("⚠️ Cannot reload: no folder selected or not connected")
+            return
+        }
+        
+        print("🔄 Manual reload requested for \(folderName)")
+        await refreshCurrentFolder()
+    }
 }
 
 private class IMAPClientHandler: ChannelInboundHandler {
