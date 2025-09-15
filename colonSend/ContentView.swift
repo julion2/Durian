@@ -6,11 +6,11 @@
 //
 
 import SwiftUI
+import Combine
 
 struct ContentView: View {
     @StateObject private var model = Model()
-    @StateObject private var imapClient = IMAPClient()
-    @State private var selectedFolder: Folder.ID? = nil
+    @State private var selectedFolder: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
 
     var body: some View {
@@ -18,9 +18,20 @@ struct ContentView: View {
             List(selection: $selectedFolder) {
                 ForEach(model.accounts, id: \.email) { account in
                     Section(account.name) {
-                        ForEach(model.folders) { folder in
+                        ForEach(model.imapClient.folders) { folder in
                             Label(folder.name, systemImage: folder.icon)
                         }
+                        
+                        if model.imapClient.folders.isEmpty {
+                            Text("Loading folders...")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                if model.accounts.isEmpty {
+                    Section("Debug") {
+                        Text("No accounts found")
                     }
                 }
             }.listStyle(.sidebar)
@@ -92,11 +103,18 @@ struct ContentView: View {
     class Model: ObservableObject {
         @Published var folders: [Folder] = []
         @Published var accounts: [MailAccount] = []
-        private let imapClient = IMAPClient()
+        @Published var imapClient = IMAPClient()
+        private var cancellables = Set<AnyCancellable>()
         
         init() {
             loadAccounts()
             setupFolders()
+            
+            // Forward IMAP client changes to trigger UI updates
+            imapClient.objectWillChange.sink { [weak self] in
+                self?.objectWillChange.send()
+            }.store(in: &cancellables)
+            
             testIMAPConnection()
         }
         

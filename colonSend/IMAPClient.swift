@@ -11,6 +11,7 @@ class IMAPClient: ObservableObject {
     
     @Published var isConnected = false
     @Published var connectionStatus = "Disconnected"
+    @Published var folders: [IMAPFolder] = []
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
@@ -29,7 +30,7 @@ class IMAPClient: ObservableObject {
                 .channelOption(ChannelOptions.connectTimeout, value: TimeAmount.seconds(30))
                 .channelInitializer { channel in
                     print("🔵 Initializing channel pipeline...")
-                    let imapHandler = IMAPClientHandler()
+                    let imapHandler = IMAPClientHandler(imapClient: self)
                     
                     if account.imap.ssl {
                         print("🔵 Adding SSL handler for TLS connection")
@@ -121,6 +122,45 @@ class IMAPClient: ObservableObject {
         print("✅ Folder list retrieved")
     }
     
+    func parseFolderResponse(_ response: String) {
+        // Parse: * LIST (\HasNoChildren \Drafts) "/" "Drafts"
+        let lines = response.components(separatedBy: .newlines)
+        
+        for line in lines {
+            if line.hasPrefix("* LIST") {
+                if let folder = parseListLine(line) {
+                    Task { @MainActor in
+                        if !folders.contains(where: { $0.name == folder.name }) {
+                            folders.append(folder)
+                            print("📁 Added folder: \(folder.name) (\(folder.icon)) - Total folders: \(folders.count)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func parseListLine(_ line: String) -> IMAPFolder? {
+        // Parse: * LIST (\HasNoChildren \Drafts) "/" "Drafts"
+        let pattern = #"\* LIST \(([^)]*)\) "([^"]*)" "([^"]*)""#
+        let regex = try? NSRegularExpression(pattern: pattern)
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        
+        guard let match = regex?.firstMatch(in: line, options: [], range: range),
+              match.numberOfRanges >= 4 else {
+            return nil
+        }
+        
+        let attributesString = String(line[Range(match.range(at: 1), in: line)!])
+        let separator = String(line[Range(match.range(at: 2), in: line)!])
+        let name = String(line[Range(match.range(at: 3), in: line)!])
+        
+        let attributes = attributesString.components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+        
+        return IMAPFolder(name: name, attributes: attributes, separator: separator)
+    }
+    
     private func getPasswordFromKeychain(service: String, account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -161,6 +201,11 @@ class IMAPClient: ObservableObject {
 
 private class IMAPClientHandler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
+    weak var imapClient: IMAPClient?
+    
+    init(imapClient: IMAPClient? = nil) {
+        self.imapClient = imapClient
+    }
     
     func channelActive(context: ChannelHandlerContext) {
         print("IMAP connection established")
@@ -170,12 +215,40 @@ private class IMAPClientHandler: ChannelInboundHandler {
         let buffer = self.unwrapInboundIn(data)
         if let string = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
             print("IMAP Server: \(string)")
+            
+            // Parse LIST responses
+            if string.contains("* LIST") {
+                imapClient?.parseFolderResponse(string)
+            }
         }
     }
     
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         print("IMAP Error: \(error)")
         context.close(promise: nil)
+    }
+}
+
+struct IMAPFolder: Identifiable, Hashable {
+    let id = UUID()
+    let name: String
+    let attributes: [String]
+    let separator: String
+    
+    var icon: String {
+        if attributes.contains("\\Inbox") || name == "INBOX" {
+            return "tray"
+        } else if attributes.contains("\\Drafts") {
+            return "doc"
+        } else if attributes.contains("\\Sent") {
+            return "paperplane"
+        } else if attributes.contains("\\Junk") {
+            return "xmark.bin"
+        } else if attributes.contains("\\Trash") {
+            return "trash"
+        } else {
+            return "folder"
+        }
     }
 }
 
