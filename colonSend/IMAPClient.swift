@@ -97,6 +97,28 @@ class IMAPClient: ObservableObject {
         // Wait a moment for server response
         try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
         print("✅ Login completed for: \(account.auth.username)")
+        
+        // Fetch folder list
+        try await fetchFolders()
+    }
+    
+    private func fetchFolders() async throws {
+        guard let channel = self.channel else {
+            throw IMAPError.noConnection
+        }
+        
+        print("🔵 Fetching folder list...")
+        let listCommand = "A002 LIST \"\" \"*\"\r\n"
+        
+        var buffer = channel.allocator.buffer(capacity: listCommand.count)
+        buffer.writeString(listCommand)
+        
+        let _ = try await channel.writeAndFlush(buffer).get()
+        print("✅ LIST command sent")
+        
+        // Wait for folder response
+        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        print("✅ Folder list retrieved")
     }
     
     private func getPasswordFromKeychain(service: String, account: String) -> String? {
