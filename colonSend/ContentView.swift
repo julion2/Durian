@@ -211,6 +211,12 @@ struct AuthConfig: Codable {
 
 struct AppConfig: Codable {
     let accounts: [MailAccount]
+    let settings: AppSettings
+    
+    init(accounts: [MailAccount], settings: AppSettings = AppSettings()) {
+        self.accounts = accounts
+        self.settings = settings
+    }
 }
 
 class ConfigManager {
@@ -255,15 +261,18 @@ class ConfigManager {
     }
     
     private func createDefaultConfig(at url: URL) {
-        let defaultConfig = AppConfig(accounts: [
-            MailAccount(
-                name: "Ethereal Test",
-                email: "test@ethereal.email",
-                imap: ServerConfig(host: "imap.ethereal.email", port: 143, ssl: false),
-                smtp: ServerConfig(host: "smtp.ethereal.email", port: 587, ssl: false),
-                auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test")
-            )
-        ])
+        let defaultConfig = AppConfig(
+            accounts: [
+                MailAccount(
+                    name: "Ethereal Test",
+                    email: "test@ethereal.email",
+                    imap: ServerConfig(host: "imap.ethereal.email", port: 143, ssl: false),
+                    smtp: ServerConfig(host: "smtp.ethereal.email", port: 587, ssl: false),
+                    auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test")
+                )
+            ],
+            settings: AppSettings()
+        )
         
         do {
             let encoder = JSONEncoder()
@@ -278,6 +287,34 @@ class ConfigManager {
     
     var accounts: [MailAccount] {
         return config?.accounts ?? []
+    }
+    
+    var settings: AppSettings {
+        return config?.settings ?? AppSettings()
+    }
+    
+    func updateSettings(_ newSettings: AppSettings) {
+        guard let config = self.config else { return }
+        
+        let updatedConfig = AppConfig(accounts: config.accounts, settings: newSettings)
+        self.config = updatedConfig
+        
+        saveConfigToFile()
+    }
+    
+    private func saveConfigToFile() {
+        guard let config = self.config else { return }
+        
+        let configURL = getConfigURL()
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(config)
+            try data.write(to: configURL)
+            print("✅ Config saved to \(configURL.path)")
+        } catch {
+            print("❌ Failed to save config: \(error)")
+        }
     }
 }
 

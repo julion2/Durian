@@ -4,6 +4,7 @@ import NIOIMAP
 import NIOPosix
 import NIOSSL
 import Security
+import Combine
 
 class IMAPClient: ObservableObject {
     private var eventLoopGroup: EventLoopGroup?
@@ -15,6 +16,12 @@ class IMAPClient: ObservableObject {
     @Published var emails: [IMAPEmail] = []
     @Published var selectedFolderName: String?
     private var selectedFolder: String?
+    private var refreshTimer: Timer?
+    private var cancellables = Set<AnyCancellable>()
+    
+    init() {
+        setupSettingsObserver()
+    }
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
@@ -65,6 +72,9 @@ class IMAPClient: ObservableObject {
                 isConnected = true
                 connectionStatus = "Connected"
             }
+            
+            // Start auto-refresh timer
+            setupAutoRefresh()
             
         } catch {
             await MainActor.run {
@@ -317,6 +327,61 @@ class IMAPClient: ObservableObject {
             isConnected = false
             connectionStatus = "Disconnected"
         }
+        
+        // Stop auto-refresh timer
+        stopAutoRefresh()
+    }
+    
+    // MARK: - Auto-refresh functionality
+    
+    private func setupSettingsObserver() {
+        SettingsManager.shared.$settings
+            .sink { [weak self] settings in
+                self?.updateAutoRefresh(with: settings)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateAutoRefresh(with settings: AppSettings) {
+        stopAutoRefresh()
+        
+        if settings.autoFetchEnabled && isConnected {
+            setupAutoRefresh()
+        }
+    }
+    
+    private func setupAutoRefresh() {
+        let settings = SettingsManager.shared.settings
+        
+        guard settings.autoFetchEnabled else {
+            print("🔄 Auto-refresh disabled")
+            return
+        }
+        
+        Task { @MainActor in
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: settings.autoFetchInterval, repeats: true) { [weak self] _ in
+                guard let self = self, let folder = self.selectedFolder else { return }
+                
+                print("🔄 Auto-refreshing emails for \(folder)...")
+                Task {
+                    await self.refreshCurrentFolder()
+                }
+            }
+            print("🔄 Auto-refresh enabled: every \(settings.autoFetchInterval)s")
+        }
+    }
+    
+    private func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        print("🔄 Auto-refresh stopped")
+    }
+    
+    private func refreshCurrentFolder() async {
+        guard let folderName = selectedFolder, isConnected else { return }
+        
+        print("🔄 Refreshing \(folderName)...")
+        await fetchEmails()
     }
 }
 
