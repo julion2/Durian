@@ -13,5 +13,20 @@ struct colonSendApp: App {
         WindowGroup {
             ContentView()
         }
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Preferences...") {
+                    openConfig()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+    }
+    
+    private func openConfig() {
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
+        let configURL = homeURL.appendingPathComponent(".config/colonSend/config.json")
+        
+        NSWorkspace.shared.open(configURL)
     }
 }
