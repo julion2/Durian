@@ -3,6 +3,7 @@ import NIOCore
 import NIOIMAP
 import NIOPosix
 import NIOSSL
+import Security
 
 class IMAPClient: ObservableObject {
     private var eventLoopGroup: EventLoopGroup?
@@ -79,10 +80,46 @@ class IMAPClient: ObservableObject {
             connectionStatus = "Authenticating..."
         }
         
-        // For now, just simulate login - we'll implement the actual IMAP commands later
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
+        print("🔵 Retrieving password from keychain...")
+        guard let password = getPasswordFromKeychain(service: account.auth.passwordKeychain ?? "", account: account.auth.username) else {
+            throw IMAPError.authenticationFailed
+        }
         
-        print("Login attempted for: \(account.auth.username)")
+        print("🔵 Sending IMAP LOGIN command...")
+        let loginCommand = "A001 LOGIN \"\(account.auth.username)\" \"\(password)\"\r\n"
+        
+        var buffer = channel.allocator.buffer(capacity: loginCommand.count)
+        buffer.writeString(loginCommand)
+        
+        let _ = try await channel.writeAndFlush(buffer).get()
+        print("✅ LOGIN command sent")
+        
+        // Wait a moment for server response
+        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        print("✅ Login completed for: \(account.auth.username)")
+    }
+    
+    private func getPasswordFromKeychain(service: String, account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        if status == errSecSuccess,
+           let data = result as? Data,
+           let password = String(data: data, encoding: .utf8) {
+            print("✅ Password retrieved from keychain for \(account)")
+            return password
+        } else {
+            print("❌ Failed to retrieve password from keychain for \(account): \(status)")
+            return nil
+        }
     }
     
     func disconnect() async {
