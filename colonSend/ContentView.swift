@@ -47,34 +47,69 @@ struct ContentView: View {
             }.listStyle(.sidebar)
             .navigationTitle("Navigation Split View")
         } content: {
-            if !model.imapClient.emails.isEmpty {
-                List(model.imapClient.emails, selection: $selectedEmail) { email in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(email.from)
-                                .font(.headline)
+            VStack {
+                if model.imapClient.isLoadingEmails && !model.imapClient.loadingProgress.isEmpty {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text(model.imapClient.loadingProgress)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                if !model.imapClient.emails.isEmpty {
+                    List(model.imapClient.emails, selection: $selectedEmail) { email in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(email.from)
+                                    .font(.headline)
+                                
+                                Spacer()
+                                
+                                Text(email.date)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
                             
-                            Spacer()
+                            Text(email.subject)
+                                .font(.callout)
                             
-                            Text(email.date)
+                            Text(email.body)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(2)
                         }
-                        
-                        Text(email.subject)
-                            .font(.callout)
-                        
-                        Text(email.body)
+                    }
+                    .navigationTitle(model.imapClient.selectedFolderName ?? "Emails")
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            if model.imapClient.hasMoreMessages && !model.imapClient.isLoadingEmails {
+                                Button("Load More") {
+                                    Task {
+                                        await model.imapClient.loadMoreEmails()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if model.imapClient.isLoadingEmails {
+                    VStack {
+                        ProgressView()
+                        Text(model.imapClient.loadingProgress)
                             .font(.callout)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .padding(.top, 8)
                     }
-                }.navigationTitle(model.imapClient.selectedFolderName ?? "Emails")
-            } else {
-                Text("Content")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
                     .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
+                } else {
+                    Text("No emails")
+                        .font(.largeTitle)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
+                }
             }
         } detail: {
             if let email = model.email(folderId: selectedFolderID, id: selectedEmail) {
@@ -172,6 +207,7 @@ struct ContentView: View {
         await imapClient.reloadCurrentFolder()
     }
 
+    @MainActor
     class Model: ObservableObject {
         @Published var folders: [Folder] = []
         @Published var accounts: [MailAccount] = []
@@ -187,7 +223,9 @@ struct ContentView: View {
                 self?.objectWillChange.send()
             }.store(in: &cancellables)
             
-            testIMAPConnection()
+            Task {
+                await testIMAPConnection()
+            }
         }
         
         private func loadAccounts() {
@@ -221,16 +259,14 @@ struct ContentView: View {
             }
         }
         
-        private func testIMAPConnection() {
+        private func testIMAPConnection() async {
             guard let firstAccount = accounts.first else {
                 print("No accounts configured for IMAP test")
                 return
             }
             
             print("Testing IMAP connection for: \(firstAccount.name)")
-            Task {
-                await imapClient.connect(account: firstAccount)
-            }
+            await imapClient.connect(account: firstAccount)
         }
     }
 }

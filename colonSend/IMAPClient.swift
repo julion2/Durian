@@ -6,6 +6,7 @@ import NIOSSL
 import Security
 import Combine
 
+@MainActor
 class IMAPClient: ObservableObject {
     private var eventLoopGroup: EventLoopGroup?
     private var channel: Channel?
@@ -15,9 +16,16 @@ class IMAPClient: ObservableObject {
     @Published var folders: [IMAPFolder] = []
     @Published var emails: [IMAPEmail] = []
     @Published var selectedFolderName: String?
+    @Published var isLoadingEmails = false
+    @Published var loadingProgress: String = ""
+    @Published var hasMoreMessages = false
+    
     private var selectedFolder: String?
     private var refreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    private var commandCounter = 1000
+    private var pendingCommands: [String: CommandCompletion] = [:]
+    private var paginationState = PaginationState()
     
     init() {
         setupSettingsObserver()
@@ -25,9 +33,7 @@ class IMAPClient: ObservableObject {
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
-        await MainActor.run {
-            connectionStatus = "Connecting..."
-        }
+        connectionStatus = "Connecting..."
         
         do {
             print("🔵 Creating event loop group...")
@@ -46,12 +52,24 @@ class IMAPClient: ObservableObject {
                         print("🔵 Adding SSL handler for TLS connection")
                         do {
                             let sslContext = try NIOSSLContext(configuration: .clientDefault)
-                            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: account.imap.host)
-                            return channel.pipeline.addHandler(sslHandler).flatMap {
-                                channel.pipeline.addHandler(imapHandler)
+                            let hostname = account.imap.host
+                            
+                            // Create SSL handler in a way that bypasses Sendable requirements
+                            let sslHandlerResult = Result<NIOSSLClientHandler, Error> {
+                                try NIOSSLClientHandler(context: sslContext, serverHostname: hostname)
+                            }
+                            
+                            switch sslHandlerResult {
+                            case .success(let sslHandler):
+                                return channel.pipeline.addHandler(sslHandler).flatMap { _ in
+                                    channel.pipeline.addHandler(imapHandler)
+                                }
+                            case .failure(let error):
+                                print("❌ Failed to create SSL handler: \(error)")
+                                return channel.pipeline.addHandler(imapHandler)
                             }
                         } catch {
-                            print("❌ Failed to create SSL handler: \(error)")
+                            print("❌ Failed to create SSL context: \(error)")
                             return channel.pipeline.addHandler(imapHandler)
                         }
                     } else {
@@ -68,31 +86,25 @@ class IMAPClient: ObservableObject {
             // Attempt login
             try await login(account: account)
             
-            await MainActor.run {
-                isConnected = true
-                connectionStatus = "Connected"
-            }
+            isConnected = true
+            connectionStatus = "Connected"
             
             // Start auto-refresh timer
             setupAutoRefresh()
             
         } catch {
-            await MainActor.run {
-                connectionStatus = "Error: \(error.localizedDescription)"
-            }
+            connectionStatus = "Error: \(error.localizedDescription)"
             print("❌ IMAP connection error: \(error)")
             print("❌ Error details: \(String(describing: error))")
         }
     }
     
     private func login(account: MailAccount) async throws {
-        guard let channel = self.channel else {
+        guard self.channel != nil else {
             throw IMAPError.noConnection
         }
         
-        await MainActor.run {
-            connectionStatus = "Authenticating..."
-        }
+        connectionStatus = "Authenticating..."
         
         print("🔵 Retrieving password from keychain...")
         guard let password = getPasswordFromKeychain(service: account.auth.passwordKeychain ?? "", account: account.auth.username) else {
@@ -100,16 +112,9 @@ class IMAPClient: ObservableObject {
         }
         
         print("🔵 Sending IMAP LOGIN command...")
-        let loginCommand = "A001 LOGIN \"\(account.auth.username)\" \"\(password)\"\r\n"
+        let loginCommand = "LOGIN \"\(account.auth.username)\" \"\(password)\""
         
-        var buffer = channel.allocator.buffer(capacity: loginCommand.count)
-        buffer.writeString(loginCommand)
-        
-        let _ = try await channel.writeAndFlush(buffer).get()
-        print("✅ LOGIN command sent")
-        
-        // Wait a moment for server response
-        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        let _ = try await executeCommand(loginCommand)
         print("✅ Login completed for: \(account.auth.username)")
         
         // Fetch folder list
@@ -117,21 +122,10 @@ class IMAPClient: ObservableObject {
     }
     
     private func fetchFolders() async throws {
-        guard let channel = self.channel else {
-            throw IMAPError.noConnection
-        }
-        
         print("🔵 Fetching folder list...")
-        let listCommand = "A002 LIST \"\" \"*\"\r\n"
+        let listCommand = "LIST \"\" \"*\""
         
-        var buffer = channel.allocator.buffer(capacity: listCommand.count)
-        buffer.writeString(listCommand)
-        
-        let _ = try await channel.writeAndFlush(buffer).get()
-        print("✅ LIST command sent")
-        
-        // Wait for folder response
-        try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        let _ = try await executeCommand(listCommand)
         print("✅ Folder list retrieved")
     }
     
@@ -142,8 +136,8 @@ class IMAPClient: ObservableObject {
         for line in lines {
             if line.hasPrefix("* LIST") {
                 if let folder = parseListLine(line) {
-                    Task { @MainActor in
-                        if !folders.contains(where: { $0.name == folder.name }) {
+                    if !folders.contains(where: { $0.name == folder.name }) {
+                        Task { @MainActor in
                             folders.append(folder)
                             print("📁 Added folder: \(folder.name) (\(folder.icon)) - Total folders: \(folders.count)")
                         }
@@ -175,7 +169,7 @@ class IMAPClient: ObservableObject {
     }
     
     func selectFolder(_ folderName: String) async {
-        guard let channel = self.channel, isConnected else {
+        guard self.channel != nil, isConnected else {
             print("❌ Cannot select folder: not connected")
             return
         }
@@ -184,21 +178,14 @@ class IMAPClient: ObservableObject {
         self.selectedFolder = folderName
         
         // Clear previous emails and update selected folder
-        await MainActor.run {
-            emails.removeAll()
-            selectedFolderName = folderName
-        }
+        emails.removeAll()
+        selectedFolderName = folderName
         
-        let selectCommand = "A003 SELECT \"\(folderName)\"\r\n"
-        var buffer = channel.allocator.buffer(capacity: selectCommand.count)
-        buffer.writeString(selectCommand)
+        let selectCommand = "SELECT \"\(folderName)\""
         
         do {
-            let _ = try await channel.writeAndFlush(buffer).get()
-            print("✅ SELECT command sent for \(folderName)")
-            
-            // Wait for response and then fetch emails
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            let _ = try await executeCommand(selectCommand)
+            print("✅ SELECT completed for \(folderName)")
             await fetchEmails()
         } catch {
             print("❌ Failed to select folder: \(error)")
@@ -206,35 +193,86 @@ class IMAPClient: ObservableObject {
     }
     
     private func fetchEmails() async {
-        guard let channel = self.channel, let folder = selectedFolder else {
+        guard selectedFolder != nil else {
             print("❌ Cannot fetch emails: no folder selected")
             return
         }
         
-        print("🔵 Fetching emails from \(folder)...")
+        await loadEmails(loadMore: false)
+    }
+    
+    func loadMoreEmails() async {
+        guard selectedFolder != nil else {
+            print("❌ Cannot load more emails: no folder selected")
+            return
+        }
         
-        // Fetch recent 10 emails with headers
-        let fetchCommand = "A004 FETCH 1:10 (UID FLAGS ENVELOPE BODY[HEADER.FIELDS (SUBJECT FROM DATE)])\r\n"
-        var buffer = channel.allocator.buffer(capacity: fetchCommand.count)
-        buffer.writeString(fetchCommand)
+        await loadEmails(loadMore: true)
+    }
+    
+    private func loadEmails(loadMore: Bool) async {
+        guard let folder = selectedFolder, isConnected else { return }
+        
+        if loadMore && !paginationState.hasMoreMessages {
+            print("📭 No more emails to load")
+            return
+        }
+        
+        isLoadingEmails = true
+        if loadMore {
+            paginationState.isLoadingMore = true
+            loadingProgress = "Loading more emails..."
+        } else {
+            paginationState.reset()
+            emails.removeAll()
+            loadingProgress = "Loading emails..."
+        }
+        
+        print("🔵 \(loadMore ? "Loading more" : "Fetching") emails from \(folder)...")
         
         do {
-            let _ = try await channel.writeAndFlush(buffer).get()
-            print("✅ FETCH command sent")
+            // Calculate message range for pagination
+            let startIndex: Int
+            let endIndex: Int
             
-            // Wait for email response
-            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            print("✅ Emails fetched")
+            if loadMore {
+                startIndex = paginationState.currentPage * paginationState.pageSize + 1
+                endIndex = min(startIndex + paginationState.pageSize - 1, paginationState.totalMessages)
+            } else {
+                // For initial load, get the most recent messages
+                startIndex = max(1, paginationState.totalMessages - paginationState.pageSize + 1)
+                endIndex = paginationState.totalMessages
+            }
+            
+            if startIndex <= endIndex && endIndex > 0 {
+                let fetchCommand = "FETCH \(startIndex):\(endIndex) (UID FLAGS ENVELOPE BODY[HEADER.FIELDS (SUBJECT FROM DATE)])"
+                _ = try await executeCommand(fetchCommand)
+                
+                let loadedCount = emails.count
+                loadingProgress = "Loaded \(loadedCount) of \(paginationState.totalMessages) messages"
+                
+                if loadMore {
+                    paginationState.nextPage()
+                }
+                
+                print("✅ Loaded \(endIndex - startIndex + 1) emails")
+            }
+            
         } catch {
             print("❌ Failed to fetch emails: \(error)")
+            loadingProgress = "Failed to load emails: \(error.localizedDescription)"
         }
+        
+        isLoadingEmails = false
+        paginationState.isLoadingMore = false
+        hasMoreMessages = paginationState.hasMoreMessages
     }
     
     func parseEmailResponse(_ response: String) {
         // Parse: * 1 FETCH (UID 1 ... ENVELOPE ("date" "subject" (("from"...
         if let email = parseEmailFetch(response) {
-            Task { @MainActor in
-                if !emails.contains(where: { $0.uid == email.uid }) {
+            if !emails.contains(where: { $0.uid == email.uid }) {
+                Task { @MainActor in
                     emails.append(email)
                     print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
                 }
@@ -292,6 +330,21 @@ class IMAPClient: ObservableObject {
         )
     }
     
+    func parseExistsResponse(_ response: String) {
+        let lines = response.components(separatedBy: .newlines)
+        for line in lines {
+            if line.contains(" EXISTS") {
+                let components = line.components(separatedBy: .whitespaces)
+                if let countString = components.first(where: { $0.allSatisfy(\.isNumber) }),
+                   let count = Int(countString) {
+                    paginationState.totalMessages = count
+                    loadingProgress = "Found \(count) messages"
+                    print("📊 Total messages in folder: \(count)")
+                }
+            }
+        }
+    }
+    
     private func getPasswordFromKeychain(service: String, account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -316,17 +369,13 @@ class IMAPClient: ObservableObject {
     }
     
     func disconnect() async {
-        await MainActor.run {
-            connectionStatus = "Disconnecting..."
-        }
+        connectionStatus = "Disconnecting..."
         
         try? await channel?.close()
-        try? eventLoopGroup?.syncShutdownGracefully()
+        eventLoopGroup = nil
         
-        await MainActor.run {
-            isConnected = false
-            connectionStatus = "Disconnected"
-        }
+        isConnected = false
+        connectionStatus = "Disconnected"
         
         // Stop auto-refresh timer
         stopAutoRefresh()
@@ -358,17 +407,15 @@ class IMAPClient: ObservableObject {
             return
         }
         
-        Task { @MainActor in
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: settings.autoFetchInterval, repeats: true) { [weak self] _ in
-                guard let self = self, let folder = self.selectedFolder else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: settings.autoFetchInterval, repeats: true) { _ in
+            Task { @MainActor in
+                guard let folder = self.selectedFolder else { return }
                 
                 print("🔄 Auto-refreshing emails for \(folder)...")
-                Task {
-                    await self.refreshCurrentFolder()
-                }
+                await self.refreshCurrentFolder()
             }
-            print("🔄 Auto-refresh enabled: every \(settings.autoFetchInterval)s")
         }
+        print("🔄 Auto-refresh enabled: every \(settings.autoFetchInterval)s")
     }
     
     private func stopAutoRefresh() {
@@ -400,6 +447,62 @@ class IMAPClient: ObservableObject {
         print("🔄 Manual reload requested for \(folderName)")
         await refreshCurrentFolder()
     }
+    
+    // MARK: - Command Execution System
+    
+    private func generateCommandTag() -> String {
+        commandCounter += 1
+        return "A\(commandCounter)"
+    }
+    
+    private func executeCommand(_ command: String, timeout: TimeInterval = 30.0) async throws -> String {
+        guard let channel = self.channel else {
+            throw IMAPError.noConnection
+        }
+        
+        let tag = generateCommandTag()
+        let fullCommand = "\(tag) \(command)\r\n"
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingCommands[tag] = { result in
+                continuation.resume(with: result)
+            }
+            
+            // Set up timeout
+            Task { @MainActor in
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                if let completion = pendingCommands.removeValue(forKey: tag) {
+                    completion(.failure(IMAPError.commandTimeout))
+                }
+            }
+            
+            // Send command
+            var buffer = channel.allocator.buffer(capacity: fullCommand.count)
+            buffer.writeString(fullCommand)
+            
+            channel.writeAndFlush(buffer).whenComplete { result in
+                Task { @MainActor in
+                    switch result {
+                    case .success:
+                        print("✅ Command sent: \(tag) \(command)")
+                    case .failure(let error):
+                        if let completion = self.pendingCommands.removeValue(forKey: tag) {
+                            completion(.failure(error))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    func handleCommandResponse(tag: String, response: String, isComplete: Bool) {
+        guard let completion = pendingCommands[tag] else { return }
+        
+        if isComplete {
+            pendingCommands.removeValue(forKey: tag)
+            completion(.success(response))
+        }
+    }
 }
 
 private class IMAPClientHandler: ChannelInboundHandler {
@@ -419,14 +522,38 @@ private class IMAPClientHandler: ChannelInboundHandler {
         if let string = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
             print("IMAP Server: \(string)")
             
+            // Parse command completion responses (starts with tag)
+            let lines = string.components(separatedBy: .newlines)
+            for line in lines {
+                if line.hasPrefix("A") && (line.contains(" OK ") || line.contains(" NO ") || line.contains(" BAD ")) {
+                    if let spaceIndex = line.firstIndex(of: " ") {
+                        let tag = String(line[..<spaceIndex])
+                        Task { @MainActor in
+                            imapClient?.handleCommandResponse(tag: tag, response: string, isComplete: true)
+                        }
+                    }
+                }
+            }
+            
             // Parse LIST responses
             if string.contains("* LIST") {
-                imapClient?.parseFolderResponse(string)
+                Task { @MainActor in
+                    imapClient?.parseFolderResponse(string)
+                }
             }
             
             // Parse FETCH responses
             if string.contains("* ") && string.contains("FETCH") {
-                imapClient?.parseEmailResponse(string)
+                Task { @MainActor in
+                    imapClient?.parseEmailResponse(string)
+                }
+            }
+            
+            // Parse EXISTS responses for message count
+            if string.contains("* ") && string.contains(" EXISTS") {
+                Task { @MainActor in
+                    imapClient?.parseExistsResponse(string)
+                }
             }
         }
     }
@@ -473,4 +600,42 @@ enum IMAPError: Error {
     case noConnection
     case authenticationFailed
     case connectionFailed
+    case commandTimeout
+    case invalidResponse
+}
+
+class PaginationState {
+    var currentPage = 0
+    var pageSize = 50
+    var totalMessages = 0
+    var isLoadingMore = false
+    var hasMoreMessages: Bool {
+        return (currentPage * pageSize) < totalMessages
+    }
+    
+    func reset() {
+        currentPage = 0
+        totalMessages = 0
+        isLoadingMore = false
+    }
+    
+    func nextPage() {
+        currentPage += 1
+    }
+}
+
+typealias CommandCompletion = (Result<String, Error>) -> Void
+
+struct IMAPCommand {
+    let tag: String
+    let command: String
+    let completion: CommandCompletion
+    let timeout: TimeInterval
+    
+    init(tag: String, command: String, timeout: TimeInterval = 30.0, completion: @escaping CommandCompletion) {
+        self.tag = tag
+        self.command = command
+        self.completion = completion
+        self.timeout = timeout
+    }
 }
