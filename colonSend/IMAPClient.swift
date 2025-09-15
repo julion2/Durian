@@ -12,6 +12,9 @@ class IMAPClient: ObservableObject {
     @Published var isConnected = false
     @Published var connectionStatus = "Disconnected"
     @Published var folders: [IMAPFolder] = []
+    @Published var emails: [IMAPEmail] = []
+    @Published var selectedFolderName: String?
+    private var selectedFolder: String?
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
@@ -161,6 +164,124 @@ class IMAPClient: ObservableObject {
         return IMAPFolder(name: name, attributes: attributes, separator: separator)
     }
     
+    func selectFolder(_ folderName: String) async {
+        guard let channel = self.channel, isConnected else {
+            print("❌ Cannot select folder: not connected")
+            return
+        }
+        
+        print("🔵 Selecting folder: \(folderName)")
+        self.selectedFolder = folderName
+        
+        // Clear previous emails and update selected folder
+        await MainActor.run {
+            emails.removeAll()
+            selectedFolderName = folderName
+        }
+        
+        let selectCommand = "A003 SELECT \"\(folderName)\"\r\n"
+        var buffer = channel.allocator.buffer(capacity: selectCommand.count)
+        buffer.writeString(selectCommand)
+        
+        do {
+            let _ = try await channel.writeAndFlush(buffer).get()
+            print("✅ SELECT command sent for \(folderName)")
+            
+            // Wait for response and then fetch emails
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            await fetchEmails()
+        } catch {
+            print("❌ Failed to select folder: \(error)")
+        }
+    }
+    
+    private func fetchEmails() async {
+        guard let channel = self.channel, let folder = selectedFolder else {
+            print("❌ Cannot fetch emails: no folder selected")
+            return
+        }
+        
+        print("🔵 Fetching emails from \(folder)...")
+        
+        // Fetch recent 10 emails with headers
+        let fetchCommand = "A004 FETCH 1:10 (UID FLAGS ENVELOPE BODY[HEADER.FIELDS (SUBJECT FROM DATE)])\r\n"
+        var buffer = channel.allocator.buffer(capacity: fetchCommand.count)
+        buffer.writeString(fetchCommand)
+        
+        do {
+            let _ = try await channel.writeAndFlush(buffer).get()
+            print("✅ FETCH command sent")
+            
+            // Wait for email response
+            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+            print("✅ Emails fetched")
+        } catch {
+            print("❌ Failed to fetch emails: \(error)")
+        }
+    }
+    
+    func parseEmailResponse(_ response: String) {
+        // Parse: * 1 FETCH (UID 1 ... ENVELOPE ("date" "subject" (("from"...
+        if let email = parseEmailFetch(response) {
+            Task { @MainActor in
+                if !emails.contains(where: { $0.uid == email.uid }) {
+                    emails.append(email)
+                    print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
+                }
+            }
+        }
+    }
+    
+    private func parseEmailFetch(_ response: String) -> IMAPEmail? {
+        // Basic parsing for ENVELOPE response
+        // Look for Subject and From in the response
+        
+        let lines = response.components(separatedBy: .newlines)
+        var subject = "No Subject"
+        var from = "Unknown Sender"
+        var date = "Unknown Date"
+        var uid: UInt32 = 0
+        
+        for line in lines {
+            if line.contains("Subject:") {
+                if let subjectMatch = line.range(of: "Subject: (.+)$", options: .regularExpression) {
+                    subject = String(line[subjectMatch]).replacingOccurrences(of: "Subject: ", with: "")
+                }
+            }
+            
+            if line.contains("From:") {
+                if let fromMatch = line.range(of: "From: (.+)$", options: .regularExpression) {
+                    from = String(line[fromMatch]).replacingOccurrences(of: "From: ", with: "")
+                }
+            }
+            
+            if line.contains("Date:") {
+                if let dateMatch = line.range(of: "Date: (.+)$", options: .regularExpression) {
+                    date = String(line[dateMatch]).replacingOccurrences(of: "Date: ", with: "")
+                }
+            }
+            
+            if line.contains("UID") {
+                let uidPattern = "UID (\\d+)"
+                if let regex = try? NSRegularExpression(pattern: uidPattern),
+                   let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)) {
+                    let uidString = String(line[Range(match.range(at: 1), in: line)!])
+                    uid = UInt32(uidString) ?? 0
+                }
+            }
+        }
+        
+        guard uid > 0 else { return nil }
+        
+        return IMAPEmail(
+            uid: uid,
+            subject: subject,
+            from: from,
+            date: date,
+            body: "Click to load content..."
+        )
+    }
+    
     private func getPasswordFromKeychain(service: String, account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -220,6 +341,11 @@ private class IMAPClientHandler: ChannelInboundHandler {
             if string.contains("* LIST") {
                 imapClient?.parseFolderResponse(string)
             }
+            
+            // Parse FETCH responses
+            if string.contains("* ") && string.contains("FETCH") {
+                imapClient?.parseEmailResponse(string)
+            }
         }
     }
     
@@ -250,6 +376,15 @@ struct IMAPFolder: Identifiable, Hashable {
             return "folder"
         }
     }
+}
+
+struct IMAPEmail: Identifiable, Hashable {
+    let id = UUID()
+    let uid: UInt32
+    let subject: String
+    let from: String
+    let date: String
+    let body: String
 }
 
 enum IMAPError: Error {

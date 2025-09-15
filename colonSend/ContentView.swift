@@ -10,16 +10,23 @@ import Combine
 
 struct ContentView: View {
     @StateObject private var model = Model()
-    @State private var selectedFolder: UUID? = nil
+    @State private var selectedFolderID: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedFolder) {
+            List(selection: $selectedFolderID) {
                 ForEach(model.accounts, id: \.email) { account in
                     Section(account.name) {
                         ForEach(model.imapClient.folders) { folder in
                             Label(folder.name, systemImage: folder.icon)
+                                .tag(folder.id)
+                                .onTapGesture {
+                                    selectedFolderID = folder.id
+                                    Task {
+                                        await model.imapClient.selectFolder(folder.name)
+                                    }
+                                }
                         }
                         
                         if model.imapClient.folders.isEmpty {
@@ -37,11 +44,11 @@ struct ContentView: View {
             }.listStyle(.sidebar)
             .navigationTitle("Navigation Split View")
         } content: {
-            if let folder = model.folder(id: selectedFolder) {
-                List(folder.emails, selection: $selectedEmail) { email in
+            if !model.imapClient.emails.isEmpty {
+                List(model.imapClient.emails, selection: $selectedEmail) { email in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
-                            Text(email.name)
+                            Text(email.from)
                                 .font(.headline)
                             
                             Spacer()
@@ -59,7 +66,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
-                }.navigationTitle(folder.name)
+                }.navigationTitle(model.imapClient.selectedFolderName ?? "Emails")
             } else {
                 Text("Content")
                     .font(.largeTitle)
@@ -67,7 +74,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
             }
         } detail: {
-            if let email = model.email(folderId: selectedFolder, id: selectedEmail) {
+            if let email = model.email(folderId: selectedFolderID, id: selectedEmail) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 4) {
