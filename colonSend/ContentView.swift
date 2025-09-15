@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var model = Model()
+    @StateObject private var imapClient = IMAPClient()
     @State private var selectedFolder: Folder.ID? = nil
     @State private var selectedEmail: Email.ID? = nil
 
@@ -91,10 +92,12 @@ struct ContentView: View {
     class Model: ObservableObject {
         @Published var folders: [Folder] = []
         @Published var accounts: [MailAccount] = []
+        private let imapClient = IMAPClient()
         
         init() {
             loadAccounts()
             setupFolders()
+            testIMAPConnection()
         }
         
         private func loadAccounts() {
@@ -125,6 +128,18 @@ struct ContentView: View {
                 folder.emails.first(where: { $0.id == id })
             } else {
                 nil
+            }
+        }
+        
+        private func testIMAPConnection() {
+            guard let firstAccount = accounts.first else {
+                print("No accounts configured for IMAP test")
+                return
+            }
+            
+            print("Testing IMAP connection for: \(firstAccount.name)")
+            Task {
+                await imapClient.connect(account: firstAccount)
             }
         }
     }
@@ -217,11 +232,11 @@ class ConfigManager {
     private func createDefaultConfig(at url: URL) {
         let defaultConfig = AppConfig(accounts: [
             MailAccount(
-                name: "Example Gmail",
-                email: "your-email@gmail.com",
-                imap: ServerConfig(host: "imap.gmail.com", port: 993, ssl: true),
-                smtp: ServerConfig(host: "smtp.gmail.com", port: 587, ssl: true),
-                auth: AuthConfig(username: "your-email@gmail.com", passwordKeychain: "gmail-password")
+                name: "Ethereal Test",
+                email: "test@ethereal.email",
+                imap: ServerConfig(host: "imap.ethereal.email", port: 143, ssl: false),
+                smtp: ServerConfig(host: "smtp.ethereal.email", port: 587, ssl: false),
+                auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test")
             )
         ])
         

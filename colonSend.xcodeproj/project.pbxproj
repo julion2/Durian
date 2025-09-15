@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */ = {isa = PBXBuildFile; productRef = F9BED1162E784F2400A0A48D /* NIOIMAP */; };
+		F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F9FEE9CF2E785521003E0C83 /* NIOSSL */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		F9BED1042E78416900A0A48D /* colonSend.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = colonSend.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */,
+				F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +72,8 @@
 			);
 			name = colonSend;
 			packageProductDependencies = (
+				F9BED1162E784F2400A0A48D /* NIOIMAP */,
+				F9FEE9CF2E785521003E0C83 /* NIOSSL */,
 			);
 			productName = colonSend;
 			productReference = F9BED1042E78416900A0A48D /* colonSend.app */;
@@ -94,6 +103,10 @@
 			);
 			mainGroup = F9BED0FB2E78416800A0A48D;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */,
+				F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F9BED1052E78416900A0A48D /* Products */;
 			projectDirPath = "";
@@ -321,6 +334,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-imap";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.1.0;
+			};
+		};
+		F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-nio-ssl";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.34.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F9BED1162E784F2400A0A48D /* NIOIMAP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */;
+			productName = NIOIMAP;
+		};
+		F9FEE9CF2E785521003E0C83 /* NIOSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
+			productName = NIOSSL;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F9BED0FC2E78416800A0A48D /* Project object */;
 }
