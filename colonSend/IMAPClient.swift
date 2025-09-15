@@ -55,7 +55,7 @@ class IMAPClient: ObservableObject {
                             let hostname = account.imap.host
                             
                             // Create SSL handler in a way that bypasses Sendable requirements
-                            let sslHandlerResult = Result<NIOSSLClientHandler, Error> {
+                            let sslHandlerResult = Result<any ChannelHandler, Error> {
                                 try NIOSSLClientHandler(context: sslContext, serverHostname: hostname)
                             }
                             
@@ -186,7 +186,8 @@ class IMAPClient: ObservableObject {
         do {
             let _ = try await executeCommand(selectCommand)
             print("✅ SELECT completed for \(folderName)")
-            await fetchEmails()
+            
+            // fetchEmails() will be called automatically when parseExistsResponse() is triggered
         } catch {
             print("❌ Failed to select folder: \(error)")
         }
@@ -223,7 +224,10 @@ class IMAPClient: ObservableObject {
             paginationState.isLoadingMore = true
             loadingProgress = "Loading more emails..."
         } else {
+            // Don't reset totalMessages if we already have it from EXISTS response
+            let existingTotal = paginationState.totalMessages
             paginationState.reset()
+            paginationState.totalMessages = existingTotal
             emails.removeAll()
             loadingProgress = "Loading emails..."
         }
@@ -245,7 +249,8 @@ class IMAPClient: ObservableObject {
             }
             
             if startIndex <= endIndex && endIndex > 0 {
-                let fetchCommand = "FETCH \(startIndex):\(endIndex) (UID FLAGS ENVELOPE BODY[HEADER.FIELDS (SUBJECT FROM DATE)])"
+                let fetchCommand = "FETCH \(startIndex):\(endIndex) (UID FLAGS ENVELOPE BODYSTRUCTURE)"
+                print("🔵 DEBUG: Sending FETCH for range \(startIndex):\(endIndex)")
                 _ = try await executeCommand(fetchCommand)
                 
                 let loadedCount = emails.count
@@ -255,7 +260,9 @@ class IMAPClient: ObservableObject {
                     paginationState.nextPage()
                 }
                 
-                print("✅ Loaded \(endIndex - startIndex + 1) emails")
+                print("✅ FETCH command completed for range \(startIndex):\(endIndex)")
+            } else {
+                print("⚠️ DEBUG: Invalid range startIndex=\(startIndex), endIndex=\(endIndex), totalMessages=\(paginationState.totalMessages)")
             }
             
         } catch {
@@ -270,64 +277,231 @@ class IMAPClient: ObservableObject {
     
     func parseEmailResponse(_ response: String) {
         // Parse: * 1 FETCH (UID 1 ... ENVELOPE ("date" "subject" (("from"...
-        if let email = parseEmailFetch(response) {
+        print("🔍 DEBUG: Parsing email response: \(response.prefix(200))...")
+        
+        if response.contains("BODYSTRUCTURE") {
+            // First parse the email data from ENVELOPE
+            if let email = parseEmailFetch(response) {
+                print("✅ DEBUG: Successfully parsed email: \(email.subject) (UID: \(email.uid))")
+                if !emails.contains(where: { $0.uid == email.uid }) {
+                    Task { @MainActor in
+                        emails.append(email)
+                        print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
+                    }
+                } else {
+                    print("⚠️ DEBUG: Email with UID \(email.uid) already exists")
+                }
+            }
+            // Then parse BODYSTRUCTURE and fetch body
+            parseBodyStructureAndFetchBody(response: response)
+        } else if let email = parseEmailFetch(response) {
+            print("✅ DEBUG: Successfully parsed email: \(email.subject) (UID: \(email.uid))")
             if !emails.contains(where: { $0.uid == email.uid }) {
                 Task { @MainActor in
                     emails.append(email)
                     print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
                 }
+            } else {
+                print("⚠️ DEBUG: Email with UID \(email.uid) already exists")
             }
+        } else {
+            print("❌ DEBUG: Failed to parse email from response")
         }
     }
     
     private func parseEmailFetch(_ response: String) -> IMAPEmail? {
-        // Basic parsing for ENVELOPE response
-        // Look for Subject and From in the response
+        // Enhanced IMAP FETCH response parsing
+        print("🔍 DEBUG: Full response: \(response)")
         
-        let lines = response.components(separatedBy: .newlines)
+        // Must contain FETCH to be a valid email response
+        guard response.contains("FETCH") else {
+            print("❌ DEBUG: Not a FETCH response")
+            return nil
+        }
+        
         var subject = "No Subject"
         var from = "Unknown Sender"
         var date = "Unknown Date"
         var uid: UInt32 = 0
         
-        for line in lines {
-            if line.contains("Subject:") {
-                if let subjectMatch = line.range(of: "Subject: (.+)$", options: .regularExpression) {
-                    subject = String(line[subjectMatch]).replacingOccurrences(of: "Subject: ", with: "")
-                }
-            }
-            
-            if line.contains("From:") {
-                if let fromMatch = line.range(of: "From: (.+)$", options: .regularExpression) {
-                    from = String(line[fromMatch]).replacingOccurrences(of: "From: ", with: "")
-                }
-            }
-            
-            if line.contains("Date:") {
-                if let dateMatch = line.range(of: "Date: (.+)$", options: .regularExpression) {
-                    date = String(line[dateMatch]).replacingOccurrences(of: "Date: ", with: "")
-                }
-            }
-            
-            if line.contains("UID") {
-                let uidPattern = "UID (\\d+)"
-                if let regex = try? NSRegularExpression(pattern: uidPattern),
-                   let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..<line.endIndex, in: line)) {
-                    let uidString = String(line[Range(match.range(at: 1), in: line)!])
-                    uid = UInt32(uidString) ?? 0
-                }
+        // Parse UID from FETCH line
+        if let uidMatch = response.range(of: "UID (\\d+)", options: .regularExpression) {
+            let uidText = String(response[uidMatch])
+            if let uidString = uidText.components(separatedBy: " ").last,
+               let parsedUID = UInt32(uidString) {
+                uid = parsedUID
+                print("✅ DEBUG: Found UID: \(uid)")
             }
         }
         
-        guard uid > 0 else { return nil }
+        // Parse ENVELOPE data - format: ENVELOPE ("date" "subject" (("name" NIL "user" "domain")) ...)
+        if let envelopeStart = response.range(of: "ENVELOPE \\(", options: .regularExpression) {
+            let envelopeContent = String(response[envelopeStart.upperBound...])
+            print("🔍 DEBUG: ENVELOPE content: \(envelopeContent.prefix(200))")
+            
+            // Parse ENVELOPE fields in order: date, subject, from, sender, reply-to, to, cc, bcc, in-reply-to, message-id
+            let envelopeFields = parseEnvelopeFields(envelopeContent)
+            print("🔍 DEBUG: Parsed \(envelopeFields.count) ENVELOPE fields: \(envelopeFields)")
+            
+            if envelopeFields.count >= 3 {
+                date = cleanQuotedString(envelopeFields[0])
+                subject = cleanQuotedString(envelopeFields[1])
+                from = parseEmailAddress(envelopeFields[2])
+                
+                print("✅ DEBUG: Parsed - Date: \(date), Subject: \(subject), From: \(from)")
+            } else {
+                print("❌ DEBUG: Not enough ENVELOPE fields, got \(envelopeFields.count), need at least 3")
+            }
+        } else {
+            print("❌ DEBUG: ENVELOPE not found in response")
+        }
+
+        guard uid > 0 else { 
+            print("❌ DEBUG: No valid UID found")
+            return nil 
+        }
+        
+        print("✅ DEBUG: Created email - UID: \(uid), Subject: \(subject)")
         
         return IMAPEmail(
             uid: uid,
             subject: subject,
             from: from,
-            date: date,
-            body: "Click to load content..."
+            date: date
         )
+    }
+    
+    private func parseEnvelopeFields(_ envelope: String) -> [String] {
+        var fields: [String] = []
+        var current = ""
+        var depth = 0
+        var inQuotes = false
+        var escape = false
+        
+        for char in envelope {
+            if escape {
+                current.append(char)
+                escape = false
+                continue
+            }
+            
+            if char == "\\" {
+                escape = true
+                current.append(char)
+                continue
+            }
+            
+            if char == "\"" {
+                inQuotes.toggle()
+                current.append(char)
+                continue
+            }
+            
+            if !inQuotes {
+                if char == "(" {
+                    depth += 1
+                    current.append(char)
+                } else if char == ")" {
+                    depth -= 1
+                    current.append(char)
+                    if depth == 0 && !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        fields.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                        current = ""
+                    }
+                } else if char == " " && depth == 0 {
+                    if !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        fields.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                        current = ""
+                    }
+                } else {
+                    current.append(char)
+                }
+            } else {
+                current.append(char)
+            }
+        }
+        
+        if !current.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            fields.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        
+        return fields
+    }
+    
+    private func cleanQuotedString(_ str: String) -> String {
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") {
+            return String(trimmed.dropFirst().dropLast())
+        }
+        return trimmed == "NIL" ? "" : trimmed
+    }
+    
+    private func parseEmailAddress(_ addressField: String) -> String {
+        // Parse format: (("name" NIL "user" "domain"))
+        if addressField.contains("((") {
+            // Extract from nested parentheses
+            let pattern = "\\(\\(\"([^\"]*)\".+?\"([^\"]+)\".+?\"([^\"]+)\""
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: addressField, range: NSRange(addressField.startIndex..<addressField.endIndex, in: addressField)) {
+                let name = String(addressField[Range(match.range(at: 1), in: addressField)!])
+                let user = String(addressField[Range(match.range(at: 2), in: addressField)!])
+                let domain = String(addressField[Range(match.range(at: 3), in: addressField)!])
+                
+                if !name.isEmpty {
+                    return "\(name) <\(user)@\(domain)>"
+                } else {
+                    return "\(user)@\(domain)"
+                }
+            }
+        }
+        return addressField
+    }
+
+    private func parseBodyStructureAndFetchBody(response: String) {
+        guard let uidMatch = response.range(of: "UID (\\d+)", options: .regularExpression) else {
+            return
+        }
+
+        let uidString = String(response[uidMatch]).components(separatedBy: " ").last!
+        let uid = UInt32(uidString)!
+        
+        print("🔍 DEBUG: Parsing BODYSTRUCTURE for UID \(uid)")
+        
+        // Look for BODYSTRUCTURE content
+        if let bodyStructStart = response.range(of: "BODYSTRUCTURE \\(", options: .regularExpression) {
+            let bodyStructContent = String(response[bodyStructStart.upperBound...])
+            print("🔍 DEBUG: BODYSTRUCTURE content: \(bodyStructContent.prefix(200))")
+            
+            // For simple single-part message, the section is "1"
+            if bodyStructContent.contains("\"TEXT\" \"PLAIN\"") {
+                print("✅ DEBUG: Found TEXT/PLAIN part, using section 1")
+                Task {
+                    await fetchBody(uid: uid, section: "1")
+                }
+            } else {
+                print("⚠️ DEBUG: No TEXT/PLAIN part found, trying section 1 anyway")
+                Task {
+                    await fetchBody(uid: uid, section: "1")
+                }
+            }
+        } else {
+            print("❌ DEBUG: BODYSTRUCTURE not found in response")
+        }
+    }
+
+    private func fetchBody(uid: UInt32, section: String) async {
+        let command = "UID FETCH \(uid) (BODY[\(section)])"
+        do {
+            let response = try await executeCommand(command)
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\} ", options: .regularExpression) {
+                    let bodyContent = String(response[bodyRange.upperBound...])
+                    emails[emailIndex].body = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+        } catch {
+            print("❌ Failed to fetch body for UID \(uid): \(error)")
+        }
     }
     
     func parseExistsResponse(_ response: String) {
@@ -337,9 +511,19 @@ class IMAPClient: ObservableObject {
                 let components = line.components(separatedBy: .whitespaces)
                 if let countString = components.first(where: { $0.allSatisfy(\.isNumber) }),
                    let count = Int(countString) {
+                    print("🔧 DEBUG: Setting totalMessages from \(paginationState.totalMessages) to \(count)")
                     paginationState.totalMessages = count
                     loadingProgress = "Found \(count) messages"
                     print("📊 Total messages in folder: \(count)")
+                    print("🔧 DEBUG: paginationState.totalMessages is now: \(paginationState.totalMessages)")
+                    
+                    // Now that we know the message count, fetch the emails
+                    if count > 0 {
+                        Task {
+                            print("🔧 DEBUG: About to call fetchEmails() with totalMessages=\(paginationState.totalMessages)")
+                            await fetchEmails()
+                        }
+                    }
                 }
             }
         }
@@ -503,6 +687,20 @@ class IMAPClient: ObservableObject {
             completion(.success(response))
         }
     }
+
+    func parseBodyResponse(_ response: String) {
+        if let uidMatch = response.range(of: "UID (\\d+)", options: .regularExpression) {
+            let uidString = String(response[uidMatch]).components(separatedBy: " ").last!
+            let uid = UInt32(uidString)!
+
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
+                    let bodyContent = String(response[bodyRange.upperBound...])
+                    emails[emailIndex].body = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+        }
+    }
 }
 
 private class IMAPClientHandler: ChannelInboundHandler {
@@ -545,7 +743,11 @@ private class IMAPClientHandler: ChannelInboundHandler {
             // Parse FETCH responses
             if string.contains("* ") && string.contains("FETCH") {
                 Task { @MainActor in
-                    imapClient?.parseEmailResponse(string)
+                    if string.contains("BODY[") {
+                        imapClient?.parseBodyResponse(string)
+                    } else {
+                        imapClient?.parseEmailResponse(string)
+                    }
                 }
             }
             
@@ -593,7 +795,7 @@ struct IMAPEmail: Identifiable, Hashable {
     let subject: String
     let from: String
     let date: String
-    let body: String
+    var body: String?
 }
 
 enum IMAPError: Error {
@@ -625,6 +827,12 @@ class PaginationState {
 }
 
 typealias CommandCompletion = (Result<String, Error>) -> Void
+
+extension String {
+    func matches(pattern: String) -> Bool {
+        return range(of: pattern, options: .regularExpression) != nil
+    }
+}
 
 struct IMAPCommand {
     let tag: String

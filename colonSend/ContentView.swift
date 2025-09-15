@@ -24,12 +24,6 @@ struct ContentView: View {
                         ForEach(model.imapClient.folders) { folder in
                             Label(folder.name, systemImage: folder.icon)
                                 .tag(folder.id)
-                                .onTapGesture {
-                                    selectedFolderID = folder.id
-                                    Task {
-                                        await model.imapClient.selectFolder(folder.name)
-                                    }
-                                }
                         }
                         
                         if model.imapClient.folders.isEmpty {
@@ -63,12 +57,12 @@ struct ContentView: View {
                     List(model.imapClient.emails, selection: $selectedEmail) { email in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
-                                Text(email.from)
+                                Text(formatSenderName(email.from))
                                     .font(.headline)
                                 
                                 Spacer()
                                 
-                                Text(email.date)
+                                Text(formatDate(email.date))
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                             }
@@ -76,22 +70,10 @@ struct ContentView: View {
                             Text(email.subject)
                                 .font(.callout)
                             
-                            Text(email.body)
+                            Text(email.body ?? "")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
-                        }
-                    }
-                    .navigationTitle(model.imapClient.selectedFolderName ?? "Emails")
-                    .toolbar {
-                        ToolbarItem(placement: .primaryAction) {
-                            if model.imapClient.hasMoreMessages && !model.imapClient.isLoadingEmails {
-                                Button("Load More") {
-                                    Task {
-                                        await model.imapClient.loadMoreEmails()
-                                    }
-                                }
-                            }
                         }
                     }
                 } else if model.imapClient.isLoadingEmails {
@@ -111,41 +93,96 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
                 }
             }
+            .navigationTitle("colonSend")
+            .navigationSubtitle(model.imapClient.selectedFolderName ?? "")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(syncIconColor())
+                        .padding(.trailing, 8)
+                }
+            }
         } detail: {
-            if let email = model.email(folderId: selectedFolderID, id: selectedEmail) {
+            if let selectedEmail = selectedEmail,
+               let email = model.imapClient.emails.first(where: { $0.id == selectedEmail }) {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(email.name)
-                                    .font(.headline)
-                                
-                                Spacer()
-                                
-                                Text(email.date)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header section
+                        VStack(alignment: .leading, spacing: 8) {
                             Text(email.subject)
-                                .font(.callout)
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("From:")
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.secondary)
+                                    Text(formatSenderName(email.from))
+                                }
+                                
+                                HStack {
+                                    Text("Date:")
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.secondary)
+                                    Text(formatDate(email.date))
+                                }
+                                
+                                if !email.from.isEmpty && email.from != formatSenderName(email.from) {
+                                    HStack {
+                                        Text("Email:")
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.secondary)
+                                        Text(extractEmailAddress(email.from))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .font(.callout)
                         }
                         
                         Divider()
                         
-                        Text(email.body)
-                    }.padding(.all, 16)
+                        // Body section
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Message")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                            
+                            Text(email.body ?? "Loading...")
+                                .font(.body)
+                                .textSelection(.enabled)
+                        }
+                        
+                        Spacer()
+                    }
+                    .padding(20)
                 }
+                .background(Color(NSColor.controlBackgroundColor))
+                .navigationTitle("Email")
             } else {
-                Text("Detail")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .frame(maxWidth: .infinity, minHeight: 240, idealHeight: 320, maxHeight: .infinity)
+                VStack {
+                    Image(systemName: "envelope")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("Select an email to view")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .onAppear {
             setupKeyboardShortcuts()
             registerKeymapHandlers()
+        }
+        .onChange(of: selectedFolderID) { folderID in
+            if let folderID = folderID,
+               let folder = model.imapClient.folders.first(where: { $0.id == folderID }) {
+                Task {
+                    await model.imapClient.selectFolder(folder.name)
+                }
+            }
         }
     }
     
@@ -206,6 +243,60 @@ struct ContentView: View {
         
         await imapClient.reloadCurrentFolder()
     }
+    
+    private func formatSenderName(_ from: String) -> String {
+        // Extract name from "Name <email@domain.com>" format
+        if let nameRange = from.range(of: "^(.+?)\\s*<.*>$", options: .regularExpression) {
+            let name = String(from[nameRange]).replacingOccurrences(of: " <.*>$", with: "", options: .regularExpression)
+            return name.trimmingCharacters(in: .whitespaces)
+        }
+        return from
+    }
+    
+    private func formatDate(_ dateString: String) -> String {
+        // Parse common date formats and return without seconds and year
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        
+        // Try different date formats
+        let formats = [
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+            "dd MMM yyyy HH:mm:ss Z",
+            "yyyy-MM-dd HH:mm:ss Z",
+            "EEE, dd MMM yyyy HH:mm:ss"
+        ]
+        
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: dateString) {
+                let outputFormatter = DateFormatter()
+                outputFormatter.dateFormat = "MMM dd, HH:mm"
+                return outputFormatter.string(from: date)
+            }
+        }
+        
+        // If parsing fails, return original
+        return dateString
+    }
+    
+    private func syncIconColor() -> Color {
+        if model.imapClient.loadingProgress.contains("Failed") {
+            return .red
+        } else if model.imapClient.isLoadingEmails {
+            return .blue
+        } else {
+            return .secondary
+        }
+    }
+    
+    private func extractEmailAddress(_ from: String) -> String {
+        // Extract email from "Name <email@domain.com>" format
+        if let emailRange = from.range(of: "<(.+?)>", options: .regularExpression) {
+            let email = String(from[emailRange]).replacingOccurrences(of: "[<>]", with: "", options: .regularExpression)
+            return email
+        }
+        return from
+    }
 
     @MainActor
     class Model: ObservableObject {
@@ -235,10 +326,10 @@ struct ContentView: View {
         private func setupFolders() {
             folders = [
                 Folder(name: "Important", icon: "folder", emails: [
-                    Email(name: "Steve J.", subject: "Important Meeting", body: "Please review the attached documents for tomorrow's meeting.", date: "Yesterday")
+                    Email(name: "Steve J.", subject: "Important Meeting", date: "Yesterday")
                 ]),
                 Folder(name: "Inbox", icon: "tray", emails: [
-                    Email(name: "Steve J.", subject: "Project Update", body: "The project is progressing well and we should have an update soon.", date: "Yesterday")
+                    Email(name: "Steve J.", subject: "Project Update", date: "Yesterday")
                 ]),
                 Folder(name: "Drafts", icon: "doc"),
                 Folder(name: "Sent", icon: "paperplane"),
@@ -282,7 +373,7 @@ struct Email: Identifiable, Hashable {
     var id = UUID()
     var name: String
     var subject: String
-    var body: String
+    var body: String?
     var date: String
 }
 
