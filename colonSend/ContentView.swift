@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 
 struct ContentView: View {
-    @StateObject private var model = Model()
+    @StateObject private var accountManager = AccountManager.shared
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
     @State private var selectedFolderID: UUID? = nil
@@ -19,21 +19,21 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selectedFolderID) {
-                ForEach(model.accounts, id: \.email) { account in
+                ForEach(accountManager.accounts, id: \.email) { account in
                     Section(account.name) {
-                        ForEach(model.imapClient.folders) { folder in
+                        ForEach(accountManager.allFolders.filter { $0.accountId == account.email }) { folder in
                             Label(folder.name, systemImage: folder.icon)
                                 .tag(folder.id)
                         }
                         
-                        if model.imapClient.folders.isEmpty {
+                        if accountManager.allFolders.filter({ $0.accountId == account.email }).isEmpty {
                             Text("Loading folders...")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
                 
-                if model.accounts.isEmpty {
+                if accountManager.accounts.isEmpty {
                     Section("Debug") {
                         Text("No accounts found")
                     }
@@ -42,23 +42,31 @@ struct ContentView: View {
             .navigationTitle("Navigation Split View")
         } content: {
             VStack {
-                if model.imapClient.isLoadingEmails && !model.imapClient.loadingProgress.isEmpty {
+                if accountManager.isLoadingEmails && !accountManager.loadingProgress.isEmpty {
                     HStack {
                         ProgressView()
                             .scaleEffect(0.8)
-                        Text(model.imapClient.loadingProgress)
+                        Text(accountManager.loadingProgress)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
                 
-                if !model.imapClient.emails.isEmpty {
-                    List(model.imapClient.emails, selection: $selectedEmail) { email in
+                if !accountManager.allEmails.isEmpty {
+                    List(accountManager.allEmails, selection: $selectedEmail) { email in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
+                                // Unread indicator
+                                if !email.isRead {
+                                    Circle()
+                                        .fill(.blue)
+                                        .frame(width: 8, height: 8)
+                                }
+                                
                                 Text(formatSenderName(email.from))
                                     .font(.headline)
+                                    .fontWeight(email.isRead ? .regular : .bold)
                                 
                                 Spacer()
                                 
@@ -69,6 +77,7 @@ struct ContentView: View {
                             
                             Text(email.subject)
                                 .font(.callout)
+                                .fontWeight(email.isRead ? .regular : .semibold)
                             
                             Text(email.body ?? "")
                                 .font(.callout)
@@ -76,10 +85,10 @@ struct ContentView: View {
                                 .lineLimit(2)
                         }
                     }
-                } else if model.imapClient.isLoadingEmails {
+                } else if accountManager.isLoadingEmails {
                     VStack {
                         ProgressView()
-                        Text(model.imapClient.loadingProgress)
+                        Text(accountManager.loadingProgress)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .padding(.top, 8)
@@ -94,7 +103,7 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("colonSend")
-            .navigationSubtitle(model.imapClient.selectedFolderName ?? "")
+            .navigationSubtitle(getSelectedFolderName())
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -104,7 +113,7 @@ struct ContentView: View {
             }
         } detail: {
             if let selectedEmail = selectedEmail,
-               let email = model.imapClient.emails.first(where: { $0.id == selectedEmail }) {
+               let email = accountManager.allEmails.first(where: { $0.id == selectedEmail }) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         // Header section
@@ -145,10 +154,6 @@ struct ContentView: View {
                         
                         // Body section
                         VStack(alignment: .leading, spacing: 12) {
-                            Text("Message")
-                                .font(.headline)
-                                .fontWeight(.medium)
-                            
                             Text(email.body ?? "Loading...")
                                 .font(.body)
                                 .textSelection(.enabled)
@@ -162,9 +167,6 @@ struct ContentView: View {
                 .navigationTitle("Email")
             } else {
                 VStack {
-                    Image(systemName: "envelope")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
                     Text("Select an email to view")
                         .font(.title2)
                         .foregroundStyle(.secondary)
@@ -175,12 +177,24 @@ struct ContentView: View {
         .onAppear {
             setupKeyboardShortcuts()
             registerKeymapHandlers()
+            Task {
+                await accountManager.connectToAllAccounts()
+            }
         }
         .onChange(of: selectedFolderID) { folderID in
             if let folderID = folderID,
-               let folder = model.imapClient.folders.first(where: { $0.id == folderID }) {
+               let folder = accountManager.allFolders.first(where: { $0.id == folderID }) {
                 Task {
-                    await model.imapClient.selectFolder(folder.name)
+                    await accountManager.selectFolder(folder.name, accountId: folder.accountId)
+                }
+            }
+        }
+        .onChange(of: selectedEmail) { emailID in
+            if let emailID = emailID,
+               let email = accountManager.allEmails.first(where: { $0.id == emailID }),
+               !email.isRead {
+                Task {
+                    await accountManager.markAsRead(uid: email.uid)
                 }
             }
         }
@@ -194,14 +208,23 @@ struct ContentView: View {
     }
     
     private func registerKeymapHandlers() {
-        // Capture model and keymapsManager
-        let imapClient = model.imapClient
+        // Capture accountManager and keymapsManager
+        let accountManager = self.accountManager
         let keymapsManager = self.keymapsManager
         
         // Register reload inbox handler
         keymapHandler.registerHandler(for: "reload_inbox") {
             await Self.handleReloadAction(
-                imapClient: imapClient, 
+                accountManager: accountManager, 
+                keymapsManager: keymapsManager
+            )
+        }
+        
+        // Register toggle read status handler
+        keymapHandler.registerHandler(for: "toggle_read") {
+            await Self.handleToggleReadAction(
+                selectedEmail: selectedEmail,
+                accountManager: accountManager,
                 keymapsManager: keymapsManager
             )
         }
@@ -214,7 +237,14 @@ struct ContentView: View {
                 print("🎹 Keymaps changed, re-registering handlers")
                 keymapHandler?.registerHandler(for: "reload_inbox") {
                     await Self.handleReloadAction(
-                        imapClient: imapClient, 
+                        accountManager: accountManager, 
+                        keymapsManager: keymapsManager
+                    )
+                }
+                keymapHandler?.registerHandler(for: "toggle_read") {
+                    await Self.handleToggleReadAction(
+                        selectedEmail: selectedEmail,
+                        accountManager: accountManager,
                         keymapsManager: keymapsManager
                     )
                 }
@@ -223,25 +253,34 @@ struct ContentView: View {
     }
     
     private static func handleReloadAction(
-        imapClient: IMAPClient, 
+        accountManager: AccountManager, 
         keymapsManager: KeymapsManager
     ) async {
-        print("🎹 DEBUG: Reload action triggered!")
-        
         let keymap = keymapsManager.getKeymap(for: "reload_inbox")
-        print("🎹 DEBUG: Keymap found: \(keymap != nil)")
-        print("🎹 DEBUG: Keymap enabled: \(keymap?.enabled ?? false)")
-        print("🎹 DEBUG: Global keymaps enabled: \(keymapsManager.keymaps.globalSettings.keymapsEnabled)")
         
         guard keymap?.enabled == true && keymapsManager.keymaps.globalSettings.keymapsEnabled else {
-            print("🎹 DEBUG: Keymap disabled, not executing")
             return
         }
         
-        print("🎹 DEBUG: Executing reload for current folder: \(imapClient.selectedFolderName ?? "none")")
-        print("🎹 DEBUG: IMAP connected: \(imapClient.isConnected)")
+        await accountManager.reloadCurrentFolder()
+    }
+    
+    private static func handleToggleReadAction(
+        selectedEmail: Email.ID?,
+        accountManager: AccountManager,
+        keymapsManager: KeymapsManager
+    ) async {
+        let keymap = keymapsManager.getKeymap(for: "toggle_read")
         
-        await imapClient.reloadCurrentFolder()
+        guard keymap?.enabled == true && keymapsManager.keymaps.globalSettings.keymapsEnabled else {
+            return
+        }
+        
+        guard let selectedEmailID = selectedEmail,
+              let email = accountManager.allEmails.first(where: { $0.id == selectedEmailID }) else {
+            return
+        }
+        await accountManager.toggleReadStatus(uid: email.uid)
     }
     
     private func formatSenderName(_ from: String) -> String {
@@ -280,13 +319,21 @@ struct ContentView: View {
     }
     
     private func syncIconColor() -> Color {
-        if model.imapClient.loadingProgress.contains("Failed") {
+        if accountManager.loadingProgress.contains("Failed") {
             return .red
-        } else if model.imapClient.isLoadingEmails {
+        } else if accountManager.isLoadingEmails {
             return .blue
         } else {
             return .secondary
         }
+    }
+    
+    private func getSelectedFolderName() -> String {
+        guard let selectedFolderID = selectedFolderID,
+              let folder = accountManager.allFolders.first(where: { $0.id == selectedFolderID }) else {
+            return ""
+        }
+        return folder.name
     }
     
     private func extractEmailAddress(_ from: String) -> String {
@@ -298,68 +345,6 @@ struct ContentView: View {
         return from
     }
 
-    @MainActor
-    class Model: ObservableObject {
-        @Published var folders: [Folder] = []
-        @Published var accounts: [MailAccount] = []
-        @Published var imapClient = IMAPClient()
-        private var cancellables = Set<AnyCancellable>()
-        
-        init() {
-            loadAccounts()
-            setupFolders()
-            
-            // Forward IMAP client changes to trigger UI updates
-            imapClient.objectWillChange.sink { [weak self] in
-                self?.objectWillChange.send()
-            }.store(in: &cancellables)
-            
-            Task {
-                await testIMAPConnection()
-            }
-        }
-        
-        private func loadAccounts() {
-            accounts = ConfigManager.shared.accounts
-        }
-        
-        private func setupFolders() {
-            folders = [
-                Folder(name: "Important", icon: "folder", emails: [
-                    Email(name: "Steve J.", subject: "Important Meeting", date: "Yesterday")
-                ]),
-                Folder(name: "Inbox", icon: "tray", emails: [
-                    Email(name: "Steve J.", subject: "Project Update", date: "Yesterday")
-                ]),
-                Folder(name: "Drafts", icon: "doc"),
-                Folder(name: "Sent", icon: "paperplane"),
-                Folder(name: "Junk", icon: "xmark.bin"),
-                Folder(name: "Trash", icon: "trash"),
-            ]
-        }
-        
-        func folder(id: Folder.ID?) -> Folder? {
-            folders.first(where: { $0.id == id })
-        }
-        
-        func email(folderId: Folder.ID?, id: Email.ID?) -> Email? {
-            if let folder = folder(id: folderId) {
-                folder.emails.first(where: { $0.id == id })
-            } else {
-                nil
-            }
-        }
-        
-        private func testIMAPConnection() async {
-            guard let firstAccount = accounts.first else {
-                print("No accounts configured for IMAP test")
-                return
-            }
-            
-            print("Testing IMAP connection for: \(firstAccount.name)")
-            await imapClient.connect(account: firstAccount)
-        }
-    }
 }
 
 struct Folder: Identifiable, Hashable {

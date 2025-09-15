@@ -95,14 +95,12 @@ class KeymapHandler: ObservableObject {
             guard keymap.enabled else { continue }
             
             if keymap.key.lowercased() == key && Set(keymap.modifiers) == Set(modifiers) {
-                print("🎹 DEBUG: Keymap matched - \(action): \(formatKeyCombo(key: key, modifiers: modifiers))")
                 
                 if let handler = actionHandlers[action] {
                     Task {
                         await handler()
                     }
                 } else {
-                    print("🎹 DEBUG: No handler registered for action: \(action)")
                 }
                 break
             }

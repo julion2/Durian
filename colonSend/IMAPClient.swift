@@ -14,6 +14,7 @@ class IMAPClient: ObservableObject {
     @Published var isConnected = false
     @Published var connectionStatus = "Disconnected"
     @Published var folders: [IMAPFolder] = []
+    private var accountId: String = ""
     @Published var emails: [IMAPEmail] = []
     @Published var selectedFolderName: String?
     @Published var isLoadingEmails = false
@@ -33,6 +34,7 @@ class IMAPClient: ObservableObject {
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
+        self.accountId = account.email
         connectionStatus = "Connecting..."
         
         do {
@@ -148,24 +150,43 @@ class IMAPClient: ObservableObject {
     }
     
     private func parseListLine(_ line: String) -> IMAPFolder? {
-        // Parse: * LIST (\HasNoChildren \Drafts) "/" "Drafts"
-        let pattern = #"\* LIST \(([^)]*)\) "([^"]*)" "([^"]*)""#
-        let regex = try? NSRegularExpression(pattern: pattern)
-        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        // Parse both quoted and unquoted formats:
+        // * LIST (\HasNoChildren \Drafts) "/" "Drafts" 
+        // * LIST (\HasNoChildren) "/" INBOX
         
-        guard let match = regex?.firstMatch(in: line, options: [], range: range),
-              match.numberOfRanges >= 4 else {
-            return nil
+        // First try quoted pattern: * LIST (attrs) "separator" "name"
+        let quotedPattern = #"\* LIST \(([^)]*)\) "([^"]*)" "([^"]*)""#
+        if let regex = try? NSRegularExpression(pattern: quotedPattern),
+           let match = regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..<line.endIndex, in: line)),
+           match.numberOfRanges >= 4 {
+            
+            let attributesString = String(line[Range(match.range(at: 1), in: line)!])
+            let separator = String(line[Range(match.range(at: 2), in: line)!])
+            let name = String(line[Range(match.range(at: 3), in: line)!])
+            
+            let attributes = attributesString.components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
+            
+            return IMAPFolder(name: name, attributes: attributes, separator: separator, accountId: accountId)
         }
         
-        let attributesString = String(line[Range(match.range(at: 1), in: line)!])
-        let separator = String(line[Range(match.range(at: 2), in: line)!])
-        let name = String(line[Range(match.range(at: 3), in: line)!])
+        // Try unquoted pattern: * LIST (attrs) separator name
+        let unquotedPattern = #"\* LIST \(([^)]*)\) ([^\s]+) (.+)"#
+        if let regex = try? NSRegularExpression(pattern: unquotedPattern),
+           let match = regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..<line.endIndex, in: line)),
+           match.numberOfRanges >= 4 {
+            
+            let attributesString = String(line[Range(match.range(at: 1), in: line)!])
+            let separator = String(line[Range(match.range(at: 2), in: line)!])
+            let name = String(line[Range(match.range(at: 3), in: line)!])
+            
+            let attributes = attributesString.components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
+            
+            return IMAPFolder(name: name, attributes: attributes, separator: separator, accountId: accountId)
+        }
         
-        let attributes = attributesString.components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
-        
-        return IMAPFolder(name: name, attributes: attributes, separator: separator)
+        return nil
     }
     
     func selectFolder(_ folderName: String) async {
@@ -250,7 +271,6 @@ class IMAPClient: ObservableObject {
             
             if startIndex <= endIndex && endIndex > 0 {
                 let fetchCommand = "FETCH \(startIndex):\(endIndex) (UID FLAGS ENVELOPE BODYSTRUCTURE)"
-                print("🔵 DEBUG: Sending FETCH for range \(startIndex):\(endIndex)")
                 _ = try await executeCommand(fetchCommand)
                 
                 let loadedCount = emails.count
@@ -262,7 +282,6 @@ class IMAPClient: ObservableObject {
                 
                 print("✅ FETCH command completed for range \(startIndex):\(endIndex)")
             } else {
-                print("⚠️ DEBUG: Invalid range startIndex=\(startIndex), endIndex=\(endIndex), totalMessages=\(paginationState.totalMessages)")
             }
             
         } catch {
@@ -277,45 +296,34 @@ class IMAPClient: ObservableObject {
     
     func parseEmailResponse(_ response: String) {
         // Parse: * 1 FETCH (UID 1 ... ENVELOPE ("date" "subject" (("from"...
-        print("🔍 DEBUG: Parsing email response: \(response.prefix(200))...")
         
         if response.contains("BODYSTRUCTURE") {
             // First parse the email data from ENVELOPE
             if let email = parseEmailFetch(response) {
-                print("✅ DEBUG: Successfully parsed email: \(email.subject) (UID: \(email.uid))")
                 if !emails.contains(where: { $0.uid == email.uid }) {
                     Task { @MainActor in
                         emails.append(email)
-                        print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
+                        print("📧 Added email: \(email.subject)")
                     }
-                } else {
-                    print("⚠️ DEBUG: Email with UID \(email.uid) already exists")
                 }
             }
             // Then parse BODYSTRUCTURE and fetch body
             parseBodyStructureAndFetchBody(response: response)
         } else if let email = parseEmailFetch(response) {
-            print("✅ DEBUG: Successfully parsed email: \(email.subject) (UID: \(email.uid))")
             if !emails.contains(where: { $0.uid == email.uid }) {
                 Task { @MainActor in
                     emails.append(email)
-                    print("📧 Added email: \(email.subject) - Total emails: \(emails.count)")
+                    print("📧 Added email: \(email.subject)")
                 }
-            } else {
-                print("⚠️ DEBUG: Email with UID \(email.uid) already exists")
             }
-        } else {
-            print("❌ DEBUG: Failed to parse email from response")
         }
     }
     
     private func parseEmailFetch(_ response: String) -> IMAPEmail? {
         // Enhanced IMAP FETCH response parsing
-        print("🔍 DEBUG: Full response: \(response)")
         
         // Must contain FETCH to be a valid email response
         guard response.contains("FETCH") else {
-            print("❌ DEBUG: Not a FETCH response")
             return nil
         }
         
@@ -323,6 +331,7 @@ class IMAPClient: ObservableObject {
         var from = "Unknown Sender"
         var date = "Unknown Date"
         var uid: UInt32 = 0
+        var isRead = false
         
         // Parse UID from FETCH line
         if let uidMatch = response.range(of: "UID (\\d+)", options: .regularExpression) {
@@ -330,44 +339,40 @@ class IMAPClient: ObservableObject {
             if let uidString = uidText.components(separatedBy: " ").last,
                let parsedUID = UInt32(uidString) {
                 uid = parsedUID
-                print("✅ DEBUG: Found UID: \(uid)")
             }
+        }
+        
+        // Parse FLAGS to determine read status
+        if let flagsMatch = response.range(of: "FLAGS \\(([^)]+)\\)", options: .regularExpression) {
+            let flagsText = String(response[flagsMatch])
+            isRead = flagsText.contains("\\Seen")
         }
         
         // Parse ENVELOPE data - format: ENVELOPE ("date" "subject" (("name" NIL "user" "domain")) ...)
         if let envelopeStart = response.range(of: "ENVELOPE \\(", options: .regularExpression) {
             let envelopeContent = String(response[envelopeStart.upperBound...])
-            print("🔍 DEBUG: ENVELOPE content: \(envelopeContent.prefix(200))")
             
             // Parse ENVELOPE fields in order: date, subject, from, sender, reply-to, to, cc, bcc, in-reply-to, message-id
             let envelopeFields = parseEnvelopeFields(envelopeContent)
-            print("🔍 DEBUG: Parsed \(envelopeFields.count) ENVELOPE fields: \(envelopeFields)")
             
             if envelopeFields.count >= 3 {
                 date = cleanQuotedString(envelopeFields[0])
                 subject = cleanQuotedString(envelopeFields[1])
                 from = parseEmailAddress(envelopeFields[2])
-                
-                print("✅ DEBUG: Parsed - Date: \(date), Subject: \(subject), From: \(from)")
-            } else {
-                print("❌ DEBUG: Not enough ENVELOPE fields, got \(envelopeFields.count), need at least 3")
             }
-        } else {
-            print("❌ DEBUG: ENVELOPE not found in response")
         }
 
         guard uid > 0 else { 
-            print("❌ DEBUG: No valid UID found")
             return nil 
         }
-        
-        print("✅ DEBUG: Created email - UID: \(uid), Subject: \(subject)")
         
         return IMAPEmail(
             uid: uid,
             subject: subject,
             from: from,
-            date: date
+            date: date,
+            body: nil,
+            isRead: isRead
         )
     }
     
@@ -465,27 +470,20 @@ class IMAPClient: ObservableObject {
         let uidString = String(response[uidMatch]).components(separatedBy: " ").last!
         let uid = UInt32(uidString)!
         
-        print("🔍 DEBUG: Parsing BODYSTRUCTURE for UID \(uid)")
-        
         // Look for BODYSTRUCTURE content
         if let bodyStructStart = response.range(of: "BODYSTRUCTURE \\(", options: .regularExpression) {
             let bodyStructContent = String(response[bodyStructStart.upperBound...])
-            print("🔍 DEBUG: BODYSTRUCTURE content: \(bodyStructContent.prefix(200))")
             
             // For simple single-part message, the section is "1"
             if bodyStructContent.contains("\"TEXT\" \"PLAIN\"") {
-                print("✅ DEBUG: Found TEXT/PLAIN part, using section 1")
                 Task {
                     await fetchBody(uid: uid, section: "1")
                 }
             } else {
-                print("⚠️ DEBUG: No TEXT/PLAIN part found, trying section 1 anyway")
                 Task {
                     await fetchBody(uid: uid, section: "1")
                 }
             }
-        } else {
-            print("❌ DEBUG: BODYSTRUCTURE not found in response")
         }
     }
 
@@ -493,10 +491,31 @@ class IMAPClient: ObservableObject {
         let command = "UID FETCH \(uid) (BODY[\(section)])"
         do {
             let response = try await executeCommand(command)
+            
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
-                if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\} ", options: .regularExpression) {
-                    let bodyContent = String(response[bodyRange.upperBound...])
-                    emails[emailIndex].body = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
+                    let afterBodyTag = String(response[bodyRange.upperBound...])
+                    
+                    // Extract just the email content, stopping at FLAGS or other IMAP responses
+                    var bodyContent = afterBodyTag
+                    
+                    // Remove trailing IMAP protocol responses
+                    if let flagsStart = bodyContent.range(of: "\\s+FLAGS\\s*\\(", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<flagsStart.lowerBound])
+                    }
+                    
+                    // Remove trailing command completion responses
+                    if let completionStart = bodyContent.range(of: "\\s+A\\d+\\s+OK", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<completionStart.lowerBound])
+                    }
+                    
+                    // Remove trailing parentheses from IMAP responses
+                    if let trailingParen = bodyContent.range(of: "\\s*\\)\\s*$", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<trailingParen.lowerBound])
+                    }
+                    
+                    let cleanBody = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    emails[emailIndex].body = cleanBody.isEmpty ? "No content available" : cleanBody
                 }
             }
         } catch {
@@ -511,16 +530,12 @@ class IMAPClient: ObservableObject {
                 let components = line.components(separatedBy: .whitespaces)
                 if let countString = components.first(where: { $0.allSatisfy(\.isNumber) }),
                    let count = Int(countString) {
-                    print("🔧 DEBUG: Setting totalMessages from \(paginationState.totalMessages) to \(count)")
                     paginationState.totalMessages = count
                     loadingProgress = "Found \(count) messages"
-                    print("📊 Total messages in folder: \(count)")
-                    print("🔧 DEBUG: paginationState.totalMessages is now: \(paginationState.totalMessages)")
                     
                     // Now that we know the message count, fetch the emails
                     if count > 0 {
                         Task {
-                            print("🔧 DEBUG: About to call fetchEmails() with totalMessages=\(paginationState.totalMessages)")
                             await fetchEmails()
                         }
                     }
@@ -544,7 +559,6 @@ class IMAPClient: ObservableObject {
         if status == errSecSuccess,
            let data = result as? Data,
            let password = String(data: data, encoding: .utf8) {
-            print("✅ Password retrieved from keychain for \(account)")
             return password
         } else {
             print("❌ Failed to retrieve password from keychain for \(account): \(status)")
@@ -587,7 +601,6 @@ class IMAPClient: ObservableObject {
         let settings = SettingsManager.shared.settings
         
         guard settings.autoFetchEnabled else {
-            print("🔄 Auto-refresh disabled")
             return
         }
         
@@ -595,17 +608,14 @@ class IMAPClient: ObservableObject {
             Task { @MainActor in
                 guard let folder = self.selectedFolder else { return }
                 
-                print("🔄 Auto-refreshing emails for \(folder)...")
                 await self.refreshCurrentFolder()
             }
         }
-        print("🔄 Auto-refresh enabled: every \(settings.autoFetchInterval)s")
     }
     
     private func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
-        print("🔄 Auto-refresh stopped")
     }
     
     private func refreshCurrentFolder() async {
@@ -618,10 +628,6 @@ class IMAPClient: ObservableObject {
     // MARK: - Public Methods
     
     func reloadCurrentFolder() async {
-        print("🔄 DEBUG: reloadCurrentFolder() called")
-        print("🔄 DEBUG: selectedFolder = \(selectedFolder ?? "nil")")
-        print("🔄 DEBUG: isConnected = \(isConnected)")
-        print("🔄 DEBUG: channel = \(channel != nil ? "available" : "nil")")
         
         guard let folderName = selectedFolder, isConnected else {
             print("⚠️ Cannot reload: no folder selected or not connected")
@@ -630,6 +636,65 @@ class IMAPClient: ObservableObject {
         
         print("🔄 Manual reload requested for \(folderName)")
         await refreshCurrentFolder()
+    }
+    
+    func markAsRead(uid: UInt32) async {
+        guard isConnected else {
+            print("⚠️ Cannot mark as read: not connected")
+            return
+        }
+        
+        print("📧 Marking email UID \(uid) as read")
+        
+        do {
+            let storeCommand = "UID STORE \(uid) +FLAGS (\\Seen)"
+            let _ = try await executeCommand(storeCommand)
+            
+            // Update local email state
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].isRead = true
+                print("✅ Email UID \(uid) marked as read locally")
+            }
+            
+        } catch {
+            print("❌ Failed to mark email as read: \(error)")
+        }
+    }
+    
+    func markAsUnread(uid: UInt32) async {
+        guard isConnected else {
+            print("⚠️ Cannot mark as unread: not connected")
+            return
+        }
+        
+        print("📧 Marking email UID \(uid) as unread")
+        
+        do {
+            let storeCommand = "UID STORE \(uid) -FLAGS (\\Seen)"
+            let _ = try await executeCommand(storeCommand)
+            
+            // Update local email state
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].isRead = false
+                print("✅ Email UID \(uid) marked as unread locally")
+            }
+            
+        } catch {
+            print("❌ Failed to mark email as unread: \(error)")
+        }
+    }
+    
+    func toggleReadStatus(uid: UInt32) async {
+        guard let email = emails.first(where: { $0.uid == uid }) else {
+            print("❌ Email with UID \(uid) not found")
+            return
+        }
+        
+        if email.isRead {
+            await markAsUnread(uid: uid)
+        } else {
+            await markAsRead(uid: uid)
+        }
     }
     
     // MARK: - Command Execution System
@@ -695,8 +760,23 @@ class IMAPClient: ObservableObject {
 
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
                 if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
-                    let bodyContent = String(response[bodyRange.upperBound...])
-                    emails[emailIndex].body = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    var bodyContent = String(response[bodyRange.upperBound...])
+                    
+                    // Clean up IMAP protocol data from body content
+                    if let flagsStart = bodyContent.range(of: "\\s+FLAGS\\s*\\(", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<flagsStart.lowerBound])
+                    }
+                    
+                    if let completionStart = bodyContent.range(of: "\\s+A\\d+\\s+OK", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<completionStart.lowerBound])
+                    }
+                    
+                    if let trailingParen = bodyContent.range(of: "\\s*\\)\\s*$", options: .regularExpression) {
+                        bodyContent = String(bodyContent[..<trailingParen.lowerBound])
+                    }
+                    
+                    let cleanBody = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    emails[emailIndex].body = cleanBody.isEmpty ? "No content available" : cleanBody
                 }
             }
         }
@@ -771,6 +851,7 @@ struct IMAPFolder: Identifiable, Hashable {
     let name: String
     let attributes: [String]
     let separator: String
+    let accountId: String
     
     var icon: String {
         if attributes.contains("\\Inbox") || name == "INBOX" {
@@ -796,6 +877,7 @@ struct IMAPEmail: Identifiable, Hashable {
     let from: String
     let date: String
     var body: String?
+    var isRead: Bool
 }
 
 enum IMAPError: Error {
@@ -831,6 +913,117 @@ typealias CommandCompletion = (Result<String, Error>) -> Void
 extension String {
     func matches(pattern: String) -> Bool {
         return range(of: pattern, options: .regularExpression) != nil
+    }
+}
+
+@MainActor
+class AccountManager: ObservableObject {
+    static let shared = AccountManager()
+    
+    @Published var accounts: [MailAccount] = []
+    @Published var imapClients: [String: IMAPClient] = [:]
+    @Published var allFolders: [IMAPFolder] = []
+    @Published var allEmails: [IMAPEmail] = []
+    @Published var selectedAccount: String?
+    @Published var isLoadingEmails = false
+    @Published var loadingProgress = ""
+    
+    private var cancellables = Set<AnyCancellable>()
+    
+    private init() {
+        loadAccounts()
+    }
+    
+    private func loadAccounts() {
+        accounts = ConfigManager.shared.accounts
+        print("🔧 Loaded \(accounts.count) accounts")
+    }
+    
+    func connectToAllAccounts() async {
+        print("🔧 Connecting to \(accounts.count) accounts...")
+        
+        for account in accounts {
+            let client = IMAPClient()
+            imapClients[account.email] = client
+            
+            // Subscribe to client changes
+            client.objectWillChange.sink { [weak self] in
+                self?.objectWillChange.send()
+                self?.updateAggregatedData()
+            }.store(in: &cancellables)
+            
+            Task {
+                await client.connect(account: account)
+                await updateAggregatedData()
+            }
+        }
+    }
+    
+    private func updateAggregatedData() {
+        // Aggregate all folders from all clients
+        allFolders = imapClients.values.flatMap { $0.folders }
+        
+        // Aggregate emails from selected account
+        if let selectedAccount = selectedAccount,
+           let client = imapClients[selectedAccount] {
+            allEmails = client.emails
+            isLoadingEmails = client.isLoadingEmails
+            loadingProgress = client.loadingProgress
+        } else if let firstClient = imapClients.values.first {
+            // Default to first account if none selected
+            allEmails = firstClient.emails
+            isLoadingEmails = firstClient.isLoadingEmails
+            loadingProgress = firstClient.loadingProgress
+        }
+    }
+    
+    func selectFolder(_ folderName: String, accountId: String) async {
+        selectedAccount = accountId
+        
+        guard let client = imapClients[accountId] else {
+            print("❌ No IMAP client found for account: \(accountId)")
+            return
+        }
+        
+        await client.selectFolder(folderName)
+        await updateAggregatedData()
+    }
+    
+    func getClient(for accountId: String) -> IMAPClient? {
+        return imapClients[accountId]
+    }
+    
+    func reloadCurrentFolder() async {
+        guard let selectedAccount = selectedAccount,
+              let client = imapClients[selectedAccount] else {
+            print("❌ No selected account or client for reload")
+            return
+        }
+        
+        await client.reloadCurrentFolder()
+        await updateAggregatedData()
+    }
+    
+    func markAsRead(uid: UInt32) async {
+        guard let selectedAccount = selectedAccount,
+              let client = imapClients[selectedAccount] else {
+            print("❌ No selected account or client for mark as read")
+            return
+        }
+        
+        await client.markAsRead(uid: uid)
+        await updateAggregatedData()
+    }
+    
+    func toggleReadStatus(uid: UInt32) async {
+        guard let selectedAccount = selectedAccount,
+              let client = imapClients[selectedAccount] else {
+            print("❌ No selected account or client for toggle read")
+            return
+        }
+        
+        await client.toggleReadStatus(uid: uid)
+        await updateAggregatedData()
     }
 }
 
