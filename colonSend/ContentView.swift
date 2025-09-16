@@ -154,9 +154,14 @@ struct ContentView: View {
                         
                         // Body section
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(email.body ?? "Loading...")
-                                .font(.body)
-                                .textSelection(.enabled)
+                            if let attributedBody = email.attributedBody {
+                                Text(AttributedString(attributedBody))
+                                    .textSelection(.enabled)
+                            } else {
+                                Text(email.body ?? "Loading...")
+                                    .font(.body)
+                                    .textSelection(.enabled)
+                            }
                         }
                         
                         Spacer()

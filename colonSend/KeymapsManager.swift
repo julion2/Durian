@@ -131,12 +131,6 @@ struct KeymapConfig: Codable {
                 description: "Compose new mail",
                 enabled: false
             ),
-            "mark_read": Keymap(
-                key: "u",
-                modifiers: [],
-                description: "Mark selected email as read", 
-                enabled: false
-            ),
             "delete_mail": Keymap(
                 key: "Delete",
                 modifiers: [],
