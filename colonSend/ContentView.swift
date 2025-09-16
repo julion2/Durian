@@ -121,6 +121,7 @@ struct ContentView: View {
                             Text(email.subject)
                                 .font(.title2)
                                 .fontWeight(.semibold)
+                                .textSelection(.enabled)
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
@@ -128,6 +129,7 @@ struct ContentView: View {
                                         .fontWeight(.medium)
                                         .foregroundStyle(.secondary)
                                     Text(formatSenderName(email.from))
+                                        .textSelection(.enabled)
                                 }
                                 
                                 HStack {
@@ -135,6 +137,7 @@ struct ContentView: View {
                                         .fontWeight(.medium)
                                         .foregroundStyle(.secondary)
                                     Text(formatDate(email.date))
+                                        .textSelection(.enabled)
                                 }
                                 
                                 if !email.from.isEmpty && email.from != formatSenderName(email.from) {
@@ -144,6 +147,7 @@ struct ContentView: View {
                                             .foregroundStyle(.secondary)
                                         Text(extractEmailAddress(email.from))
                                             .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
                                     }
                                 }
                             }

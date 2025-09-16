@@ -30,7 +30,11 @@ class IMAPClient: ObservableObject {
     private var paginationState = PaginationState()
     private var attemptedSections: [UInt32: Set<String>] = [:]
     private var lastCommandTime: Date = Date.distantPast
-    private let minimumCommandInterval: TimeInterval = 0.1  // 100ms between commands
+    private let minimumCommandInterval: TimeInterval = 0.05  // 50ms between commands (faster for bulk)
+    private var emailFetchStartTimes: [UInt32: Date] = [:]
+    private let emailFetchTimeout: TimeInterval = 15.0  // 15 seconds timeout (faster fail)
+    private var failedFetches: Set<UInt32> = []  // Track permanently failed emails
+    private var bulkProcessingMode: Bool = false
     
     init() {
         setupSettingsObserver()
@@ -171,7 +175,9 @@ class IMAPClient: ObservableObject {
             let attributes = attributesString.components(separatedBy: .whitespaces)
                 .filter { !$0.isEmpty }
             
-            return IMAPFolder(name: name, attributes: attributes, separator: separator, accountId: accountId)
+            let decodedName = decodeModifiedUTF7(name)
+            let fixedName = fixEncodingIssues(decodedName)
+            return IMAPFolder(name: fixedName, attributes: attributes, separator: separator, accountId: accountId)
         }
         
         // Try unquoted pattern: * LIST (attrs) separator name
@@ -187,7 +193,9 @@ class IMAPClient: ObservableObject {
             let attributes = attributesString.components(separatedBy: .whitespaces)
                 .filter { !$0.isEmpty }
             
-            return IMAPFolder(name: name, attributes: attributes, separator: separator, accountId: accountId)
+            let decodedName = decodeModifiedUTF7(name)
+            let fixedName = fixEncodingIssues(decodedName)
+            return IMAPFolder(name: fixedName, attributes: attributes, separator: separator, accountId: accountId)
         }
         
         return nil
@@ -245,6 +253,15 @@ class IMAPClient: ObservableObject {
         }
         
         isLoadingEmails = true
+        
+        // Enable bulk processing mode for large email lists
+        if paginationState.totalMessages > 50 {
+            bulkProcessingMode = true
+            print("📧 BULK MODE: Enabled for \(paginationState.totalMessages) emails")
+        } else {
+            bulkProcessingMode = false
+        }
+        
         if loadMore {
             paginationState.isLoadingMore = true
             loadingProgress = "Loading more emails..."
@@ -254,6 +271,8 @@ class IMAPClient: ObservableObject {
             paginationState.reset()
             paginationState.totalMessages = existingTotal
             emails.removeAll()
+            // Clear failed fetches on new folder load
+            failedFetches.removeAll()
             loadingProgress = "Loading emails..."
         }
         
@@ -439,10 +458,19 @@ class IMAPClient: ObservableObject {
     
     private func cleanQuotedString(_ str: String) -> String {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix("\"") && trimmed.hasSuffix("\"") {
-            return String(trimmed.dropFirst().dropLast())
+        var cleaned = trimmed
+        if cleaned.hasPrefix("\"") && cleaned.hasSuffix("\"") {
+            cleaned = String(cleaned.dropFirst().dropLast())
         }
-        return trimmed == "NIL" ? "" : trimmed
+        if cleaned == "NIL" {
+            return ""
+        }
+        
+        // Apply RFC 2047 decoding for encoded subjects
+        let rfc2047Decoded = decodeRFC2047(cleaned)
+        
+        // Apply encoding correction for common UTF-8/Latin-1 mix-ups
+        return fixEncodingIssues(rfc2047Decoded)
     }
     
     private func parseEmailAddress(_ addressField: String) -> String {
@@ -526,6 +554,12 @@ class IMAPClient: ObservableObject {
     private func tryFallbackSection(uid: UInt32, failedSection: String) async {
         print("📧 Section \(failedSection) returned NIL for UID \(uid), trying fallbacks")
         
+        // Check if this email has already permanently failed
+        if failedFetches.contains(uid) {
+            print("📧 UID \(uid) is in failed fetches list, skipping")
+            return
+        }
+        
         // Initialize tracking for this UID if not exists
         if attemptedSections[uid] == nil {
             attemptedSections[uid] = Set<String>()
@@ -547,14 +581,18 @@ class IMAPClient: ObservableObject {
         }
         
         guard let sectionToTry = nextSection else {
-            print("📧 All sections attempted for UID \(uid), giving up")
+            print("📧 All sections attempted for UID \(uid), permanently failing")
+            // Add to failed fetches to avoid retrying
+            failedFetches.insert(uid)
+            
             // Set email to show error state instead of "Loading..."
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
-                emails[emailIndex].body = "Unable to load email content"
+                emails[emailIndex].body = "Unable to load email content (all sections failed)"
                 emails[emailIndex].attributedBody = nil
             }
             // Clean up tracking for this UID
             attemptedSections.removeValue(forKey: uid)
+            emailFetchStartTimes.removeValue(forKey: uid)
             return
         }
         
@@ -564,42 +602,136 @@ class IMAPClient: ObservableObject {
 
     private func fetchBody(uid: UInt32, section: String) async {
         let command = "UID FETCH \(uid) (BODY[\(section)])"
+        print("📧 FETCHBODY: Starting fetch for UID \(uid), section \(section)")
+        
+        // Track when this fetch started
+        emailFetchStartTimes[uid] = Date()
+        
+        // Check if this UID has been trying too long
+        if let startTime = emailFetchStartTimes[uid],
+           Date().timeIntervalSince(startTime) > emailFetchTimeout {
+            print("📧 FETCHBODY: Timeout reached for UID \(uid), giving up")
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].body = "Email loading timed out"
+                emails[emailIndex].attributedBody = nil
+                attemptedSections.removeValue(forKey: uid)
+                emailFetchStartTimes.removeValue(forKey: uid)
+            }
+            return
+        }
+        
         do {
             let response = try await executeCommand(command)
+            print("📧 FETCHBODY: Got response, length: \(response.count)")
+            print("📧 FETCHBODY: Response preview: \(String(response.prefix(300)))")
             
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                // Try multiple patterns to find the body content
+                var bodyContent: String?
+                
+                // Pattern 1: Standard BODY[section] {length} format
                 if let bodyRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
-                    let afterBodyTag = String(response[bodyRange.upperBound...])
+                    bodyContent = String(response[bodyRange.upperBound...])
+                    print("📧 FETCHBODY: Found body content with standard pattern")
+                }
+                // Pattern 2: BODY[section] NIL
+                else if response.contains("BODY[\(section)] NIL") {
+                    print("📧 FETCHBODY: Section \(section) returned NIL for UID \(uid)")
+                    // Trigger fallback
+                    await tryFallbackSection(uid: uid, failedSection: section)
+                    return
+                }
+                // Pattern 3: BODY[section] "quoted content"
+                else if let quotedRange = response.range(of: "BODY\\[[\\d.]+\\]\\s*\"([^\"]+)\"", options: .regularExpression) {
+                    let match = String(response[quotedRange])
+                    if let startQuote = match.range(of: "\"")?.upperBound,
+                       let endQuote = match.range(of: "\"", options: .backwards)?.lowerBound {
+                        bodyContent = String(match[startQuote..<endQuote])
+                        print("📧 FETCHBODY: Found quoted body content")
+                    }
+                }
+                // Pattern 4: Try to find any content after BODY[section]
+                else if let sectionRange = response.range(of: "BODY\\[[\\d.]+\\]", options: .regularExpression) {
+                    let afterSection = String(response[sectionRange.upperBound...])
+                    // Skip whitespace and look for content
+                    let trimmed = afterSection.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && !trimmed.hasPrefix("NIL") {
+                        bodyContent = trimmed
+                        print("📧 FETCHBODY: Found body content with loose pattern")
+                    }
+                }
+                
+                if let content = bodyContent {
+                    print("📧 FETCHBODY: Processing body content, length: \(content.count)")
                     
-                    // Extract just the email content, stopping at FLAGS or other IMAP responses
-                    var bodyContent = afterBodyTag
+                    // Clean up the extracted content
+                    var cleanedContent = content
                     
-                    // Remove trailing IMAP protocol responses
-                    if let flagsStart = bodyContent.range(of: "\\s+FLAGS\\s*\\(", options: .regularExpression) {
-                        bodyContent = String(bodyContent[..<flagsStart.lowerBound])
+                    // Remove trailing IMAP protocol responses more robustly
+                    if let flagsStart = cleanedContent.range(of: "\\s+FLAGS\\s*\\(", options: .regularExpression) {
+                        cleanedContent = String(cleanedContent[..<flagsStart.lowerBound])
                     }
                     
                     // Remove trailing command completion responses
-                    if let completionStart = bodyContent.range(of: "\\s+A\\d+\\s+OK", options: .regularExpression) {
-                        bodyContent = String(bodyContent[..<completionStart.lowerBound])
+                    if let completionStart = cleanedContent.range(of: "\\s+A\\d+\\s+OK", options: .regularExpression) {
+                        cleanedContent = String(cleanedContent[..<completionStart.lowerBound])
                     }
                     
                     // Remove trailing parentheses from IMAP responses
-                    if let trailingParen = bodyContent.range(of: "\\s*\\)\\s*$", options: .regularExpression) {
-                        bodyContent = String(bodyContent[..<trailingParen.lowerBound])
+                    if let trailingParen = cleanedContent.range(of: "\\s*\\)\\s*$", options: .regularExpression) {
+                        cleanedContent = String(cleanedContent[..<trailingParen.lowerBound])
                     }
                     
-                    let cleanBody = bodyContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Remove any remaining IMAP response artifacts
+                    cleanedContent = cleanedContent.replacingOccurrences(of: "^\\)\\s*", with: "", options: .regularExpression)
+                    cleanedContent = cleanedContent.replacingOccurrences(of: "\\s*\\)$", with: "", options: .regularExpression)
+                    
+                    let cleanBody = cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines)
+                    print("📧 FETCHBODY: Final cleaned content length: \(cleanBody.count)")
                     let (plainBody, attributedBody) = decodeEmailBody(cleanBody)
                     emails[emailIndex].body = plainBody.isEmpty ? "No content available" : plainBody
                     emails[emailIndex].attributedBody = attributedBody
                     
                     // Clean up tracking for this UID on successful load
                     attemptedSections.removeValue(forKey: uid)
+                    emailFetchStartTimes.removeValue(forKey: uid)
+                } else {
+                    print("📧 FETCHBODY: No body content found in response")
+                    print("📧 FETCHBODY: Full response for debugging: \(response)")
+                    
+                    // Check if this is a NIL response
+                    if response.contains("BODY[\(section)] NIL") {
+                        print("📧 FETCHBODY: Section \(section) returned NIL for UID \(uid)")
+                        await tryFallbackSection(uid: uid, failedSection: section)
+                        return
+                    }
+                    // Check if the email might be empty or very short
+                    else if response.contains("BODY[\(section)] \"\"") || response.contains("BODY[\(section)] \"\\r\\n\"") {
+                        print("📧 FETCHBODY: Section \(section) is empty for UID \(uid)")
+                        emails[emailIndex].body = "Email appears to be empty"
+                        emails[emailIndex].attributedBody = nil
+                        attemptedSections.removeValue(forKey: uid)
+                        emailFetchStartTimes.removeValue(forKey: uid)
+                    }
+                    // Try fallback before giving error
+                    else {
+                        print("📧 FETCHBODY: Unexpected response format, trying fallback")
+                        await tryFallbackSection(uid: uid, failedSection: section)
+                        return
+                    }
                 }
+            } else {
+                print("📧 FETCHBODY: Email with UID \(uid) no longer exists in list")
             }
         } catch {
-            print("❌ Failed to fetch body for UID \(uid): \(error)")
+            print("❌ FETCHBODY: Error fetching body for UID \(uid): \(error)")
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].body = "Error loading email: \(error.localizedDescription)"
+                emails[emailIndex].attributedBody = nil
+                // Clean up tracking on error
+                attemptedSections.removeValue(forKey: uid)
+                emailFetchStartTimes.removeValue(forKey: uid)
+            }
         }
     }
     
@@ -781,6 +913,7 @@ class IMAPClient: ObservableObject {
     
     private func decodeEmailBody(_ body: String) -> (String, NSAttributedString?) {
         print("📧 DECODE START: First 200 chars: \(String(body.prefix(200)))")
+        print("📧 DECODE START: Body length: \(body.count) characters")
         
         // Enhanced MIME detection - catch any MIME multipart content
         let hasMimeBoundary = body.contains("--_") || body.hasPrefix("--") || body.contains("\n--")
@@ -789,7 +922,10 @@ class IMAPClient: ObservableObject {
         let hasQuotedPrintable = body.contains("=E") || body.contains("=F") || body.contains("=A") || 
                                 body.contains("=C") || body.contains("=D") || body.contains("=3D")
         
-        print("📧 DETECTION: boundary=\(hasMimeBoundary), contentType=\(hasContentType), encoding=\(hasTransferEncoding), quoted=\(hasQuotedPrintable)")
+        // Test base64 detection on the raw content
+        let couldBeBase64 = isBase64Content(body)
+        
+        print("📧 DETECTION: boundary=\(hasMimeBoundary), contentType=\(hasContentType), encoding=\(hasTransferEncoding), quoted=\(hasQuotedPrintable), couldBeBase64=\(couldBeBase64)")
         
         // If we detect MIME structure, always use MIME parsing
         if hasMimeBoundary || hasContentType || hasTransferEncoding {
@@ -800,15 +936,21 @@ class IMAPClient: ObservableObject {
         }
         
         // Check if it's base64 encoded (long lines of base64 characters)
-        if isBase64Content(body) {
-            if let decodedData = Data(base64Encoded: body),
-               let decodedString = String(data: decodedData, encoding: .utf8) {
+        if couldBeBase64 {
+            print("📧 Attempting direct base64 decode on entire content")
+            let decoded = decodeBase64Content(body)
+            if decoded != body {  // If decoding changed the content
+                print("📧 Base64 decode successful, checking for HTML")
                 // If decoded content is HTML, create rich text
-                if decodedString.contains("<html") || decodedString.contains("<HTML") {
-                    return processHTMLContent(decodedString)
+                if decoded.contains("<html") || decoded.contains("<HTML") {
+                    print("📧 Decoded content is HTML, processing for rich text")
+                    return processHTMLContent(decoded)
                 }
-                let cleaned = removeEmailSignatureClutter(cleanWhitespace(decodedString))
+                let cleaned = removeEmailSignatureClutter(cleanWhitespace(decoded))
+                print("📧 Base64 decode result: \(String(cleaned.prefix(200)))")
                 return (cleaned, nil)
+            } else {
+                print("📧 Base64 decode failed or returned unchanged content")
             }
         }
         
@@ -858,19 +1000,27 @@ class IMAPClient: ObservableObject {
             return ultraClean
         }
         
-        print("📧 PLAIN FINAL RESULT: First 200 chars: \(String(finalCleaned.prefix(200)))")
-        return (finalCleaned, nil)
+        // Apply encoding fixes before final return
+        let encodingFixed = fixEncodingIssues(finalCleaned)
+        print("📧 PLAIN FINAL RESULT: First 200 chars: \(String(encodingFixed.prefix(200)))")
+        return (encodingFixed, nil)
     }
     
     private func decodeByTransferEncoding(_ content: String, encoding: String) -> String {
         print("📧 Decoding content with encoding: \(encoding)")
+        print("📧 Content preview (first 100 chars): \(String(content.prefix(100)))")
         
         switch encoding {
         case "base64":
-            return decodeBase64Content(content)
+            let decoded = decodeBase64Content(content)
+            print("📧 Base64 decode result preview: \(String(decoded.prefix(200)))")
+            return decoded
         case "quoted-printable":
-            return decodeQuotedPrintable(content)
+            let decoded = decodeQuotedPrintable(content)
+            print("📧 QP decode result preview: \(String(decoded.prefix(200)))")
+            return decoded
         case "7bit", "8bit", "binary":
+            print("📧 No decoding needed for \(encoding)")
             return content  // No decoding needed
         default:
             print("📧 Unknown encoding \(encoding), using as-is")
@@ -882,22 +1032,224 @@ class IMAPClient: ObservableObject {
         // Remove whitespace and newlines from base64 content
         let cleanBase64 = content.replacingOccurrences(of: "\\s", with: "", options: .regularExpression)
         
-        guard let decodedData = Data(base64Encoded: cleanBase64),
-              let decodedString = String(data: decodedData, encoding: .utf8) else {
-            print("📧 Failed to decode base64 content")
+        print("📧 Attempting base64 decode on \(cleanBase64.count) characters")
+        print("📧 Clean base64 preview: \(String(cleanBase64.prefix(50)))...")
+        print("📧 Clean base64 ends with: ...\(String(cleanBase64.suffix(20)))")
+        
+        guard let decodedData = Data(base64Encoded: cleanBase64) else {
+            print("📧 Failed to create Data from base64 string")
+            print("📧 Base64 validation failed - might not be valid base64")
             return content  // Return original if decoding fails
         }
         
-        print("📧 Successfully decoded base64 content")
+        print("📧 Successfully created Data object, size: \(decodedData.count) bytes")
+        
+        guard let decodedString = String(data: decodedData, encoding: .utf8) else {
+            print("📧 Failed to create UTF-8 string from base64 data, trying Latin1")
+            // Try Latin1 encoding for older emails
+            if let latin1String = String(data: decodedData, encoding: .isoLatin1) {
+                print("📧 Successfully decoded base64 content as Latin1")
+                print("📧 Latin1 decode preview: \(String(latin1String.prefix(200)))")
+                return latin1String
+            }
+            print("📧 Failed to decode base64 content with any encoding")
+            return content
+        }
+        
+        print("📧 Successfully decoded base64 content as UTF-8")
+        print("📧 UTF-8 decode preview: \(String(decodedString.prefix(200)))")
         return decodedString
     }
     
+    private func decodeRFC2047(_ text: String) -> String {
+        // RFC 2047 encoded-word format: =?charset?encoding?encoded-text?=
+        // Example: =?UTF-8?B?SGVsbG8gV29ybGQ=?= (Base64)
+        // Example: =?UTF-8?Q?Hello=20World?= (Quoted-Printable)
+        
+        var result = text
+        let pattern = "=\\?([^?]+)\\?([BQbq])\\?([^?]+)\\?="
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return text
+        }
+        
+        // Process all encoded words in the text
+        while let match = regex.firstMatch(in: result, options: [], range: NSRange(location: 0, length: result.count)) {
+            guard match.numberOfRanges >= 4 else { break }
+            
+            let fullMatch = String(result[Range(match.range(at: 0), in: result)!])
+            let charset = String(result[Range(match.range(at: 1), in: result)!]).uppercased()
+            let encoding = String(result[Range(match.range(at: 2), in: result)!]).uppercased()
+            let encodedText = String(result[Range(match.range(at: 3), in: result)!])
+            
+            var decodedText = ""
+            
+            switch encoding {
+            case "B": // Base64
+                if let data = Data(base64Encoded: encodedText) {
+                    if let decoded = String(data: data, encoding: .utf8) {
+                        decodedText = decoded
+                    } else if charset == "ISO-8859-1" || charset == "LATIN1" {
+                        // Try Latin1 encoding for older emails
+                        decodedText = String(data: data, encoding: .isoLatin1) ?? encodedText
+                    }
+                }
+                
+            case "Q": // Quoted-Printable
+                // RFC 2047 quoted-printable is slightly different from regular quoted-printable
+                // Underscores represent spaces, and regular QP encoding for other characters
+                var qpText = encodedText.replacingOccurrences(of: "_", with: " ")
+                decodedText = decodeQuotedPrintable(qpText)
+                
+            default:
+                decodedText = encodedText // Unknown encoding, use as-is
+            }
+            
+            // Replace the encoded word with decoded text
+            result = result.replacingOccurrences(of: fullMatch, with: decodedText)
+        }
+        
+        return result
+    }
+    
+    private func fixEncodingIssues(_ text: String) -> String {
+        var fixed = text
+        
+        // Common UTF-8 bytes interpreted as Latin-1 patterns
+        let encodingFixes = [
+            // German umlauts (most important for your use case)
+            "Ã¤": "ä",    // ä (UTF-8: C3 A4)
+            "Ã¶": "ö",    // ö (UTF-8: C3 B6) 
+            "Ã¼": "ü",    // ü (UTF-8: C3 BC)
+            "Ã„": "Ä",    // Ä (UTF-8: C3 84)
+            "Ã–": "Ö",    // Ö (UTF-8: C3 96)
+            "Ãœ": "Ü",    // Ü (UTF-8: C3 9C)
+            "ÃŸ": "ß",    // ß (UTF-8: C3 9F)
+            
+            // French accents
+            "Ã©": "é",    // é (UTF-8: C3 A9)
+            "Ã¨": "è",    // è (UTF-8: C3 A8)
+            "Ã¡": "á",    // á (UTF-8: C3 A1)
+            "Ã ": "à",    // à (UTF-8: C3 A0)
+            "Ã§": "ç"     // ç (UTF-8: C3 A7)
+        ]
+        
+        // Only apply fixes if we detect the problematic patterns
+        let hasEncodingIssues = encodingFixes.keys.contains { fixed.contains($0) }
+        
+        if hasEncodingIssues {
+            print("📧 ENCODING: Detected encoding issues, applying fixes")
+            print("📧 ENCODING: Before: \(String(fixed.prefix(100)))")
+            
+            for (wrong, correct) in encodingFixes {
+                fixed = fixed.replacingOccurrences(of: wrong, with: correct)
+            }
+            
+            print("📧 ENCODING: After: \(String(fixed.prefix(100)))")
+        }
+        
+        return fixed
+    }
+    
+    private func decodeModifiedUTF7(_ text: String) -> String {
+        // Modified UTF-7 decoding for IMAP folder names
+        // Pattern: &XXX- where XXX is base64-encoded UTF-16
+        
+        var result = text
+        let pattern = "&([A-Za-z0-9+/]*)-"
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return text
+        }
+        
+        print("📁 MUTF7: Decoding '\(text)'")
+        
+        // Process all encoded sequences
+        while let match = regex.firstMatch(in: result, options: [], range: NSRange(location: 0, length: result.count)) {
+            guard match.numberOfRanges >= 2 else { break }
+            
+            let fullMatch = String(result[Range(match.range(at: 0), in: result)!])
+            let base64Part = String(result[Range(match.range(at: 1), in: result)!])
+            
+            var decodedText = ""
+            
+            if base64Part.isEmpty {
+                // &- represents &
+                decodedText = "&"
+            } else {
+                // Decode base64 to UTF-16, then convert to string
+                // Add padding if needed
+                var paddedBase64 = base64Part
+                while paddedBase64.count % 4 != 0 {
+                    paddedBase64 += "="
+                }
+                
+                if let data = Data(base64Encoded: paddedBase64) {
+                    // Convert UTF-16BE data to string
+                    if let decoded = String(data: data, encoding: .utf16BigEndian) {
+                        decodedText = decoded
+                    } else if let decoded = String(data: data, encoding: .utf16LittleEndian) {
+                        decodedText = decoded
+                    } else {
+                        // Fallback: manual decode common patterns
+                        decodedText = decodeCommonModifiedUTF7Patterns(base64Part)
+                    }
+                }
+            }
+            
+            print("📁 MUTF7: '\(fullMatch)' -> '\(decodedText)'")
+            result = result.replacingOccurrences(of: fullMatch, with: decodedText)
+        }
+        
+        print("📁 MUTF7: Final result: '\(result)'")
+        return result
+    }
+    
+    private func decodeCommonModifiedUTF7Patterns(_ base64: String) -> String {
+        // Common Modified UTF-7 patterns for German characters
+        let commonPatterns = [
+            "APY": "ö",  // &APY- = ö
+            "APQ": "ä",  // &APQ- = ä  
+            "APw": "ü",  // &APw- = ü
+            "AOU": "Ä",  // &AOU- = Ä
+            "AOY": "Ö",  // &AOY- = Ö
+            "AOw": "Ü",  // &AOw- = Ü
+            "AN8": "ß"   // &AN8- = ß
+        ]
+        
+        return commonPatterns[base64] ?? base64
+    }
+    
     private func isBase64Content(_ content: String) -> Bool {
-        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base64Pattern = "^[A-Za-z0-9+/]*={0,2}$"
-        let regex = try? NSRegularExpression(pattern: base64Pattern)
-        return trimmed.count > 100 && 
-               regex?.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)) != nil
+        // Remove all whitespace for analysis
+        let cleaned = content.replacingOccurrences(of: "\\s", with: "", options: .regularExpression)
+        
+        print("📧 Base64 detection input: '\(String(content.prefix(100)))...'")
+        print("📧 Base64 detection cleaned: '\(String(cleaned.prefix(100)))...'")
+        
+        // Must be reasonably long and contain mostly base64 characters
+        guard cleaned.count > 50 else { 
+            print("📧 Base64 detection: Too short (\(cleaned.count) chars)")
+            return false 
+        }
+        
+        // Count base64 characters
+        let base64CharSet = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+        let base64Chars = cleaned.unicodeScalars.filter { base64CharSet.contains($0) }.count
+        let ratio = Double(base64Chars) / Double(cleaned.count)
+        
+        print("📧 Base64 detection: \(base64Chars)/\(cleaned.count) chars = \(String(format: "%.1f", ratio*100))% base64")
+        
+        // Also check if it looks like typical base64 email content (starts with common patterns)
+        let startsWithHTMLBase64 = cleaned.hasPrefix("PGh0bWw") || cleaned.hasPrefix("PCEtLQ") // <html or <!--
+        let startsWithCommonBase64 = cleaned.hasPrefix("TWltZS") || cleaned.hasPrefix("Q29udGV") // MIME- or Conte
+        
+        print("📧 Base64 patterns: startsWithHTML=\(startsWithHTMLBase64), startsWithCommon=\(startsWithCommonBase64)")
+        
+        // If more than 85% of characters are valid base64, OR it has typical base64 patterns, consider it base64 content
+        let isBase64 = ratio > 0.85 || startsWithHTMLBase64 || startsWithCommonBase64
+        print("📧 Is base64 content: \(isBase64) (ratio=\(String(format: "%.1f", ratio*100))%)")
+        return isBase64
     }
     
     private func decodeQuotedPrintable(_ text: String) -> String {
@@ -1170,7 +1522,8 @@ class IMAPClient: ObservableObject {
             print("📧 MIME PARSE: Using plain text content")
             let cleanText = cleanWhitespace(textParts.first!)
             let finalText = removeEmailSignatureClutter(cleanText)
-            return (finalText, nil)
+            let encodingFixed = fixEncodingIssues(finalText)
+            return (encodingFixed, nil)
         } else if !htmlParts.isEmpty {
             // Only HTML available
             print("📧 MIME PARSE: Using HTML content only")
@@ -1184,13 +1537,29 @@ class IMAPClient: ObservableObject {
             return emergencyMimeCleanup(content)
         }
         
+        // Before giving up, check if the entire content might be base64
+        print("📧 MIME PARSE: No parts found, checking if content might be base64")
+        if isBase64Content(content) {
+            print("📧 MIME PARSE: Content appears to be base64, attempting decode")
+            let decoded = decodeBase64Content(content)
+            if decoded != content {
+                print("📧 MIME PARSE: Base64 decode successful in fallback")
+                if decoded.contains("<html") || decoded.contains("<HTML") {
+                    return processHTMLContent(decoded)
+                }
+                let cleaned = removeEmailSignatureClutter(cleanWhitespace(decoded))
+                return (cleaned, nil)
+            }
+        }
+        
         // Final fallback: clean the original content
         print("📧 MIME PARSE: Using final fallback - no parts found")
         print("📧 MIME PARSE: textParts=\(textParts.count), htmlParts=\(htmlParts.count)")
         let cleanText = cleanWhitespace(content)
         let finalText = removeEmailSignatureClutter(cleanText)
-        print("📧 FINAL FALLBACK RESULT: First 200 chars: \(String(finalText.prefix(200)))")
-        return (finalText, nil)
+        let encodingFixed = fixEncodingIssues(finalText)
+        print("📧 FINAL FALLBACK RESULT: First 200 chars: \(String(encodingFixed.prefix(200)))")
+        return (encodingFixed, nil)
     }
     
     private func cleanWhitespace(_ text: String) -> String {
@@ -1419,10 +1788,11 @@ class IMAPClient: ObservableObject {
             throw IMAPError.noConnection
         }
         
-        // Rate limiting: enforce minimum interval between commands
+        // Rate limiting: enforce minimum interval between commands (adaptive based on bulk mode)
+        let effectiveInterval = bulkProcessingMode ? minimumCommandInterval : minimumCommandInterval * 2
         let timeSinceLastCommand = Date().timeIntervalSince(lastCommandTime)
-        if timeSinceLastCommand < minimumCommandInterval {
-            let delayNeeded = minimumCommandInterval - timeSinceLastCommand
+        if timeSinceLastCommand < effectiveInterval {
+            let delayNeeded = effectiveInterval - timeSinceLastCommand
             try await Task.sleep(nanoseconds: UInt64(delayNeeded * 1_000_000_000))
         }
         
@@ -1516,6 +1886,7 @@ class IMAPClient: ObservableObject {
                     
                     // Clean up tracking for this UID on successful load
                     attemptedSections.removeValue(forKey: uid)
+                    emailFetchStartTimes.removeValue(forKey: uid)
                 }
             }
         }
