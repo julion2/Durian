@@ -295,23 +295,23 @@ class IMAPClient: ObservableObject {
             if startIndex <= endIndex && endIndex > 0 {
                 let fetchCommand = "FETCH \(startIndex):\(endIndex) (UID FLAGS ENVELOPE BODYSTRUCTURE)"
                 _ = try await executeCommand(fetchCommand)
-                
+
                 let loadedCount = emails.count
                 loadingProgress = "Loaded \(loadedCount) of \(paginationState.totalMessages) messages"
-                
+
                 if loadMore {
                     paginationState.nextPage()
                 }
-                
+
                 print("✅ FETCH command completed for range \(startIndex):\(endIndex)")
             } else {
             }
-            
+
         } catch {
             print("❌ Failed to fetch emails: \(error)")
             loadingProgress = "Failed to load emails: \(error.localizedDescription)"
         }
-        
+
         isLoadingEmails = false
         paginationState.isLoadingMore = false
         hasMoreMessages = paginationState.hasMoreMessages

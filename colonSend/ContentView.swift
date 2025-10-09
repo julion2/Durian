@@ -54,7 +54,7 @@ struct ContentView: View {
                 }
                 
                 if !accountManager.allEmails.isEmpty {
-                    List(accountManager.allEmails, selection: $selectedEmail) { email in
+                    List(accountManager.allEmails.sorted { $0.uid > $1.uid }, selection: $selectedEmail) { email in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack {
                                 // Unread indicator
@@ -302,29 +302,52 @@ struct ContentView: View {
     }
     
     private func formatDate(_ dateString: String) -> String {
-        // Parse common date formats and return without seconds and year
+        // Parse common date formats and return in dd.MM.yy format
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        
-        // Try different date formats
+
+        // Try different date formats (most common first)
         let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",
-            "dd MMM yyyy HH:mm:ss Z",
-            "yyyy-MM-dd HH:mm:ss Z",
-            "EEE, dd MMM yyyy HH:mm:ss"
+            "EEE, dd MMM yyyy HH:mm:ss Z",      // Standard RFC 2822
+            "EEE, d MMM yyyy HH:mm:ss Z",       // Single digit day
+            "dd MMM yyyy HH:mm:ss Z",           // Without weekday
+            "d MMM yyyy HH:mm:ss Z",            // Single digit, no weekday
+            "EEE, dd MMM yyyy HH:mm:ss",        // Without timezone
+            "EEE, d MMM yyyy HH:mm:ss",         // Single digit, no timezone
+            "yyyy-MM-dd HH:mm:ss Z",            // ISO-like with timezone
+            "yyyy-MM-dd'T'HH:mm:ssZ",           // ISO 8601 compact
+            "yyyy-MM-dd'T'HH:mm:ss",            // ISO without timezone
+            "dd MMM yyyy HH:mm:ss",             // Simple format
+            "d MMM yyyy HH:mm:ss",              // Simple, single digit
         ]
-        
+
         for format in formats {
             formatter.dateFormat = format
             if let date = formatter.date(from: dateString) {
                 let outputFormatter = DateFormatter()
-                outputFormatter.dateFormat = "MMM dd, HH:mm"
+                outputFormatter.dateFormat = "dd.MM.yy"
                 return outputFormatter.string(from: date)
             }
         }
-        
-        // If parsing fails, return original
-        return dateString
+
+        // If parsing fails, try manual extraction
+        // Pattern: Try to extract "dd MMM yyyy" from anywhere in the string
+        if let dateMatch = dateString.range(of: "\\d{1,2}\\s+[A-Za-z]{3}\\s+\\d{4}", options: .regularExpression) {
+            let extractedDate = String(dateString[dateMatch])
+            // Try to parse this extracted date
+            formatter.dateFormat = "d MMM yyyy"
+            if let date = formatter.date(from: extractedDate) {
+                let outputFormatter = DateFormatter()
+                outputFormatter.dateFormat = "dd.MM.yy"
+                return outputFormatter.string(from: date)
+            }
+        }
+
+        // Ultimate fallback: Just show the first part before timezone
+        print("⚠️ Failed to parse date: '\(dateString)'")
+        var cleaned = dateString.replacingOccurrences(of: "\\s*[+-]\\d{4}.*$", with: "", options: .regularExpression)
+        cleaned = cleaned.replacingOccurrences(of: "\\s+\\d{2}:\\d{2}:\\d{2}.*$", with: "", options: .regularExpression)
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     private func syncIconColor() -> Color {
