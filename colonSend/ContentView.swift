@@ -106,9 +106,14 @@ struct ContentView: View {
             .navigationSubtitle(getSelectedFolderName())
             .toolbar {
                 ToolbarItem(placement: .automatic) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .foregroundStyle(syncIconColor())
-                        .padding(.trailing, 8)
+                    Button(action: {
+                        Task {
+                            await accountManager.reloadCurrentFolder()
+                        }
+                    }) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .foregroundStyle(syncIconColor())
+                    }
                 }
             }
         } detail: {
