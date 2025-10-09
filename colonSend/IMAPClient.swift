@@ -2092,19 +2092,55 @@ class AccountManager: ObservableObject {
         }
     }
     
+    private func mergeEmailsPreservingBodies(freshEmails: [IMAPEmail]) {
+        print("🔄 Merging \(freshEmails.count) fresh emails with \(allEmails.count) existing emails, preserving bodies...")
+
+        // CRITICAL: Don't clear allEmails if freshEmails is empty!
+        guard !freshEmails.isEmpty else {
+            print("⚠️ Skipping merge - freshEmails is empty, keeping existing \(allEmails.count) emails")
+            return
+        }
+
+        // Create a dictionary of existing emails by UID for quick lookup
+        var existingByUID: [UInt32: IMAPEmail] = [:]
+        for email in allEmails {
+            existingByUID[email.uid] = email
+        }
+
+        // Merge fresh emails with existing ones
+        var merged: [IMAPEmail] = []
+        for freshEmail in freshEmails {
+            if let existing = existingByUID[freshEmail.uid],
+               existing.body != nil && existing.body != "Loading..." {
+                // Preserve the existing body that we already loaded
+                var updated = freshEmail
+                updated.body = existing.body
+                updated.attributedBody = existing.attributedBody
+                merged.append(updated)
+                print("🔄 Preserved body for UID \(freshEmail.uid)")
+            } else {
+                // New email or no body yet
+                merged.append(freshEmail)
+            }
+        }
+
+        allEmails = merged
+        print("✅ Merge complete: now have \(allEmails.count) emails")
+    }
+
     private func updateAggregatedData() {
         // Aggregate all folders from all clients
         allFolders = imapClients.values.flatMap { $0.folders }
-        
+
         // Aggregate emails from selected account
         if let selectedAccount = selectedAccount,
            let client = imapClients[selectedAccount] {
-            allEmails = client.emails
+            mergeEmailsPreservingBodies(freshEmails: client.emails)
             isLoadingEmails = client.isLoadingEmails
             loadingProgress = client.loadingProgress
         } else if let firstClient = imapClients.values.first {
             // Default to first account if none selected
-            allEmails = firstClient.emails
+            mergeEmailsPreservingBodies(freshEmails: firstClient.emails)
             isLoadingEmails = firstClient.isLoadingEmails
             loadingProgress = firstClient.loadingProgress
         }
