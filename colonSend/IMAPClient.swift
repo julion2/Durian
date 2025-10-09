@@ -2132,28 +2132,39 @@ class AccountManager: ObservableObject {
         // Aggregate all folders from all clients
         allFolders = imapClients.values.flatMap { $0.folders }
 
-        // Aggregate emails from selected account
+        // Aggregate emails ONLY from the explicitly selected account
+        // Don't use fallback to avoid showing wrong emails during folder switch
         if let selectedAccount = selectedAccount,
            let client = imapClients[selectedAccount] {
+            print("📧 updateAggregatedData: Using emails from selected account '\(selectedAccount)' (\(client.emails.count) emails)")
             mergeEmailsPreservingBodies(freshEmails: client.emails)
             isLoadingEmails = client.isLoadingEmails
             loadingProgress = client.loadingProgress
-        } else if let firstClient = imapClients.values.first {
-            // Default to first account if none selected
-            mergeEmailsPreservingBodies(freshEmails: firstClient.emails)
-            isLoadingEmails = firstClient.isLoadingEmails
-            loadingProgress = firstClient.loadingProgress
+        } else {
+            // No account selected - clear emails instead of showing random account's emails
+            if selectedAccount != nil {
+                print("⚠️ updateAggregatedData: selectedAccount '\(selectedAccount!)' has no client")
+            } else {
+                print("⚠️ updateAggregatedData: No account selected yet")
+            }
+            // Don't modify allEmails if no proper account is selected
+            // This prevents race condition showing wrong emails
         }
     }
     
     func selectFolder(_ folderName: String, accountId: String) async {
+        print("📂 AccountManager: Selecting folder '\(folderName)' for account '\(accountId)'")
+
+        // CRITICAL: Clear emails immediately to prevent race condition
+        // If we don't do this, objectWillChange from the client might show old emails
+        allEmails.removeAll()
         selectedAccount = accountId
-        
+
         guard let client = imapClients[accountId] else {
             print("❌ No IMAP client found for account: \(accountId)")
             return
         }
-        
+
         await client.selectFolder(folderName)
         await updateAggregatedData()
     }
