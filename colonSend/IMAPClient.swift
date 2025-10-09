@@ -2095,9 +2095,12 @@ class AccountManager: ObservableObject {
     private func mergeEmailsPreservingBodies(freshEmails: [IMAPEmail]) {
         print("🔄 Merging \(freshEmails.count) fresh emails with \(allEmails.count) existing emails, preserving bodies...")
 
-        // CRITICAL: Don't clear allEmails if freshEmails is empty!
-        guard !freshEmails.isEmpty else {
-            print("⚠️ Skipping merge - freshEmails is empty, keeping existing \(allEmails.count) emails")
+        // If freshEmails is empty, it means the folder is actually empty
+        // We should clear allEmails to reflect this
+        // (The race condition is now prevented by clearing allEmails in selectFolder)
+        if freshEmails.isEmpty {
+            print("📭 Fresh emails is empty - folder is empty, clearing allEmails")
+            allEmails.removeAll()
             return
         }
 
