@@ -7,10 +7,20 @@ import Security
 import Combine
 import AppKit
 
-// Note: Models, AccountManager, and IMAPClientHandler are now in separate files
+// MARK: - Separated Components
+// Note: The following have been extracted to separate files for better organization:
+// - Models: IMAPModels.swift (IMAPFolder, IMAPEmail, IMAPError, PaginationState, etc.)
+// - Account Management: AccountManager.swift (multi-account coordination)
+// - Network Handler: IMAPClientHandler.swift (network I/O handling)
+// - Text Decoding: IMAPTextDecodingUtilities.swift (base64, RFC2047, quoted-printable, etc.)
+// - Text Cleaning: IMAPTextCleaningUtilities.swift (whitespace, signatures, duplicates, etc.)
+
+// MARK: - IMAPClient Main Class
 
 @MainActor
 class IMAPClient: ObservableObject {
+    // MARK: - Properties
+    
     private var eventLoopGroup: EventLoopGroup?
     private var channel: Channel?
     
@@ -38,9 +48,13 @@ class IMAPClient: ObservableObject {
     private var failedFetches: Set<UInt32> = []  // Track permanently failed emails
     private var bulkProcessingMode: Bool = false
     
+    // MARK: - Initialization
+    
     init() {
         setupSettingsObserver()
     }
+    
+    // MARK: - Connection Management
     
     func connect(account: MailAccount) async {
         print("🔵 Starting IMAP connection to \(account.imap.host):\(account.imap.port)")
