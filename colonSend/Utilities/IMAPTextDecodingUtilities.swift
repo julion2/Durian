@@ -85,27 +85,21 @@ extension IMAPClient {
         var decoded = text
         
         // Replace quoted-printable sequences
-        let pattern = "=([0-9A-F]{2})"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return text
-        }
+        let quotedPrintablePattern = "=([0-9A-Fa-f]{2})"
+        let regex = try? NSRegularExpression(pattern: quotedPrintablePattern)
         
-        let matches = regex.matches(in: decoded, options: [], range: NSRange(location: 0, length: decoded.count))
-        
-        // Process matches in reverse to maintain string indices
-        for match in matches.reversed() {
-            if match.numberOfRanges >= 2,
-               let hexRange = Range(match.range(at: 1), in: decoded) {
-                let hexString = String(decoded[hexRange])
-                if let byte = UInt8(hexString, radix: 16) {
-                    let character = String(UnicodeScalar(byte))
-                    let fullRange = Range(match.range, in: decoded)!
-                    decoded = decoded.replacingCharacters(in: fullRange, with: character)
-                }
+        while let match = regex?.firstMatch(in: decoded, range: NSRange(decoded.startIndex..<decoded.endIndex, in: decoded)) {
+            let hexString = String(decoded[Range(match.range(at: 1), in: decoded)!])
+            if let hexValue = UInt8(hexString, radix: 16),
+               let unicodeScalar = UnicodeScalar(UInt32(hexValue)) {
+                let character = String(Character(unicodeScalar))
+                decoded = decoded.replacingCharacters(in: Range(match.range, in: decoded)!, with: character)
+            } else {
+                break
             }
         }
         
-        // Remove soft line breaks (=\n)
+        // Replace soft line breaks (=\n)
         decoded = decoded.replacingOccurrences(of: "=\n", with: "")
         decoded = decoded.replacingOccurrences(of: "=\r\n", with: "")
         
