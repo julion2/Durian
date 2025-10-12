@@ -226,7 +226,48 @@ extension IMAPClient {
             "AOw": "Ü",  // &AOw- = Ü
             "AN8": "ß"   // &AN8- = ß
         ]
-        
+
         return commonPatterns[base64] ?? base64
+    }
+
+    // MARK: Encoding Issue Fixes
+
+    func fixEncodingIssues(_ text: String) -> String {
+        var fixed = text
+
+        // Common UTF-8 bytes interpreted as Latin-1 patterns
+        let encodingFixes = [
+            // German umlauts (most important for your use case)
+            "Ã¤": "ä",    // ä (UTF-8: C3 A4)
+            "Ã¶": "ö",    // ö (UTF-8: C3 B6)
+            "Ã¼": "ü",    // ü (UTF-8: C3 BC)
+            "Ã„": "Ä",    // Ä (UTF-8: C3 84)
+            "Ã–": "Ö",    // Ö (UTF-8: C3 96)
+            "Ãœ": "Ü",    // Ü (UTF-8: C3 9C)
+            "ÃŸ": "ß",    // ß (UTF-8: C3 9F)
+
+            // French accents
+            "Ã©": "é",    // é (UTF-8: C3 A9)
+            "Ã¨": "è",    // è (UTF-8: C3 A8)
+            "Ã¡": "á",    // á (UTF-8: C3 A1)
+            "Ã ": "à",    // à (UTF-8: C3 A0)
+            "Ã§": "ç"     // ç (UTF-8: C3 A7)
+        ]
+
+        // Only apply fixes if we detect the problematic patterns
+        let hasEncodingIssues = encodingFixes.keys.contains { fixed.contains($0) }
+
+        if hasEncodingIssues {
+            print("📧 ENCODING: Detected encoding issues, applying fixes")
+            print("📧 ENCODING: Before: \(String(fixed.prefix(100)))")
+
+            for (wrong, correct) in encodingFixes {
+                fixed = fixed.replacingOccurrences(of: wrong, with: correct)
+            }
+
+            print("📧 ENCODING: After: \(String(fixed.prefix(100)))")
+        }
+
+        return fixed
     }
 }

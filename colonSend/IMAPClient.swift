@@ -834,8 +834,8 @@ class IMAPClient: ObservableObject {
         
         refreshTimer = Timer.scheduledTimer(withTimeInterval: settings.autoFetchInterval, repeats: true) { _ in
             Task { @MainActor in
-                guard let folder = self.selectedFolder else { return }
-                
+                guard self.selectedFolder != nil else { return }
+
                 await self.refreshCurrentFolder()
             }
         }
