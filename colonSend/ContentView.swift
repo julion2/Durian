@@ -8,6 +8,12 @@
 import SwiftUI
 import Combine
 
+enum DetailViewMode: Equatable {
+    case emailDetail(IMAPEmail)
+    case compose(replyTo: IMAPEmail?)
+    case empty
+}
+
 struct ContentView: View {
     @StateObject private var accountManager = AccountManager.shared
     @StateObject private var keymapsManager = KeymapsManager.shared
@@ -15,8 +21,10 @@ struct ContentView: View {
     @State private var selectedFolderID: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
     @State private var cancellables = Set<AnyCancellable>()
-    @State private var showingCompose = false
-    @State private var replyToEmail: IMAPEmail? = nil
+    @State private var detailMode: DetailViewMode = .empty
+    @State private var lastViewedEmail: IMAPEmail? = nil
+    @State private var triggerSend = false
+    @State private var composeDraft: EmailDraft?
 
     var body: some View {
         NavigationSplitView {
@@ -109,8 +117,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
-                        replyToEmail = nil
-                        showingCompose = true
+                        detailMode = .compose(replyTo: nil)
                     }) {
                         Label("Compose", systemImage: "square.and.pencil")
                     }
@@ -127,87 +134,38 @@ struct ContentView: View {
                             .foregroundStyle(syncIconColor())
                     }
                 }
-            }
-            .sheet(isPresented: $showingCompose) {
-                EmailComposeView(
-                    accounts: accountManager.accounts,
-                    replyTo: replyToEmail
-                )
+                
+                ToolbarItem(placement: .automatic) {
+                    Button(action: {
+                        triggerSend = true
+                    }) {
+                        Label("Send", systemImage: "paperplane")
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(shouldDisableSend())
+                }
             }
         } detail: {
-            if let selectedEmail = selectedEmail,
-               let email = accountManager.allEmails.first(where: { $0.id == selectedEmail }) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Header section
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(email.subject)
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .textSelection(.enabled)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("From:")
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.secondary)
-                                    Text(formatSenderName(email.from))
-                                        .textSelection(.enabled)
-                                }
-                                
-                                HStack {
-                                    Text("Date:")
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.secondary)
-                                    Text(formatDate(email.date))
-                                        .textSelection(.enabled)
-                                }
-                                
-                                if !email.from.isEmpty && email.from != formatSenderName(email.from) {
-                                    HStack {
-                                        Text("Email:")
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.secondary)
-                                        Text(extractEmailAddress(email.from))
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                    }
-                                }
-                            }
-                            .font(.callout)
-                        }
-                        
-                        Divider()
-                        
-                        // Body section
-                        VStack(alignment: .leading, spacing: 12) {
-                            if let attributedBody = email.attributedBody {
-                                Text(AttributedString(attributedBody))
-                                    .textSelection(.enabled)
-                            } else {
-                                Text(email.body ?? "Loading...")
-                                    .font(.body)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                        
-                        Spacer()
-                    }
-                    .padding(20)
-                }
-                .background(Color(NSColor.controlBackgroundColor))
-                .navigationTitle("Email")
-                .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button(action: {
-                            replyToEmail = email
-                            showingCompose = true
-                        }) {
-                            Label("Reply", systemImage: "arrowshape.turn.up.left")
+            switch detailMode {
+            case .emailDetail(let email):
+                emailDetailView(email: email)
+                
+            case .compose(let replyTo):
+                EmailComposeView(
+                    accounts: accountManager.accounts,
+                    replyTo: replyTo,
+                    triggerSend: $triggerSend,
+                    currentDraft: $composeDraft,
+                    onDismiss: {
+                        if let lastEmail = lastViewedEmail {
+                            detailMode = .emailDetail(lastEmail)
+                        } else {
+                            detailMode = .empty
                         }
                     }
-                }
-            } else {
+                )
+                
+            case .empty:
                 VStack {
                     Text("Select an email to view")
                         .font(.title2)
@@ -232,12 +190,22 @@ struct ContentView: View {
             }
         }
         .onChange(of: selectedEmail) { emailID in
+            if case .compose = detailMode {
+                return
+            }
+            
             if let emailID = emailID,
-               let email = accountManager.allEmails.first(where: { $0.id == emailID }),
-               !email.isRead {
-                Task {
-                    await accountManager.markAsRead(uid: email.uid)
+               let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                lastViewedEmail = email
+                detailMode = .emailDetail(email)
+                
+                if !email.isRead {
+                    Task {
+                        await accountManager.markAsRead(uid: email.uid)
+                    }
                 }
+            } else {
+                detailMode = .empty
             }
         }
     }
@@ -401,6 +369,18 @@ struct ContentView: View {
         return folder.name
     }
     
+    private func shouldDisableSend() -> Bool {
+        guard case .compose = detailMode else {
+            return true
+        }
+        
+        guard let draft = composeDraft else {
+            return true
+        }
+        
+        return !draft.isValid || EmailSendingManager.shared.isSending
+    }
+    
     private func extractEmailAddress(_ from: String) -> String {
         // Extract email from "Name <email@domain.com>" format
         if let emailRange = from.range(of: "<(.+?)>", options: .regularExpression) {
@@ -408,6 +388,78 @@ struct ContentView: View {
             return email
         }
         return from
+    }
+    
+    @ViewBuilder
+    private func emailDetailView(email: IMAPEmail) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(email.subject)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .textSelection(.enabled)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("From:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(formatSenderName(email.from))
+                                .textSelection(.enabled)
+                        }
+                        
+                        HStack {
+                            Text("Date:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(formatDate(email.date))
+                                .textSelection(.enabled)
+                        }
+                        
+                        if !email.from.isEmpty && email.from != formatSenderName(email.from) {
+                            HStack {
+                                Text("Email:")
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.secondary)
+                                Text(extractEmailAddress(email.from))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                }
+                
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    if let attributedBody = email.attributedBody {
+                        Text(AttributedString(attributedBody))
+                            .textSelection(.enabled)
+                    } else {
+                        Text(email.body ?? "Loading...")
+                            .font(.body)
+                            .textSelection(.enabled)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .navigationTitle("Email")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    lastViewedEmail = email
+                    detailMode = .compose(replyTo: email)
+                }) {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+            }
+        }
     }
 
 }

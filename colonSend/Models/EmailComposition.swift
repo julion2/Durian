@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct EmailDraft: Identifiable, Codable {
+struct EmailDraft: Identifiable, Codable, Equatable {
     let id: UUID
     var from: String
     var to: [String]

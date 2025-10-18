@@ -9,20 +9,25 @@ import SwiftUI
 import Combine
 
 struct EmailComposeView: View {
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var sendingManager = EmailSendingManager.shared
     
     let accounts: [MailAccount]
     let replyTo: IMAPEmail?
+    @Binding var triggerSend: Bool
+    @Binding var currentDraft: EmailDraft?
+    let onDismiss: () -> Void
     
     @State private var draft: EmailDraft
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var autoSaveCancellable: AnyCancellable?
     
-    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil) {
+    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
         self.replyTo = replyTo
+        self._triggerSend = triggerSend
+        self._currentDraft = currentDraft
+        self.onDismiss = onDismiss
         
         let defaultAccount = accounts.first?.email ?? ""
         
@@ -85,12 +90,13 @@ struct EmailComposeView: View {
                     
                     TextEditor(text: $draft.body)
                         .font(.body)
-                        .frame(minHeight: 200)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .border(Color.gray.opacity(0.2), width: 1)
                 }
                 .onChange(of: draft.body) { _ in
                     scheduleAutoSave()
                 }
+                .frame(maxHeight: .infinity)
             }
             .padding()
             
@@ -104,31 +110,32 @@ struct EmailComposeView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                
                 Spacer()
-                
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.escape)
-                
-                Button("Send") {
-                    sendEmail()
-                }
-                .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.borderedProminent)
-                .disabled(!draft.isValid || sendingManager.isSending)
             }
             .padding()
+            .frame(height: 40)
         }
-        .frame(width: 600, height: 500)
+        .navigationTitle(replyTo != nil ? "Reply" : "New Message")
         .alert("Send Error", isPresented: $showError) {
             Button("OK") { showError = false }
         } message: {
             Text(errorMessage)
         }
+        .onChange(of: triggerSend) { newValue in
+            if newValue {
+                sendEmail()
+                triggerSend = false
+            }
+        }
+        .onChange(of: draft) { newDraft in
+            currentDraft = newDraft
+        }
+        .onAppear {
+            currentDraft = draft
+        }
         .onDisappear {
             autoSaveCancellable?.cancel()
+            currentDraft = nil
         }
     }
     
@@ -168,7 +175,7 @@ struct EmailComposeView: View {
         Task {
             do {
                 try await sendingManager.send(draft: draft, fromAccount: draft.from)
-                dismiss()
+                onDismiss()
             } catch {
                 errorMessage = error.localizedDescription
                 showError = true
@@ -186,16 +193,28 @@ struct EmailComposeView: View {
 }
 
 #Preview {
-    EmailComposeView(
-        accounts: [
-            MailAccount(
-                name: "Test Account",
-                email: "test@example.com",
-                imap: ServerConfig(host: "imap.example.com", port: 993, ssl: true),
-                smtp: ServerConfig(host: "smtp.example.com", port: 587, ssl: false),
-                auth: AuthConfig(username: "test", passwordKeychain: "test-keychain")
+    struct PreviewWrapper: View {
+        @State private var triggerSend = false
+        @State private var draft: EmailDraft? = nil
+        
+        var body: some View {
+            EmailComposeView(
+                accounts: [
+                    MailAccount(
+                        name: "Test Account",
+                        email: "test@example.com",
+                        imap: ServerConfig(host: "imap.example.com", port: 993, ssl: true),
+                        smtp: ServerConfig(host: "smtp.example.com", port: 587, ssl: false),
+                        auth: AuthConfig(username: "test", passwordKeychain: "test-keychain")
+                    )
+                ],
+                replyTo: nil,
+                triggerSend: $triggerSend,
+                currentDraft: $draft,
+                onDismiss: {}
             )
-        ],
-        replyTo: nil
-    )
+        }
+    }
+    
+    return PreviewWrapper()
 }
