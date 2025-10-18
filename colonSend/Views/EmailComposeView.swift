@@ -50,55 +50,100 @@ struct EmailComposeView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            Form {
-                Picker("From:", selection: $draft.from) {
-                    ForEach(accounts, id: \.email) { account in
-                        Text(account.name).tag(account.email)
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    Text("From:")
+                        .frame(width: 60, alignment: .leading)
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $draft.from) {
+                        ForEach(accounts, id: \.email) { account in
+                            Text(account.name).tag(account.email)
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(.accentColor)
+                    .onChange(of: draft.from) { _ in
+                        scheduleAutoSave()
+                    }
+                    Spacer()
                 }
-                .onChange(of: draft.from) { _ in
-                    scheduleAutoSave()
-                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
                 HStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 76)
+                        .padding(.trailing, 16)
+                }
+                
+                HStack(spacing: 8) {
                     Text("To:")
                         .frame(width: 60, alignment: .leading)
-                    TextField("Recipients (comma-separated)", text: toBinding)
+                        .foregroundStyle(.secondary)
+                    TextField("", text: toBinding)
                         .textFieldStyle(.plain)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
                 HStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 76)
+                        .padding(.trailing, 16)
+                }
+                
+                HStack(spacing: 8) {
                     Text("Cc:")
                         .frame(width: 60, alignment: .leading)
-                    TextField("Optional", text: ccBinding)
+                        .foregroundStyle(.secondary)
+                    TextField("", text: ccBinding)
                         .textFieldStyle(.plain)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
                 HStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 76)
+                        .padding(.trailing, 16)
+                }
+                
+                HStack(spacing: 8) {
                     Text("Subject:")
                         .frame(width: 60, alignment: .leading)
-                    TextField("Email subject", text: $draft.subject)
+                        .foregroundStyle(.secondary)
+                    TextField("", text: $draft.subject)
                         .textFieldStyle(.plain)
                 }
                 .onChange(of: draft.subject) { _ in
                     scheduleAutoSave()
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Message:")
-                        .font(.headline)
-                    
-                    TextEditor(text: $draft.body)
-                        .font(.body)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .border(Color.gray.opacity(0.2), width: 1)
+                HStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 76)
+                        .padding(.trailing, 16)
                 }
-                .onChange(of: draft.body) { _ in
-                    scheduleAutoSave()
-                }
-                .frame(maxHeight: .infinity)
+                
+                TextEditor(text: $draft.body)
+                    .font(.body)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(12)
+                    .onChange(of: draft.body) { _ in
+                        scheduleAutoSave()
+                    }
             }
-            .padding()
             
             Divider()
             
