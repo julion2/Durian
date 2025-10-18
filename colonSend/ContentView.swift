@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var selectedFolderID: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
     @State private var cancellables = Set<AnyCancellable>()
+    @State private var showingCompose = false
+    @State private var replyToEmail: IMAPEmail? = nil
 
     var body: some View {
         NavigationSplitView {
@@ -107,6 +109,16 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
+                        replyToEmail = nil
+                        showingCompose = true
+                    }) {
+                        Label("Compose", systemImage: "square.and.pencil")
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+                }
+                
+                ToolbarItem(placement: .automatic) {
+                    Button(action: {
                         Task {
                             await accountManager.reloadCurrentFolder()
                         }
@@ -115,6 +127,12 @@ struct ContentView: View {
                             .foregroundStyle(syncIconColor())
                     }
                 }
+            }
+            .sheet(isPresented: $showingCompose) {
+                EmailComposeView(
+                    accounts: accountManager.accounts,
+                    replyTo: replyToEmail
+                )
             }
         } detail: {
             if let selectedEmail = selectedEmail,
@@ -179,6 +197,16 @@ struct ContentView: View {
                 }
                 .background(Color(NSColor.controlBackgroundColor))
                 .navigationTitle("Email")
+                .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button(action: {
+                            replyToEmail = email
+                            showingCompose = true
+                        }) {
+                            Label("Reply", systemImage: "arrowshape.turn.up.left")
+                        }
+                    }
+                }
             } else {
                 VStack {
                     Text("Select an email to view")
