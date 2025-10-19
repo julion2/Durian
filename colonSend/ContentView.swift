@@ -154,6 +154,7 @@ struct ContentView: View {
                 EmailComposeView(
                     accounts: accountManager.accounts,
                     replyTo: replyTo,
+                    existingDraft: composeDraft,
                     triggerSend: $triggerSend,
                     currentDraft: $composeDraft,
                     onDismiss: {
@@ -190,23 +191,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: selectedEmail) { emailID in
-            if case .compose = detailMode {
-                return
-            }
-            
-            if let emailID = emailID,
-               let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
-                lastViewedEmail = email
-                detailMode = .emailDetail(email)
-                
-                if !email.isRead {
-                    Task {
-                        await accountManager.markAsRead(uid: email.uid)
-                    }
-                }
-            } else {
-                detailMode = .empty
-            }
+            handleEmailSelection(emailID)
         }
     }
     
@@ -457,6 +442,87 @@ struct ContentView: View {
                     detailMode = .compose(replyTo: email)
                 }) {
                     Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+            }
+        }
+    }
+    
+    private func handleEmailSelection(_ emailID: UUID?) {
+        guard let emailID = emailID,
+              let email = accountManager.allEmails.first(where: { $0.id == emailID }) else {
+            detailMode = .empty
+            return
+        }
+        
+        guard let selectedFolderID = selectedFolderID,
+              let folder = accountManager.allFolders.first(where: { $0.id == selectedFolderID }) else {
+            showEmailDetail(email)
+            return
+        }
+        
+        if folder.isDraftsFolder {
+            openDraft(email, folder: folder)
+        } else {
+            showEmailDetail(email)
+        }
+    }
+    
+    private func showEmailDetail(_ email: IMAPEmail) {
+        lastViewedEmail = email
+        detailMode = .emailDetail(email)
+        
+        if !email.isRead {
+            Task {
+                await accountManager.markAsRead(uid: email.uid)
+            }
+        }
+    }
+    
+    private func openDraft(_ email: IMAPEmail, folder: IMAPFolder) {
+        Task {
+            guard let client = accountManager.getClient(for: folder.accountId) else {
+                print("❌ Draft open failed: No client for account \(folder.accountId)")
+                return
+            }
+            
+            await MainActor.run {
+                accountManager.suppressMerge = true
+            }
+            
+            defer {
+                Task { @MainActor in
+                    accountManager.suppressMerge = false
+                }
+            }
+            
+            await client.fetchDraftBody(uid: email.uid)
+            
+            let draft: EmailDraft? = await MainActor.run {
+                guard let clientEmail = client.emails.first(where: { $0.uid == email.uid }),
+                      let fetchedBody = clientEmail.body else {
+                    print("❌ Draft body fetch failed for UID \(email.uid)")
+                    return nil
+                }
+                
+                if let index = accountManager.allEmails.firstIndex(where: { $0.uid == email.uid }) {
+                    accountManager.allEmails[index].body = fetchedBody
+                } else {
+                    print("⚠️ Draft UID \(email.uid) not found in allEmails")
+                    return nil
+                }
+                
+                guard let updatedEmail = accountManager.allEmails.first(where: { $0.uid == email.uid }) else {
+                    print("❌ Draft lost after update")
+                    return nil
+                }
+                
+                return accountManager.parseDraftFromEmail(updatedEmail, accountId: folder.accountId)
+            }
+            
+            if let draft = draft {
+                await MainActor.run {
+                    detailMode = .compose(replyTo: nil)
+                    composeDraft = draft
                 }
             }
         }

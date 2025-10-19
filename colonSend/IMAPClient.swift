@@ -219,26 +219,27 @@ class IMAPClient: ObservableObject {
     
     func selectFolder(_ folderName: String) async {
         guard self.channel != nil, isConnected else {
-            print("❌ Cannot select folder: not connected")
+            print("IMAP_SELECT: Error - Not connected")
             return
         }
         
-        print("🔵 Selecting folder: \(folderName)")
+        print("IMAP_SELECT: Selecting folder: \(folderName)")
         self.selectedFolder = folderName
         
-        // Clear previous emails and update selected folder
         emails.removeAll()
         selectedFolderName = folderName
         
-        let selectCommand = "SELECT \"\(folderName)\""
+        let encodedFolderName = encodeModifiedUTF7(folderName)
+        print("IMAP_SELECT: Encoded folder name: \(encodedFolderName)")
+        
+        let selectCommand = "SELECT \"\(encodedFolderName)\""
         
         do {
-            let _ = try await executeCommand(selectCommand)
-            print("✅ SELECT completed for \(folderName)")
-            
-            // fetchEmails() will be called automatically when parseExistsResponse() is triggered
+            let response = try await executeCommand(selectCommand)
+            print("IMAP_SELECT: Response: \(String(response.prefix(200)))")
+            print("IMAP_SELECT: Completed for \(folderName)")
         } catch {
-            print("❌ Failed to select folder: \(error)")
+            print("IMAP_SELECT: Failed - \(error)")
         }
     }
     
@@ -303,7 +304,6 @@ class IMAPClient: ObservableObject {
                 startIndex = paginationState.currentPage * paginationState.pageSize + 1
                 endIndex = min(startIndex + paginationState.pageSize - 1, paginationState.totalMessages)
             } else {
-                // For initial load, get the most recent messages
                 startIndex = max(1, paginationState.totalMessages - paginationState.pageSize + 1)
                 endIndex = paginationState.totalMessages
             }
@@ -319,7 +319,7 @@ class IMAPClient: ObservableObject {
                     paginationState.nextPage()
                 }
 
-                print("✅ FETCH command completed for range \(startIndex):\(endIndex)")
+                print("✅ Loaded \(loadedCount) emails from \(folder)")
             } else {
             }
 
@@ -334,28 +334,59 @@ class IMAPClient: ObservableObject {
     }
     
     func parseEmailResponse(_ response: String) {
-        // Parse: * 1 FETCH (UID 1 ... ENVELOPE ("date" "subject" (("from"...
+        let fetchBlocks = splitFetchResponse(response)
         
-        if response.contains("BODYSTRUCTURE") {
-            // First parse the email data from ENVELOPE
-            if let email = parseEmailFetch(response) {
+        for fetchBlock in fetchBlocks {
+            if fetchBlock.contains("BODYSTRUCTURE") {
+                if let email = parseEmailFetch(fetchBlock) {
+                    if !emails.contains(where: { $0.uid == email.uid }) {
+                        Task { @MainActor in
+                            emails.append(email)
+                            print("📧 Added email UID \(email.uid): \(email.subject)")
+                        }
+                    }
+                }
+                parseBodyStructureAndFetchBody(response: fetchBlock)
+            } else if let email = parseEmailFetch(fetchBlock) {
                 if !emails.contains(where: { $0.uid == email.uid }) {
                     Task { @MainActor in
                         emails.append(email)
-                        print("📧 Added email: \(email.subject)")
+                        print("📧 Added email UID \(email.uid): \(email.subject)")
                     }
                 }
             }
-            // Then parse BODYSTRUCTURE and fetch body
-            parseBodyStructureAndFetchBody(response: response)
-        } else if let email = parseEmailFetch(response) {
-            if !emails.contains(where: { $0.uid == email.uid }) {
-                Task { @MainActor in
-                    emails.append(email)
-                    print("📧 Added email: \(email.subject)")
+        }
+    }
+    
+    /// Splits a multi-FETCH IMAP response into individual email blocks.
+    /// IMAP servers can send multiple emails in one response (e.g., "27 FETCH items").
+    /// This function uses parenthesis depth tracking to correctly split the response,
+    /// since FETCH data contains nested structures like ENVELOPE ((...)(...)...).
+    private func splitFetchResponse(_ response: String) -> [String] {
+        var blocks: [String] = []
+        var currentBlock = ""
+        var parenDepth = 0
+        
+        let lines = response.components(separatedBy: "\n")
+        
+        for line in lines {
+            if line.contains("* ") && line.contains(" FETCH (") && parenDepth == 0 {
+                if !currentBlock.isEmpty {
+                    blocks.append(currentBlock)
                 }
+                currentBlock = line
+                parenDepth = line.filter { $0 == "(" }.count - line.filter { $0 == ")" }.count
+            } else {
+                currentBlock += "\n" + line
+                parenDepth += line.filter { $0 == "(" }.count - line.filter { $0 == ")" }.count
             }
         }
+        
+        if !currentBlock.isEmpty {
+            blocks.append(currentBlock)
+        }
+        
+        return blocks.filter { !$0.isEmpty }
     }
     
     private func parseEmailFetch(_ response: String) -> IMAPEmail? {
@@ -616,6 +647,70 @@ class IMAPClient: ObservableObject {
         await fetchBody(uid: uid, section: sectionToTry)
     }
 
+    /// Fetches the full body of a draft email by UID.
+    /// Uses BODY.PEEK[] instead of BODY[] to avoid marking the message as read.
+    /// Directly updates the email in the emails array without triggering merges,
+    /// which prevents the body swap bug.
+    func fetchDraftBody(uid: UInt32) async {
+        let fetchCommand = "UID FETCH \(uid) (BODY.PEEK[])"
+        
+        do {
+            let response = try await executeCommand(fetchCommand, timeout: 30.0)
+            
+            guard let uidInResponse = extractUIDFromResponse(response) else {
+                print("❌ Draft body fetch: Could not extract UID from response")
+                return
+            }
+            
+            if uidInResponse != uid {
+                print("⚠️ Draft body fetch: UID mismatch (requested \(uid), got \(uidInResponse))")
+            }
+            
+            if let literalMatch = response.range(of: "\\{(\\d+)\\}", options: .regularExpression) {
+                let sizeStr = response[literalMatch]
+                if let sizeRange = sizeStr.range(of: "\\d+", options: .regularExpression),
+                   let size = Int(sizeStr[sizeRange]) {
+                    
+                    var searchStart = literalMatch.upperBound
+                    
+                    while searchStart < response.endIndex && (response[searchStart] == "\r" || response[searchStart] == "\n") {
+                        searchStart = response.index(after: searchStart)
+                    }
+                    
+                    let searchEnd = response.index(searchStart, offsetBy: size, limitedBy: response.endIndex) ?? response.endIndex
+                    let bodyContent = String(response[searchStart..<searchEnd])
+                    
+                    await MainActor.run {
+                        if let index = emails.firstIndex(where: { $0.uid == uidInResponse }) {
+                            var email = emails[index]
+                            email.body = bodyContent
+                            emails[index] = email
+                        } else {
+                            print("⚠️ Draft body fetch: UID \(uidInResponse) not found in emails array")
+                        }
+                    }
+                    return
+                }
+            }
+            
+            print("❌ Draft body fetch: No literal found in response")
+            
+        } catch {
+            print("❌ Draft body fetch failed: \(error)")
+        }
+    }
+    
+    private func extractUIDFromResponse(_ response: String) -> UInt32? {
+        if let uidMatch = response.range(of: "UID (\\d+)", options: .regularExpression) {
+            let uidText = String(response[uidMatch])
+            if let uidString = uidText.components(separatedBy: " ").last,
+               let uid = UInt32(uidString) {
+                return uid
+            }
+        }
+        return nil
+    }
+    
     private func fetchBody(uid: UInt32, section: String) async {
         let command = "UID FETCH \(uid) (BODY[\(section)])"
         print("📧 FETCHBODY: Starting fetch for UID \(uid), section \(section)")
@@ -924,6 +1019,111 @@ class IMAPClient: ObservableObject {
             await markAsRead(uid: uid)
         }
     }
+    
+    func appendMessage(to folderName: String, message: String, flags: [String] = []) async throws -> UInt32? {
+        print("IMAP_APPEND: Starting append to folder: \(folderName)")
+        
+        guard isConnected else {
+            print("IMAP_APPEND: Error - Not connected")
+            throw IMAPError.noConnection
+        }
+        
+        let encodedFolderName = encodeModifiedUTF7(folderName)
+        print("IMAP_APPEND: Encoded folder name: \(encodedFolderName)")
+        print("IMAP_APPEND: Message size: \(message.utf8.count) bytes")
+        
+        let messageLength = message.utf8.count
+        let flagsString = flags.isEmpty ? "" : "(\(flags.joined(separator: " "))) "
+        
+        var fullCommand = "APPEND \"\(encodedFolderName)\" \(flagsString){\(messageLength)}\r\n"
+        fullCommand += message
+        fullCommand += "\r\n"
+        
+        print("IMAP_APPEND: Executing command")
+        let response = try await executeCommand(fullCommand, timeout: 60.0)
+        
+        print("IMAP_APPEND: Response received: \(String(response.prefix(200)))")
+        
+        if let uidMatch = response.range(of: "APPENDUID \\d+ (\\d+)", options: .regularExpression) {
+            let uidString = String(response[uidMatch])
+            if let uidValue = uidString.components(separatedBy: " ").last,
+               let uid = UInt32(uidValue) {
+                print("IMAP_APPEND: Success - UID: \(uid)")
+                return uid
+            }
+        }
+        
+        if response.contains("OK") && response.contains("APPEND") {
+            print("IMAP_APPEND: Warning - OK but no UID in response")
+            return nil
+        }
+        
+        print("IMAP_APPEND: Failed - Response: \(response)")
+        return nil
+    }
+    
+    func copyMessage(uid: UInt32, toFolder: String) async throws {
+        guard isConnected else {
+            throw IMAPError.noConnection
+        }
+        
+        print("📧 Copying message UID \(uid) to folder: \(toFolder)")
+        
+        let copyCommand = "UID COPY \(uid) \"\(toFolder)\""
+        let _ = try await executeCommand(copyCommand)
+        
+        print("✅ Message copied successfully")
+    }
+    
+    func deleteMessage(uid: UInt32) async throws {
+        print("IMAP_DELETE: Starting delete for UID: \(uid)")
+        
+        guard isConnected else {
+            print("IMAP_DELETE: Error - Not connected")
+            throw IMAPError.noConnection
+        }
+        
+        let deleteCommand = "UID STORE \(uid) +FLAGS (\\\\Deleted)"
+        print("IMAP_DELETE: Executing command: \(deleteCommand)")
+        
+        let response = try await executeCommand(deleteCommand)
+        print("IMAP_DELETE: Response: \(String(response.prefix(100)))")
+        
+        print("IMAP_DELETE: Message marked as deleted")
+    }
+    
+    func expunge() async throws {
+        print("IMAP_EXPUNGE: Starting expunge")
+        
+        guard isConnected else {
+            print("IMAP_EXPUNGE: Error - Not connected")
+            throw IMAPError.noConnection
+        }
+        
+        let expungeCommand = "EXPUNGE"
+        print("IMAP_EXPUNGE: Executing command")
+        
+        let response = try await executeCommand(expungeCommand)
+        print("IMAP_EXPUNGE: Response: \(String(response.prefix(100)))")
+        
+        print("IMAP_EXPUNGE: Completed")
+    }
+    
+    func moveMessage(uid: UInt32, toFolder: String) async throws {
+        guard isConnected else {
+            throw IMAPError.noConnection
+        }
+        
+        print("📧 Moving message UID \(uid) to folder: \(toFolder)")
+        
+        try await copyMessage(uid: uid, toFolder: toFolder)
+        try await deleteMessage(uid: uid)
+        try await expunge()
+        
+        print("✅ Message moved successfully")
+    }
+    
+
     
     // MARK: - Email Content Decoding
     
