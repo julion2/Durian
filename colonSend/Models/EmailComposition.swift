@@ -20,6 +20,8 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var references: String?
     var createdAt: Date
     var modifiedAt: Date
+    var uid: UInt32?
+    var accountId: String?
     
     init(
         id: UUID = UUID(),

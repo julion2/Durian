@@ -32,6 +32,14 @@ struct IMAPFolder: Identifiable, Hashable {
             return "folder"
         }
     }
+    
+    var isDraftsFolder: Bool {
+        return attributes.contains("\\Drafts")
+    }
+    
+    var isSentFolder: Bool {
+        return attributes.contains("\\Sent")
+    }
 }
 
 // MARK: - Email Model

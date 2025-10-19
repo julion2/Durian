@@ -13,6 +13,7 @@ struct EmailComposeView: View {
     
     let accounts: [MailAccount]
     let replyTo: IMAPEmail?
+    let existingDraft: EmailDraft?
     @Binding var triggerSend: Bool
     @Binding var currentDraft: EmailDraft?
     let onDismiss: () -> Void
@@ -22,16 +23,19 @@ struct EmailComposeView: View {
     @State private var errorMessage = ""
     @State private var autoSaveCancellable: AnyCancellable?
     
-    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
+    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
         self.replyTo = replyTo
+        self.existingDraft = existingDraft
         self._triggerSend = triggerSend
         self._currentDraft = currentDraft
         self.onDismiss = onDismiss
         
         let defaultAccount = accounts.first?.email ?? ""
         
-        if let email = replyTo {
+        if let existing = existingDraft {
+            _draft = State(initialValue: existing)
+        } else if let email = replyTo {
             let toAddress = Self.extractEmailAddress(from: email.from)
             let replySubject = email.subject.hasPrefix("Re:") ? email.subject : "Re: \(email.subject)"
             let quotedBody = "\n\n---\nOn \(email.date), \(email.from) wrote:\n> \(email.body ?? "")"
@@ -180,6 +184,12 @@ struct EmailComposeView: View {
         }
         .onDisappear {
             autoSaveCancellable?.cancel()
+            
+            print("COMPOSE: View disappearing - saving draft to server")
+            Task {
+                await saveDraftToServer()
+            }
+            
             currentDraft = nil
         }
     }
@@ -212,16 +222,52 @@ struct EmailComposeView: View {
             .sink { _ in
                 var updatedDraft = draft
                 updatedDraft.updateModifiedDate()
+                
+                print("DRAFTING: Auto-saving draft locally only")
                 DraftManager.shared.saveDraft(updatedDraft)
             }
+    }
+    
+    private func saveDraftToServer() async {
+        var updatedDraft = draft
+        updatedDraft.updateModifiedDate()
+        
+        print("DRAFTING: Saving draft to local storage")
+        DraftManager.shared.saveDraft(updatedDraft)
+        
+        print("DRAFTING: Saving draft to IMAP server for account: \(updatedDraft.from)")
+        
+        do {
+            if let oldUID = draft.uid, let accountId = draft.accountId {
+                print("DRAFTING: Deleting old server draft UID: \(oldUID)")
+                try? await AccountManager.shared.deleteDraftFromIMAP(uid: oldUID, accountId: accountId)
+            }
+            
+            let uid = try await AccountManager.shared.saveDraftToIMAP(draft: updatedDraft, accountId: updatedDraft.from)
+            
+            if let uid = uid {
+                print("DRAFTING: Server save successful - UID: \(uid)")
+                draft.uid = uid
+                draft.accountId = updatedDraft.from
+            }
+        } catch {
+            print("DRAFTING: Server save failed (local copy preserved) - \(error)")
+        }
     }
     
     private func sendEmail() {
         Task {
             do {
+                print("COMPOSE: Sending email")
                 try await sendingManager.send(draft: draft, fromAccount: draft.from)
+                
+                print("COMPOSE: Deleting local draft")
+                DraftManager.shared.deleteDraft(id: draft.id)
+                
+                print("COMPOSE: Email sent successfully, dismissing")
                 onDismiss()
             } catch {
+                print("COMPOSE: Send failed - \(error)")
                 errorMessage = error.localizedDescription
                 showError = true
             }
@@ -254,6 +300,7 @@ struct EmailComposeView: View {
                     )
                 ],
                 replyTo: nil,
+                existingDraft: nil,
                 triggerSend: $triggerSend,
                 currentDraft: $draft,
                 onDismiss: {}
