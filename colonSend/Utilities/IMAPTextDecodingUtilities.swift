@@ -161,6 +161,50 @@ extension IMAPClient {
     
     // MARK: Modified UTF-7 Decoding (for IMAP folder names)
     
+    func encodeModifiedUTF7(_ text: String) -> String {
+        // Modified UTF-7 encoding for IMAP folder names
+        // Converts characters to &XXX- where XXX is base64-encoded UTF-16BE
+        
+        var result = ""
+        var needsEncoding = ""
+        
+        for char in text {
+            if char.isASCII && char != "&" {
+                if !needsEncoding.isEmpty {
+                    result += encodeModifiedUTF7Sequence(needsEncoding)
+                    needsEncoding = ""
+                }
+                result.append(char)
+            } else if char == "&" {
+                if !needsEncoding.isEmpty {
+                    result += encodeModifiedUTF7Sequence(needsEncoding)
+                    needsEncoding = ""
+                }
+                result += "&-"
+            } else {
+                needsEncoding.append(char)
+            }
+        }
+        
+        if !needsEncoding.isEmpty {
+            result += encodeModifiedUTF7Sequence(needsEncoding)
+        }
+        
+        print("IMAP_ENCODE: '\(text)' -> '\(result)'")
+        return result
+    }
+    
+    private func encodeModifiedUTF7Sequence(_ text: String) -> String {
+        guard let utf16Data = text.data(using: .utf16BigEndian) else {
+            return text
+        }
+        
+        let base64 = utf16Data.base64EncodedString()
+        let trimmed = base64.replacingOccurrences(of: "=", with: "")
+        
+        return "&\(trimmed)-"
+    }
+    
     func decodeModifiedUTF7(_ text: String) -> String {
         // Modified UTF-7 decoding for IMAP folder names
         // Pattern: &XXX- where XXX is base64-encoded UTF-16
@@ -172,7 +216,7 @@ extension IMAPClient {
             return text
         }
         
-        print("📁 MUTF7: Decoding '\(text)'")
+        print("IMAP_DECODE: Decoding '\(text)'")
         
         // Process all encoded sequences
         while let match = regex.firstMatch(in: result, options: [], range: NSRange(location: 0, length: result.count)) {
@@ -207,11 +251,11 @@ extension IMAPClient {
                 }
             }
             
-            print("📁 MUTF7: '\(fullMatch)' -> '\(decodedText)'")
+            print("IMAP_DECODE: '\(fullMatch)' -> '\(decodedText)'")
             result = result.replacingOccurrences(of: fullMatch, with: decodedText)
         }
         
-        print("📁 MUTF7: Final result: '\(result)'")
+        print("IMAP_DECODE: Final result: '\(result)'")
         return result
     }
     

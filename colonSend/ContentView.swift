@@ -8,6 +8,12 @@
 import SwiftUI
 import Combine
 
+enum DetailViewMode: Equatable {
+    case emailDetail(IMAPEmail)
+    case compose(replyTo: IMAPEmail?)
+    case empty
+}
+
 struct ContentView: View {
     @StateObject private var accountManager = AccountManager.shared
     @StateObject private var keymapsManager = KeymapsManager.shared
@@ -15,6 +21,10 @@ struct ContentView: View {
     @State private var selectedFolderID: UUID? = nil
     @State private var selectedEmail: Email.ID? = nil
     @State private var cancellables = Set<AnyCancellable>()
+    @State private var detailMode: DetailViewMode = .empty
+    @State private var lastViewedEmail: IMAPEmail? = nil
+    @State private var triggerSend = false
+    @State private var composeDraft: EmailDraft?
 
     var body: some View {
         NavigationSplitView {
@@ -107,6 +117,15 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
+                        detailMode = .compose(replyTo: nil)
+                    }) {
+                        Label("Compose", systemImage: "square.and.pencil")
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
+                }
+                
+                ToolbarItem(placement: .automatic) {
+                    Button(action: {
                         Task {
                             await accountManager.reloadCurrentFolder()
                         }
@@ -115,71 +134,39 @@ struct ContentView: View {
                             .foregroundStyle(syncIconColor())
                     }
                 }
+                
+                ToolbarItem(placement: .automatic) {
+                    Button(action: {
+                        triggerSend = true
+                    }) {
+                        Label("Send", systemImage: "paperplane")
+                    }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(shouldDisableSend())
+                }
             }
         } detail: {
-            if let selectedEmail = selectedEmail,
-               let email = accountManager.allEmails.first(where: { $0.id == selectedEmail }) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        // Header section
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(email.subject)
-                                .font(.title2)
-                                .fontWeight(.semibold)
-                                .textSelection(.enabled)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("From:")
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.secondary)
-                                    Text(formatSenderName(email.from))
-                                        .textSelection(.enabled)
-                                }
-                                
-                                HStack {
-                                    Text("Date:")
-                                        .fontWeight(.medium)
-                                        .foregroundStyle(.secondary)
-                                    Text(formatDate(email.date))
-                                        .textSelection(.enabled)
-                                }
-                                
-                                if !email.from.isEmpty && email.from != formatSenderName(email.from) {
-                                    HStack {
-                                        Text("Email:")
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.secondary)
-                                        Text(extractEmailAddress(email.from))
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                    }
-                                }
-                            }
-                            .font(.callout)
+            switch detailMode {
+            case .emailDetail(let email):
+                emailDetailView(email: email)
+                
+            case .compose(let replyTo):
+                EmailComposeView(
+                    accounts: accountManager.accounts,
+                    replyTo: replyTo,
+                    existingDraft: composeDraft,
+                    triggerSend: $triggerSend,
+                    currentDraft: $composeDraft,
+                    onDismiss: {
+                        if let lastEmail = lastViewedEmail {
+                            detailMode = .emailDetail(lastEmail)
+                        } else {
+                            detailMode = .empty
                         }
-                        
-                        Divider()
-                        
-                        // Body section
-                        VStack(alignment: .leading, spacing: 12) {
-                            if let attributedBody = email.attributedBody {
-                                Text(AttributedString(attributedBody))
-                                    .textSelection(.enabled)
-                            } else {
-                                Text(email.body ?? "Loading...")
-                                    .font(.body)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                        
-                        Spacer()
                     }
-                    .padding(20)
-                }
-                .background(Color(NSColor.controlBackgroundColor))
-                .navigationTitle("Email")
-            } else {
+                )
+                
+            case .empty:
                 VStack {
                     Text("Select an email to view")
                         .font(.title2)
@@ -204,13 +191,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: selectedEmail) { emailID in
-            if let emailID = emailID,
-               let email = accountManager.allEmails.first(where: { $0.id == emailID }),
-               !email.isRead {
-                Task {
-                    await accountManager.markAsRead(uid: email.uid)
-                }
-            }
+            handleEmailSelection(emailID)
         }
     }
     
@@ -373,6 +354,18 @@ struct ContentView: View {
         return folder.name
     }
     
+    private func shouldDisableSend() -> Bool {
+        guard case .compose = detailMode else {
+            return true
+        }
+        
+        guard let draft = composeDraft else {
+            return true
+        }
+        
+        return !draft.isValid || EmailSendingManager.shared.isSending
+    }
+    
     private func extractEmailAddress(_ from: String) -> String {
         // Extract email from "Name <email@domain.com>" format
         if let emailRange = from.range(of: "<(.+?)>", options: .regularExpression) {
@@ -380,6 +373,159 @@ struct ContentView: View {
             return email
         }
         return from
+    }
+    
+    @ViewBuilder
+    private func emailDetailView(email: IMAPEmail) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(email.subject)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .textSelection(.enabled)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("From:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(formatSenderName(email.from))
+                                .textSelection(.enabled)
+                        }
+                        
+                        HStack {
+                            Text("Date:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(formatDate(email.date))
+                                .textSelection(.enabled)
+                        }
+                        
+                        if !email.from.isEmpty && email.from != formatSenderName(email.from) {
+                            HStack {
+                                Text("Email:")
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.secondary)
+                                Text(extractEmailAddress(email.from))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                }
+                
+                Divider()
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    if let attributedBody = email.attributedBody {
+                        Text(AttributedString(attributedBody))
+                            .textSelection(.enabled)
+                    } else {
+                        Text(email.body ?? "Loading...")
+                            .font(.body)
+                            .textSelection(.enabled)
+                    }
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .navigationTitle("Email")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    lastViewedEmail = email
+                    detailMode = .compose(replyTo: email)
+                }) {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+            }
+        }
+    }
+    
+    private func handleEmailSelection(_ emailID: UUID?) {
+        guard let emailID = emailID,
+              let email = accountManager.allEmails.first(where: { $0.id == emailID }) else {
+            detailMode = .empty
+            return
+        }
+        
+        guard let selectedFolderID = selectedFolderID,
+              let folder = accountManager.allFolders.first(where: { $0.id == selectedFolderID }) else {
+            showEmailDetail(email)
+            return
+        }
+        
+        if folder.isDraftsFolder {
+            openDraft(email, folder: folder)
+        } else {
+            showEmailDetail(email)
+        }
+    }
+    
+    private func showEmailDetail(_ email: IMAPEmail) {
+        lastViewedEmail = email
+        detailMode = .emailDetail(email)
+        
+        if !email.isRead {
+            Task {
+                await accountManager.markAsRead(uid: email.uid)
+            }
+        }
+    }
+    
+    private func openDraft(_ email: IMAPEmail, folder: IMAPFolder) {
+        Task {
+            guard let client = accountManager.getClient(for: folder.accountId) else {
+                print("❌ Draft open failed: No client for account \(folder.accountId)")
+                return
+            }
+            
+            await MainActor.run {
+                accountManager.suppressMerge = true
+            }
+            
+            defer {
+                Task { @MainActor in
+                    accountManager.suppressMerge = false
+                }
+            }
+            
+            await client.fetchDraftBody(uid: email.uid)
+            
+            let draft: EmailDraft? = await MainActor.run {
+                guard let clientEmail = client.emails.first(where: { $0.uid == email.uid }),
+                      let fetchedBody = clientEmail.body else {
+                    print("❌ Draft body fetch failed for UID \(email.uid)")
+                    return nil
+                }
+                
+                if let index = accountManager.allEmails.firstIndex(where: { $0.uid == email.uid }) {
+                    accountManager.allEmails[index].body = fetchedBody
+                } else {
+                    print("⚠️ Draft UID \(email.uid) not found in allEmails")
+                    return nil
+                }
+                
+                guard let updatedEmail = accountManager.allEmails.first(where: { $0.uid == email.uid }) else {
+                    print("❌ Draft lost after update")
+                    return nil
+                }
+                
+                return accountManager.parseDraftFromEmail(updatedEmail, accountId: folder.accountId)
+            }
+            
+            if let draft = draft {
+                await MainActor.run {
+                    detailMode = .compose(replyTo: nil)
+                    composeDraft = draft
+                }
+            }
+        }
     }
 
 }
