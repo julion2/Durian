@@ -139,25 +139,9 @@ struct EmailComposeView: View {
                         .foregroundStyle(.secondary)
                     TextField("", text: $draft.subject)
                         .textFieldStyle(.plain)
-                }
-                .onChange(of: draft.subject) { _ in
-                    scheduleAutoSave()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(height: 1)
-                        .padding(.leading, 76)
-                        .padding(.trailing, 16)
-                }
-                
-                if !signatures.isEmpty {
-                    HStack(spacing: 8) {
+                    
+                    if !signatures.isEmpty {
                         Text("Signature:")
-                            .frame(width: 60, alignment: .leading)
                             .foregroundStyle(.secondary)
                         Picker("", selection: $selectedSignature) {
                             Text("None").tag(nil as String?)
@@ -171,18 +155,20 @@ struct EmailComposeView: View {
                         .onChange(of: selectedSignature) { _ in
                             updateBodyWithSignature()
                         }
-                        Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    
-                    HStack {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.6))
-                            .frame(height: 1)
-                            .padding(.leading, 76)
-                            .padding(.trailing, 16)
-                    }
+                }
+                .onChange(of: draft.subject) { _ in
+                    scheduleAutoSave()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                
+                HStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.6))
+                        .frame(height: 1)
+                        .padding(.leading, 76)
+                        .padding(.trailing, 16)
                 }
                 
                 TextEditor(text: $draft.body)
@@ -261,23 +247,23 @@ struct EmailComposeView: View {
     }
     
     private func updateBodyWithSignature() {
-        guard let signatureKey = selectedSignature,
-              let signatureText = signatures[signatureKey] else {
-            return
-        }
-        
         let bodyWithoutSignature = removeExistingSignature(from: draft.body)
         
-        if !signatureText.isEmpty {
-            draft.body = bodyWithoutSignature + "\n\n-- \n" + signatureText
+        if let signatureKey = selectedSignature,
+           let signatureText = signatures[signatureKey],
+           !signatureText.isEmpty {
+            draft.body = bodyWithoutSignature + "\n\n" + signatureText
         } else {
             draft.body = bodyWithoutSignature
         }
     }
     
     private func removeExistingSignature(from body: String) -> String {
-        if let range = body.range(of: "\n-- \n", options: .backwards) {
-            return String(body[..<range.lowerBound])
+        for sigKey in signatures.keys {
+            if let sigText = signatures[sigKey],
+               let range = body.range(of: "\n\n" + sigText, options: .backwards) {
+                return String(body[..<range.lowerBound])
+            }
         }
         return body
     }
