@@ -551,6 +551,12 @@ struct MailAccount: Codable {
     let imap: ServerConfig
     let smtp: ServerConfig
     let auth: AuthConfig
+    let defaultSignature: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case name, email, imap, smtp, auth
+        case defaultSignature = "default_signature"
+    }
 }
 
 struct ServerConfig: Codable {
@@ -572,10 +578,12 @@ struct AuthConfig: Codable {
 struct AppConfig: Codable {
     let accounts: [MailAccount]
     let settings: AppSettings
+    let signatures: [String: String]
     
-    init(accounts: [MailAccount], settings: AppSettings = AppSettings()) {
+    init(accounts: [MailAccount], settings: AppSettings = AppSettings(), signatures: [String: String] = [:]) {
         self.accounts = accounts
         self.settings = settings
+        self.signatures = signatures
     }
 }
 
@@ -628,10 +636,12 @@ class ConfigManager {
                     email: "test@ethereal.email",
                     imap: ServerConfig(host: "imap.ethereal.email", port: 143, ssl: false),
                     smtp: ServerConfig(host: "smtp.ethereal.email", port: 587, ssl: false),
-                    auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test")
+                    auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test"),
+                    defaultSignature: nil
                 )
             ],
-            settings: AppSettings()
+            settings: AppSettings(),
+            signatures: [:]
         )
         
         do {
@@ -645,12 +655,16 @@ class ConfigManager {
         }
     }
     
-    var accounts: [MailAccount] {
+    func getAccounts() -> [MailAccount] {
         return config?.accounts ?? []
     }
     
-    var settings: AppSettings {
+    func getSettings() -> AppSettings {
         return config?.settings ?? AppSettings()
+    }
+    
+    func getSignatures() -> [String: String] {
+        return config?.signatures ?? [:]
     }
     
     func updateSettings(_ newSettings: AppSettings) {

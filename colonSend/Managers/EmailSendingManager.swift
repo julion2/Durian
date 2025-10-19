@@ -36,7 +36,7 @@ class EmailSendingManager: ObservableObject {
             sendingProgress = ""
         }
         
-        guard let account = ConfigManager.shared.accounts.first(where: { $0.email == accountEmail }) else {
+        guard let account = ConfigManager.shared.getAccounts().first(where: { $0.email == accountEmail }) else {
             let error = EmailSendingError.noSMTPConfiguration
             lastError = error
             throw error

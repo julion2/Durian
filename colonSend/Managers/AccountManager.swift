@@ -29,7 +29,7 @@ class AccountManager: ObservableObject {
     }
     
     private func loadAccounts() {
-        accounts = ConfigManager.shared.accounts
+        accounts = ConfigManager.shared.getAccounts()
         print("🔧 Loaded \(accounts.count) accounts")
     }
     

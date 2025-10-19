@@ -22,6 +22,9 @@ struct EmailComposeView: View {
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var autoSaveCancellable: AnyCancellable?
+    @State private var selectedSignature: String?
+    
+    private let signatures: [String: String]
     
     init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
@@ -30,11 +33,13 @@ struct EmailComposeView: View {
         self._triggerSend = triggerSend
         self._currentDraft = currentDraft
         self.onDismiss = onDismiss
+        self.signatures = ConfigManager.shared.getSignatures()
         
         let defaultAccount = accounts.first?.email ?? ""
         
         if let existing = existingDraft {
             _draft = State(initialValue: existing)
+            _selectedSignature = State(initialValue: nil)
         } else if let email = replyTo {
             let toAddress = Self.extractEmailAddress(from: email.from)
             let replySubject = email.subject.hasPrefix("Re:") ? email.subject : "Re: \(email.subject)"
@@ -47,8 +52,14 @@ struct EmailComposeView: View {
                 body: quotedBody,
                 inReplyTo: String(email.uid)
             ))
+            
+            let account = accounts.first { $0.email == defaultAccount }
+            _selectedSignature = State(initialValue: account?.defaultSignature)
         } else {
             _draft = State(initialValue: EmailDraft(from: defaultAccount))
+            
+            let account = accounts.first { $0.email == defaultAccount }
+            _selectedSignature = State(initialValue: account?.defaultSignature)
         }
     }
     
@@ -67,7 +78,10 @@ struct EmailComposeView: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .tint(.accentColor)
-                    .onChange(of: draft.from) { _ in
+                    .onChange(of: draft.from) { newAccount in
+                        if let account = accounts.first(where: { $0.email == newAccount }) {
+                            selectedSignature = account.defaultSignature
+                        }
                         scheduleAutoSave()
                     }
                     Spacer()
@@ -140,6 +154,37 @@ struct EmailComposeView: View {
                         .padding(.trailing, 16)
                 }
                 
+                if !signatures.isEmpty {
+                    HStack(spacing: 8) {
+                        Text("Signature:")
+                            .frame(width: 60, alignment: .leading)
+                            .foregroundStyle(.secondary)
+                        Picker("", selection: $selectedSignature) {
+                            Text("None").tag(nil as String?)
+                            ForEach(signatures.keys.sorted(), id: \.self) { key in
+                                Text(key.capitalized).tag(key as String?)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .tint(.accentColor)
+                        .onChange(of: selectedSignature) { _ in
+                            updateBodyWithSignature()
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    
+                    HStack {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.6))
+                            .frame(height: 1)
+                            .padding(.leading, 76)
+                            .padding(.trailing, 16)
+                    }
+                }
+                
                 TextEditor(text: $draft.body)
                     .font(.body)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -181,6 +226,7 @@ struct EmailComposeView: View {
         }
         .onAppear {
             currentDraft = draft
+            updateBodyWithSignature()
         }
         .onDisappear {
             autoSaveCancellable?.cancel()
@@ -212,6 +258,28 @@ struct EmailComposeView: View {
                 scheduleAutoSave()
             }
         )
+    }
+    
+    private func updateBodyWithSignature() {
+        guard let signatureKey = selectedSignature,
+              let signatureText = signatures[signatureKey] else {
+            return
+        }
+        
+        let bodyWithoutSignature = removeExistingSignature(from: draft.body)
+        
+        if !signatureText.isEmpty {
+            draft.body = bodyWithoutSignature + "\n\n-- \n" + signatureText
+        } else {
+            draft.body = bodyWithoutSignature
+        }
+    }
+    
+    private func removeExistingSignature(from body: String) -> String {
+        if let range = body.range(of: "\n-- \n", options: .backwards) {
+            return String(body[..<range.lowerBound])
+        }
+        return body
     }
     
     private func scheduleAutoSave() {
@@ -296,7 +364,8 @@ struct EmailComposeView: View {
                         email: "test@example.com",
                         imap: ServerConfig(host: "imap.example.com", port: 993, ssl: true),
                         smtp: ServerConfig(host: "smtp.example.com", port: 587, ssl: false),
-                        auth: AuthConfig(username: "test", passwordKeychain: "test-keychain")
+                        auth: AuthConfig(username: "test", passwordKeychain: "test-keychain"),
+                        defaultSignature: nil
                     )
                 ],
                 replyTo: nil,

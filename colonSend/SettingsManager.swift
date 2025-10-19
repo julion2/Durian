@@ -14,7 +14,7 @@ class SettingsManager: ObservableObject {
     
     private func loadSettings() {
         // Settings are loaded from the same config.json file
-        settings = ConfigManager.shared.settings
+        settings = ConfigManager.shared.getSettings()
     }
     
     private func setupAutoSave() {
