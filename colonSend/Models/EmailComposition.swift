@@ -22,6 +22,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var modifiedAt: Date
     var uid: UInt32?
     var accountId: String?
+    var attachments: [EmailAttachment] = []
     
     init(
         id: UUID = UUID(),
@@ -60,9 +61,17 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var isValid: Bool {
         return hasRecipients && !subject.isEmpty
     }
+    
+    var hasAttachments: Bool {
+        return !attachments.isEmpty
+    }
+    
+    var totalAttachmentSize: Int64 {
+        attachments.reduce(0) { $0 + Int64($1.data.count) }
+    }
 }
 
-struct EmailAttachment: Identifiable, Codable {
+struct EmailAttachment: Identifiable, Codable, Equatable {
     let id: UUID
     let filename: String
     let mimeType: String
@@ -73,6 +82,14 @@ struct EmailAttachment: Identifiable, Codable {
         self.filename = filename
         self.mimeType = mimeType
         self.data = data
+    }
+    
+    var size: Int64 {
+        Int64(data.count)
+    }
+    
+    var sizeFormatted: String {
+        ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
     }
 }
 

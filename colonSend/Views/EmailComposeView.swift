@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 struct EmailComposeView: View {
     @StateObject private var sendingManager = EmailSendingManager.shared
@@ -24,8 +25,12 @@ struct EmailComposeView: View {
     @State private var errorMessage = ""
     @State private var autoSaveCancellable: AnyCancellable?
     @State private var selectedSignature: String?
+    @State private var showingFilePicker = false
     
     private let signatures: [String: String]
+    private let maxAttachmentSize: Int64 = 25_000_000
+    private let maxTotalSize: Int64 = 50_000_000
+    private let maxAttachments: Int = 10
     
     init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, forward: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
@@ -195,6 +200,25 @@ struct EmailComposeView: View {
                     }
             }
             
+            if !draft.attachments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(draft.attachments) { attachment in
+                            AttachmentChip(
+                                filename: attachment.filename,
+                                size: attachment.sizeFormatted,
+                                onRemove: {
+                                    removeAttachment(id: attachment.id)
+                                }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                .background(Color(NSColor.controlBackgroundColor))
+            }
+            
             Divider()
             
             HStack {
@@ -211,6 +235,23 @@ struct EmailComposeView: View {
             .frame(height: 40)
         }
         .navigationTitle(replyTo != nil ? "Reply" : (forward != nil ? "Forward" : "New Message"))
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    showingFilePicker = true
+                }) {
+                    Label("Attach", systemImage: "paperclip")
+                }
+                .disabled(draft.attachments.count >= maxAttachments)
+            }
+        }
+        .fileImporter(
+            isPresented: $showingFilePicker,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true
+        ) { result in
+            handleFileSelection(result)
+        }
         .alert("Send Error", isPresented: $showError) {
             Button("OK") { showError = false }
         } message: {
@@ -396,6 +437,117 @@ struct EmailComposeView: View {
             return email
         }
         return from
+    }
+    
+    private func handleFileSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            for url in urls {
+                guard url.startAccessingSecurityScopedResource() else {
+                    print("Failed to access file: \(url.lastPathComponent)")
+                    continue
+                }
+                
+                defer {
+                    url.stopAccessingSecurityScopedResource()
+                }
+                
+                do {
+                    let data = try Data(contentsOf: url)
+                    
+                    guard canAddAttachment(size: Int64(data.count)) else {
+                        continue
+                    }
+                    
+                    let mimeType = getMimeType(for: url)
+                    let attachment = EmailAttachment(
+                        filename: url.lastPathComponent,
+                        mimeType: mimeType,
+                        data: data
+                    )
+                    
+                    draft.attachments.append(attachment)
+                    scheduleAutoSave()
+                    
+                } catch {
+                    print("Failed to read file: \(error)")
+                    showErrorMessage("Failed to attach: \(url.lastPathComponent)")
+                }
+            }
+            
+        case .failure(let error):
+            print("File picker error: \(error)")
+        }
+    }
+    
+    private func canAddAttachment(size: Int64) -> Bool {
+        guard draft.attachments.count < maxAttachments else {
+            showErrorMessage("Maximum \(maxAttachments) attachments allowed")
+            return false
+        }
+        
+        guard size <= maxAttachmentSize else {
+            showErrorMessage("File too large (max 25MB)")
+            return false
+        }
+        
+        guard draft.totalAttachmentSize + size <= maxTotalSize else {
+            showErrorMessage("Total attachments too large (max 50MB)")
+            return false
+        }
+        
+        return true
+    }
+    
+    private func getMimeType(for url: URL) -> String {
+        if let uti = UTType(filenameExtension: url.pathExtension) {
+            return uti.preferredMIMEType ?? "application/octet-stream"
+        }
+        return "application/octet-stream"
+    }
+    
+    private func removeAttachment(id: UUID) {
+        draft.attachments.removeAll { $0.id == id }
+        scheduleAutoSave()
+    }
+    
+    private func showErrorMessage(_ message: String) {
+        errorMessage = message
+        showError = true
+    }
+}
+
+struct AttachmentChip: View {
+    let filename: String
+    let size: String
+    let onRemove: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(filename)
+                    .font(.caption)
+                    .lineLimit(1)
+                Text(size)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.1))
+        .cornerRadius(8)
     }
 }
 

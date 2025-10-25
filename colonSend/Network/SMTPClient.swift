@@ -127,29 +127,6 @@ class SMTPClient {
     }
     
     private func buildEmailContent(draft: EmailDraft) -> String {
-        var email = ""
-        
-        email += "From: \(draft.from)\r\n"
-        email += "To: \(draft.to.joined(separator: ", "))\r\n"
-        
-        if !draft.cc.isEmpty {
-            email += "Cc: \(draft.cc.joined(separator: ", "))\r\n"
-        }
-        
-        email += "Subject: \(draft.subject)\r\n"
-        email += "Date: \(formatDate(Date()))\r\n"
-        email += "MIME-Version: 1.0\r\n"
-        email += "Content-Type: text/plain; charset=UTF-8\r\n"
-        email += "\r\n"
-        email += draft.body
-        
-        return email
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter.string(from: date)
+        return MIMEBuilder.buildMessage(from: draft)
     }
 }

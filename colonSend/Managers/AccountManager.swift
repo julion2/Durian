@@ -297,37 +297,7 @@ class AccountManager: ObservableObject {
     }
     
     private func formatDraftAsEmail(_ draft: EmailDraft) -> String {
-        var message = ""
-        
-        message += "From: \(draft.from)\r\n"
-        message += "To: \(draft.to.joined(separator: ", "))\r\n"
-        
-        if !draft.cc.isEmpty {
-            message += "Cc: \(draft.cc.joined(separator: ", "))\r\n"
-        }
-        
-        if !draft.bcc.isEmpty {
-            message += "Bcc: \(draft.bcc.joined(separator: ", "))\r\n"
-        }
-        
-        message += "Subject: \(draft.subject)\r\n"
-        message += "Date: \(formatDate(draft.createdAt))\r\n"
-        message += "Message-ID: <\(draft.id.uuidString)@colonSend>\r\n"
-        
-        if let inReplyTo = draft.inReplyTo {
-            message += "In-Reply-To: \(inReplyTo)\r\n"
-        }
-        
-        if let references = draft.references {
-            message += "References: \(references)\r\n"
-        }
-        
-        message += "Content-Type: text/plain; charset=UTF-8\r\n"
-        message += "Content-Transfer-Encoding: 8bit\r\n"
-        message += "\r\n"
-        message += draft.body
-        
-        return message
+        return MIMEBuilder.buildMessage(from: draft)
     }
     
     func parseDraftFromEmail(_ email: IMAPEmail, accountId: String) -> EmailDraft? {
