@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var lastViewedEmail: IMAPEmail? = nil
     @State private var triggerSend = false
     @State private var composeDraft: EmailDraft?
+    @State private var draftLoadingTask: Task<Void, Never>?
 
     var body: some View {
         NavigationSplitView {
@@ -489,52 +490,59 @@ struct ContentView: View {
     }
     
     private func openDraft(_ email: IMAPEmail, folder: IMAPFolder) {
-        Task {
+        draftLoadingTask?.cancel()
+        
+        let targetUID = email.uid
+        let targetSubject = email.subject
+        
+        print("DRAFT_LOAD: Starting load for UID=\(targetUID) Subject=\(targetSubject)")
+        
+        draftLoadingTask = Task { @MainActor in
             guard let client = accountManager.getClient(for: folder.accountId) else {
                 print("❌ Draft open failed: No client for account \(folder.accountId)")
                 return
             }
             
-            await MainActor.run {
-                accountManager.suppressMerge = true
-            }
+            accountManager.suppressMerge = true
             
             defer {
-                Task { @MainActor in
-                    accountManager.suppressMerge = false
-                }
+                accountManager.suppressMerge = false
             }
             
             await client.fetchDraftBody(uid: email.uid)
             
-            let draft: EmailDraft? = await MainActor.run {
-                guard let clientEmail = client.emails.first(where: { $0.uid == email.uid }),
-                      let fetchedBody = clientEmail.body else {
-                    print("❌ Draft body fetch failed for UID \(email.uid)")
-                    return nil
-                }
-                
-                if let index = accountManager.allEmails.firstIndex(where: { $0.uid == email.uid }) {
-                    accountManager.allEmails[index].body = fetchedBody
-                } else {
-                    print("⚠️ Draft UID \(email.uid) not found in allEmails")
-                    return nil
-                }
-                
-                guard let updatedEmail = accountManager.allEmails.first(where: { $0.uid == email.uid }) else {
-                    print("❌ Draft lost after update")
-                    return nil
-                }
-                
-                return accountManager.parseDraftFromEmail(updatedEmail, accountId: folder.accountId)
+            guard !Task.isCancelled else {
+                print("DRAFT_LOAD: Task cancelled for UID=\(targetUID)")
+                return
             }
             
-            if let draft = draft {
-                await MainActor.run {
-                    detailMode = .compose(replyTo: nil, forward: nil)
-                    composeDraft = draft
-                }
+            guard let clientEmail = client.emails.first(where: { $0.uid == targetUID }),
+                  let fetchedBody = clientEmail.body else {
+                print("❌ Draft body fetch failed for UID \(targetUID)")
+                return
             }
+            
+            print("DRAFT_LOAD: Fetched body length=\(fetchedBody.count)")
+            
+            var emailCopy = email
+            emailCopy.body = fetchedBody
+            
+            let draft = accountManager.parseDraftFromEmail(emailCopy, accountId: folder.accountId)
+            
+            guard !Task.isCancelled else {
+                print("DRAFT_LOAD: Task cancelled before showing draft UID=\(targetUID)")
+                return
+            }
+            
+            guard let draft = draft else {
+                print("❌ Draft parsing failed for UID=\(targetUID)")
+                return
+            }
+            
+            print("DRAFT_LOAD: Successfully loaded draft UID=\(targetUID) attachments=\(draft.attachments.count)")
+            
+            detailMode = .compose(replyTo: nil, forward: nil)
+            composeDraft = draft
         }
     }
 

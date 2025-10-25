@@ -306,6 +306,9 @@ class AccountManager: ObservableObject {
             return nil
         }
         
+        print("DRAFT_PARSE: Starting parse for UID=\(email.uid) Subject=\(email.subject)")
+        print("DRAFT_PARSE: Body length=\(fullBody.count)")
+        
         var toAddresses: [String] = []
         var ccAddresses: [String] = []
         var bccAddresses: [String] = []
@@ -313,10 +316,14 @@ class AccountManager: ObservableObject {
         var body = fullBody
         var inReplyTo: String? = nil
         var references: String? = nil
+        var attachments: [EmailAttachment] = []
+        var boundary: String? = nil
+        var contentTypeHeader = ""
         
         let lines = fullBody.components(separatedBy: .newlines)
         var bodyStartIndex = 0
         var headersParsed = 0
+        var isParsingContentType = false
         
         for (index, line) in lines.enumerated() {
             let trimmedLine = line.trimmingCharacters(in: .whitespaces)
@@ -325,31 +332,80 @@ class AccountManager: ObservableObject {
                 let toLine = trimmedLine.replacingOccurrences(of: "To:", with: "").trimmingCharacters(in: .whitespaces)
                 toAddresses = toLine.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
                 headersParsed += 1
+                isParsingContentType = false
             } else if trimmedLine.hasPrefix("Cc:") {
                 let ccLine = trimmedLine.replacingOccurrences(of: "Cc:", with: "").trimmingCharacters(in: .whitespaces)
                 ccAddresses = ccLine.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
                 headersParsed += 1
+                isParsingContentType = false
             } else if trimmedLine.hasPrefix("Bcc:") {
                 let bccLine = trimmedLine.replacingOccurrences(of: "Bcc:", with: "").trimmingCharacters(in: .whitespaces)
                 bccAddresses = bccLine.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
                 headersParsed += 1
+                isParsingContentType = false
             } else if trimmedLine.hasPrefix("Subject:") {
                 subject = trimmedLine.replacingOccurrences(of: "Subject:", with: "").trimmingCharacters(in: .whitespaces)
                 headersParsed += 1
+                isParsingContentType = false
             } else if trimmedLine.hasPrefix("In-Reply-To:") {
                 inReplyTo = trimmedLine.replacingOccurrences(of: "In-Reply-To:", with: "").trimmingCharacters(in: .whitespaces)
                 headersParsed += 1
+                isParsingContentType = false
             } else if trimmedLine.hasPrefix("References:") {
                 references = trimmedLine.replacingOccurrences(of: "References:", with: "").trimmingCharacters(in: .whitespaces)
                 headersParsed += 1
+                isParsingContentType = false
+            } else if trimmedLine.hasPrefix("Content-Type:") {
+                contentTypeHeader = trimmedLine
+                isParsingContentType = true
+            } else if isParsingContentType && (line.hasPrefix(" ") || line.hasPrefix("\t")) {
+                contentTypeHeader += " " + trimmedLine
             } else if trimmedLine.isEmpty {
                 bodyStartIndex = index + 1
                 break
+            } else {
+                isParsingContentType = false
+            }
+        }
+        
+        if !contentTypeHeader.isEmpty {
+            print("DRAFT_PARSE: Content-Type header: \(contentTypeHeader)")
+            
+            let patterns = [
+                "boundary=\"([^\"]+)\"",
+                "boundary='([^']+)'",
+                "boundary=([^;\\s]+)"
+            ]
+            
+            for pattern in patterns {
+                if let match = contentTypeHeader.range(of: pattern, options: .regularExpression) {
+                    let matchedString = String(contentTypeHeader[match])
+                    boundary = matchedString
+                        .replacingOccurrences(of: "boundary=\"", with: "")
+                        .replacingOccurrences(of: "boundary='", with: "")
+                        .replacingOccurrences(of: "boundary=", with: "")
+                        .replacingOccurrences(of: "\"", with: "")
+                        .replacingOccurrences(of: "'", with: "")
+                        .trimmingCharacters(in: .whitespaces)
+                    print("DRAFT_PARSE: Found boundary: \(boundary ?? "nil")")
+                    break
+                }
             }
         }
         
         if bodyStartIndex > 0 && bodyStartIndex < lines.count {
-            body = lines[bodyStartIndex...].joined(separator: "\n")
+            let fullContent = lines[bodyStartIndex...].joined(separator: "\n")
+            
+            if let boundary = boundary {
+                print("DRAFT_PARSE: Parsing MIME multipart with boundary: \(boundary)")
+                let parsed = parseMIMEMultipart(content: fullContent, boundary: boundary)
+                body = parsed.body
+                attachments = parsed.attachments
+                print("DRAFT_PARSE: Parsed body.count=\(body.count) attachments.count=\(attachments.count)")
+            } else {
+                print("DRAFT_PARSE: No boundary found, using full content as body")
+                body = fullContent
+            }
         }
         
         var draft = EmailDraft(
@@ -365,8 +421,88 @@ class AccountManager: ObservableObject {
         draft.bcc = bccAddresses
         draft.uid = email.uid
         draft.accountId = accountId
+        draft.attachments = attachments
+        
+        print("DRAFT_PARSE: Final draft - UID=\(draft.uid ?? 0) attachments=\(draft.attachments.count)")
         
         return draft
+    }
+    
+    private func parseMIMEMultipart(content: String, boundary: String) -> (body: String, attachments: [EmailAttachment]) {
+        print("MIME_PARSE: Boundary=\(boundary) Content.count=\(content.count)")
+        let parts = content.components(separatedBy: "--\(boundary)")
+        print("MIME_PARSE: Found \(parts.count) parts")
+        var body = ""
+        var attachments: [EmailAttachment] = []
+        
+        for (partIndex, part) in parts.enumerated() {
+            print("MIME_PARSE: Processing part \(partIndex) length=\(part.count)")
+            let trimmedPart = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if trimmedPart.isEmpty || trimmedPart == "--" {
+                continue
+            }
+            
+            let partLines = part.components(separatedBy: .newlines)
+            var isAttachment = false
+            var filename: String?
+            var mimeType: String?
+            var encoding: String?
+            var contentStartIndex = 0
+            
+            for (index, line) in partLines.enumerated() {
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                
+                if trimmedLine.hasPrefix("Content-Type:") {
+                    if let typeMatch = trimmedLine.range(of: "Content-Type: ([^;]+)", options: .regularExpression) {
+                        mimeType = String(trimmedLine[typeMatch]).replacingOccurrences(of: "Content-Type: ", with: "")
+                    }
+                    
+                    if trimmedLine.contains("name=") {
+                        if let nameRange = trimmedLine.range(of: "name=\"([^\"]+)\"", options: .regularExpression) {
+                            filename = String(trimmedLine[nameRange]).replacingOccurrences(of: "name=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                        }
+                    }
+                } else if trimmedLine.hasPrefix("Content-Disposition:") && trimmedLine.contains("attachment") {
+                    isAttachment = true
+                    
+                    if trimmedLine.contains("filename=") {
+                        if let filenameRange = trimmedLine.range(of: "filename=\"([^\"]+)\"", options: .regularExpression) {
+                            filename = String(trimmedLine[filenameRange]).replacingOccurrences(of: "filename=\"", with: "").replacingOccurrences(of: "\"", with: "")
+                        }
+                    }
+                } else if trimmedLine.hasPrefix("Content-Transfer-Encoding:") {
+                    encoding = trimmedLine.replacingOccurrences(of: "Content-Transfer-Encoding:", with: "").trimmingCharacters(in: .whitespaces)
+                } else if trimmedLine.isEmpty && contentStartIndex == 0 {
+                    contentStartIndex = index + 1
+                    break
+                }
+            }
+            
+            if contentStartIndex > 0 && contentStartIndex < partLines.count {
+                let content = partLines[contentStartIndex...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                
+                if isAttachment, let filename = filename, let mimeType = mimeType {
+                    print("MIME_PARSE: Found attachment - filename=\(filename) mimeType=\(mimeType) encoding=\(encoding ?? "nil")")
+                    if encoding?.lowercased() == "base64" {
+                        let cleanedContent = content.replacingOccurrences(of: "\n", with: "").replacingOccurrences(of: "\r", with: "")
+                        if let data = Data(base64Encoded: cleanedContent) {
+                            let attachment = EmailAttachment(filename: filename, mimeType: mimeType, data: data)
+                            attachments.append(attachment)
+                            print("MIME_PARSE: Attachment decoded successfully - size=\(data.count)")
+                        } else {
+                            print("MIME_PARSE: Base64 decode FAILED for \(filename)")
+                        }
+                    }
+                } else if !isAttachment && mimeType?.contains("text/plain") == true {
+                    print("MIME_PARSE: Found text/plain body - length=\(content.count)")
+                    body = content
+                }
+            }
+        }
+        
+        print("MIME_PARSE: Final result - body.count=\(body.count) attachments.count=\(attachments.count)")
+        return (body: body, attachments: attachments)
     }
     
     private func formatDate(_ date: Date) -> String {
