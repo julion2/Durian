@@ -39,6 +39,8 @@ class IMAPClient: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var commandCounter = 1000
     private var pendingCommands: [String: CommandCompletion] = [:]
+    private var lastSentTag: String?
+    private var responseBuffer: String = ""
     private var paginationState = PaginationState()
     private var attemptedSections: [UInt32: Set<String>] = [:]
     private var lastCommandTime: Date = Date.distantPast
@@ -652,51 +654,70 @@ class IMAPClient: ObservableObject {
     /// Directly updates the email in the emails array without triggering merges,
     /// which prevents the body swap bug.
     func fetchDraftBody(uid: UInt32) async {
-        let fetchCommand = "UID FETCH \(uid) (BODY.PEEK[])"
+        let fetchCommand = "UID FETCH \(uid) (BODY[])"
+        
+        print("📧 DRAFT FETCH: Sending command: \(fetchCommand)")
         
         do {
             let response = try await executeCommand(fetchCommand, timeout: 30.0)
             
-            guard let uidInResponse = extractUIDFromResponse(response) else {
-                print("❌ Draft body fetch: Could not extract UID from response")
-                return
-            }
+            print("📧 DRAFT FETCH: Response length: \(response.count)")
+            print("📧 DRAFT FETCH: Response preview (first 500): \(String(response.prefix(500)))")
             
-            if uidInResponse != uid {
-                print("⚠️ Draft body fetch: UID mismatch (requested \(uid), got \(uidInResponse))")
-            }
+            var bodyContent: String?
             
-            if let literalMatch = response.range(of: "\\{(\\d+)\\}", options: .regularExpression) {
-                let sizeStr = response[literalMatch]
-                if let sizeRange = sizeStr.range(of: "\\d+", options: .regularExpression),
-                   let size = Int(sizeStr[sizeRange]) {
+            if let bodyRange = response.range(of: "BODY\\[\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
+                print("📧 DRAFT FETCH: Found BODY[] pattern")
+                let sizeMatch = String(response[bodyRange])
+                if let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
+                   let size = Int(sizeMatch[sizeRange]) {
+                    print("📧 DRAFT FETCH: Expected body size: \(size)")
                     
-                    var searchStart = literalMatch.upperBound
-                    
+                    var searchStart = bodyRange.upperBound
                     while searchStart < response.endIndex && (response[searchStart] == "\r" || response[searchStart] == "\n") {
                         searchStart = response.index(after: searchStart)
                     }
                     
                     let searchEnd = response.index(searchStart, offsetBy: size, limitedBy: response.endIndex) ?? response.endIndex
-                    let bodyContent = String(response[searchStart..<searchEnd])
+                    bodyContent = String(response[searchStart..<searchEnd])
+                    print("📧 DRAFT FETCH: Extracted body length: \(bodyContent?.count ?? 0)")
+                }
+            } else if let literalMatch = response.range(of: "\\{(\\d+)\\}", options: .regularExpression) {
+                print("📧 DRAFT FETCH: Found generic literal pattern")
+                let sizeStr = response[literalMatch]
+                if let sizeRange = sizeStr.range(of: "\\d+", options: .regularExpression),
+                   let size = Int(sizeStr[sizeRange]) {
+                    print("📧 DRAFT FETCH: Generic literal size: \(size)")
                     
-                    await MainActor.run {
-                        if let index = emails.firstIndex(where: { $0.uid == uidInResponse }) {
-                            var email = emails[index]
-                            email.body = bodyContent
-                            emails[index] = email
-                        } else {
-                            print("⚠️ Draft body fetch: UID \(uidInResponse) not found in emails array")
-                        }
+                    var searchStart = literalMatch.upperBound
+                    while searchStart < response.endIndex && (response[searchStart] == "\r" || response[searchStart] == "\n") {
+                        searchStart = response.index(after: searchStart)
                     }
-                    return
+                    
+                    let searchEnd = response.index(searchStart, offsetBy: size, limitedBy: response.endIndex) ?? response.endIndex
+                    bodyContent = String(response[searchStart..<searchEnd])
+                    print("📧 DRAFT FETCH: Extracted body length: \(bodyContent?.count ?? 0)")
                 }
             }
             
-            print("❌ Draft body fetch: No literal found in response")
+            if let bodyContent = bodyContent, !bodyContent.isEmpty {
+                await MainActor.run {
+                    if let index = emails.firstIndex(where: { $0.uid == uid }) {
+                        var email = emails[index]
+                        email.rawBody = bodyContent
+                        email.body = bodyContent
+                        emails[index] = email
+                        print("✅ DRAFT FETCH: Stored RAW body (\(bodyContent.count) bytes) for UID \(uid)")
+                    } else {
+                        print("⚠️ DRAFT FETCH: UID \(uid) not found in emails array")
+                    }
+                }
+            } else {
+                print("❌ DRAFT FETCH: No body content found in response for UID \(uid)")
+            }
             
         } catch {
-            print("❌ Draft body fetch failed: \(error)")
+            print("❌ DRAFT FETCH: Command failed: \(error)")
         }
     }
     
@@ -1601,6 +1622,12 @@ class IMAPClient: ObservableObject {
         let tag = generateCommandTag()
         let fullCommand = "\(tag) \(command)\r\n"
         
+        // Track the last sent tag so handler knows which responses belong to this command
+        await MainActor.run {
+            self.lastSentTag = tag
+            self.responseBuffer = ""
+        }
+        
         return try await withCheckedThrowingContinuation { continuation in
             pendingCommands[tag] = { result in
                 continuation.resume(with: result)
@@ -1633,12 +1660,19 @@ class IMAPClient: ObservableObject {
         }
     }
     
-    func handleCommandResponse(tag: String, response: String, isComplete: Bool) {
+    func appendToResponseBuffer(_ data: String) {
+        responseBuffer += data
+    }
+    
+    func handleCommandResponse(tag: String, isComplete: Bool) {
         guard let completion = pendingCommands[tag] else { return }
         
         if isComplete {
+            let fullResponse = responseBuffer
             pendingCommands.removeValue(forKey: tag)
-            completion(.success(response))
+            responseBuffer = ""
+            lastSentTag = nil
+            completion(.success(fullResponse))
         }
     }
 

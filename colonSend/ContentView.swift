@@ -516,16 +516,23 @@ struct ContentView: View {
                 return
             }
             
-            guard let clientEmail = client.emails.first(where: { $0.uid == targetUID }),
-                  let fetchedBody = clientEmail.body else {
-                print("❌ Draft body fetch failed for UID \(targetUID)")
+            guard let clientEmail = client.emails.first(where: { $0.uid == targetUID }) else {
+                print("❌ Draft email not found for UID=\(targetUID)")
                 return
             }
             
-            print("DRAFT_LOAD: Fetched body length=\(fetchedBody.count)")
+            let fetchedBody = clientEmail.rawBody ?? clientEmail.body
+            
+            guard let fetchedBody = fetchedBody else {
+                print("❌ Draft body fetch failed for UID=\(targetUID)")
+                return
+            }
+            
+            print("DRAFT_LOAD: Fetched body length=\(fetchedBody.count) (rawBody=\(clientEmail.rawBody != nil))")
             
             var emailCopy = email
             emailCopy.body = fetchedBody
+            emailCopy.rawBody = fetchedBody
             
             let draft = accountManager.parseDraftFromEmail(emailCopy, accountId: folder.accountId)
             

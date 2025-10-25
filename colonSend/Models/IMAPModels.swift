@@ -52,6 +52,7 @@ struct IMAPEmail: Identifiable, Hashable {
     let date: String
     var body: String?
     var attributedBody: NSAttributedString?
+    var rawBody: String?
     var isRead: Bool
     
     // Hashable conformance - exclude NSAttributedString from hash

@@ -25,14 +25,19 @@ class IMAPClientHandler: ChannelInboundHandler {
         if let string = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
             print("IMAP Server: \(string)")
             
-            // Parse command completion responses (starts with tag)
+            // Always append to response buffer for the current command
+            Task { @MainActor in
+                imapClient?.appendToResponseBuffer(string)
+            }
+            
+            // Check for tagged completion responses (starts with tag)
             let lines = string.components(separatedBy: .newlines)
             for line in lines {
                 if line.hasPrefix("A") && (line.contains(" OK ") || line.contains(" NO ") || line.contains(" BAD ")) {
                     if let spaceIndex = line.firstIndex(of: " ") {
                         let tag = String(line[..<spaceIndex])
                         Task { @MainActor in
-                            imapClient?.handleCommandResponse(tag: tag, response: string, isComplete: true)
+                            imapClient?.handleCommandResponse(tag: tag, isComplete: true)
                         }
                     }
                 }
