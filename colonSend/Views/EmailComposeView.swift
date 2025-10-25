@@ -13,6 +13,7 @@ struct EmailComposeView: View {
     
     let accounts: [MailAccount]
     let replyTo: IMAPEmail?
+    let forward: IMAPEmail?
     let existingDraft: EmailDraft?
     @Binding var triggerSend: Bool
     @Binding var currentDraft: EmailDraft?
@@ -26,9 +27,10 @@ struct EmailComposeView: View {
     
     private let signatures: [String: String]
     
-    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
+    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, forward: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
         self.replyTo = replyTo
+        self.forward = forward
         self.existingDraft = existingDraft
         self._triggerSend = triggerSend
         self._currentDraft = currentDraft
@@ -43,14 +45,27 @@ struct EmailComposeView: View {
         } else if let email = replyTo {
             let toAddress = Self.extractEmailAddress(from: email.from)
             let replySubject = email.subject.hasPrefix("Re:") ? email.subject : "Re: \(email.subject)"
-            let quotedBody = "\n\n---\nOn \(email.date), \(email.from) wrote:\n> \(email.body ?? "")"
+            let quotedBody = "---\nOn \(email.date), \(email.from) wrote:\n> \(email.body ?? "")"
             
             _draft = State(initialValue: EmailDraft(
                 from: defaultAccount,
                 to: [toAddress],
                 subject: replySubject,
-                body: quotedBody,
+                body: "\n\n" + quotedBody,
                 inReplyTo: String(email.uid)
+            ))
+            
+            let account = accounts.first { $0.email == defaultAccount }
+            _selectedSignature = State(initialValue: account?.defaultSignature)
+        } else if let email = forward {
+            let forwardSubject = email.subject.hasPrefix("Fwd:") ? email.subject : "Fwd: \(email.subject)"
+            let forwardedBody = "---------- Forwarded message ----------\nFrom: \(email.from)\nDate: \(email.date)\nSubject: \(email.subject)\n\n\(email.body ?? "")"
+            
+            _draft = State(initialValue: EmailDraft(
+                from: defaultAccount,
+                to: [],
+                subject: forwardSubject,
+                body: "\n\n" + forwardedBody
             ))
             
             let account = accounts.first { $0.email == defaultAccount }
@@ -195,7 +210,7 @@ struct EmailComposeView: View {
             .padding()
             .frame(height: 40)
         }
-        .navigationTitle(replyTo != nil ? "Reply" : "New Message")
+        .navigationTitle(replyTo != nil ? "Reply" : (forward != nil ? "Forward" : "New Message"))
         .alert("Send Error", isPresented: $showError) {
             Button("OK") { showError = false }
         } message: {
@@ -246,16 +261,63 @@ struct EmailComposeView: View {
         )
     }
     
+    private struct BodySections {
+        var userContent: String
+        var signature: String?
+        var quotedContent: String
+    }
+    
+    private func parseBodySections(_ body: String) -> BodySections {
+        let quoteSeparators = [
+            "---\nOn ",
+            "---------- Forwarded message"
+        ]
+        
+        var quotedContent = ""
+        var contentBeforeQuote = body
+        
+        for separator in quoteSeparators {
+            if let range = body.range(of: separator) {
+                contentBeforeQuote = String(body[..<range.lowerBound])
+                quotedContent = String(body[range.lowerBound...])
+                break
+            }
+        }
+        
+        var userContent = contentBeforeQuote
+        var existingSignature: String? = nil
+        
+        for (_, sigText) in signatures {
+            if let sigRange = contentBeforeQuote.range(of: "\n\n" + sigText, options: .backwards) {
+                userContent = String(contentBeforeQuote[..<sigRange.lowerBound])
+                existingSignature = sigText
+                break
+            }
+        }
+        
+        return BodySections(
+            userContent: userContent,
+            signature: existingSignature,
+            quotedContent: quotedContent
+        )
+    }
+    
     private func updateBodyWithSignature() {
-        let bodyWithoutSignature = removeExistingSignature(from: draft.body)
+        let sections = parseBodySections(draft.body)
+        
+        var newBody = sections.userContent
         
         if let signatureKey = selectedSignature,
            let signatureText = signatures[signatureKey],
            !signatureText.isEmpty {
-            draft.body = bodyWithoutSignature + "\n\n" + signatureText
-        } else {
-            draft.body = bodyWithoutSignature
+            newBody += "\n\n" + signatureText
         }
+        
+        if !sections.quotedContent.isEmpty {
+            newBody += "\n\n" + sections.quotedContent
+        }
+        
+        draft.body = newBody
     }
     
     private func removeExistingSignature(from body: String) -> String {
@@ -355,6 +417,7 @@ struct EmailComposeView: View {
                     )
                 ],
                 replyTo: nil,
+                forward: nil,
                 existingDraft: nil,
                 triggerSend: $triggerSend,
                 currentDraft: $draft,

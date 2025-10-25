@@ -10,7 +10,7 @@ import Combine
 
 enum DetailViewMode: Equatable {
     case emailDetail(IMAPEmail)
-    case compose(replyTo: IMAPEmail?)
+    case compose(replyTo: IMAPEmail?, forward: IMAPEmail?)
     case empty
 }
 
@@ -117,7 +117,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Button(action: {
-                        detailMode = .compose(replyTo: nil)
+                        detailMode = .compose(replyTo: nil, forward: nil)
                     }) {
                         Label("Compose", systemImage: "square.and.pencil")
                     }
@@ -150,10 +150,11 @@ struct ContentView: View {
             case .emailDetail(let email):
                 emailDetailView(email: email)
                 
-            case .compose(let replyTo):
+            case .compose(let replyTo, let forward):
                 EmailComposeView(
                     accounts: accountManager.accounts,
                     replyTo: replyTo,
+                    forward: forward,
                     existingDraft: composeDraft,
                     triggerSend: $triggerSend,
                     currentDraft: $composeDraft,
@@ -439,9 +440,18 @@ struct ContentView: View {
             ToolbarItem(placement: .automatic) {
                 Button(action: {
                     lastViewedEmail = email
-                    detailMode = .compose(replyTo: email)
+                    detailMode = .compose(replyTo: email, forward: nil)
                 }) {
                     Label("Reply", systemImage: "arrowshape.turn.up.left")
+                }
+            }
+            
+            ToolbarItem(placement: .automatic) {
+                Button(action: {
+                    lastViewedEmail = email
+                    detailMode = .compose(replyTo: nil, forward: email)
+                }) {
+                    Label("Forward", systemImage: "arrowshape.turn.up.right")
                 }
             }
         }
@@ -521,7 +531,7 @@ struct ContentView: View {
             
             if let draft = draft {
                 await MainActor.run {
-                    detailMode = .compose(replyTo: nil)
+                    detailMode = .compose(replyTo: nil, forward: nil)
                     composeDraft = draft
                 }
             }
