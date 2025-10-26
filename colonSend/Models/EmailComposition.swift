@@ -71,7 +71,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     }
 }
 
-struct EmailAttachment: Identifiable, Codable, Equatable {
+struct EmailAttachment: Identifiable, Codable, Equatable, Hashable {
     let id: UUID
     let filename: String
     let mimeType: String

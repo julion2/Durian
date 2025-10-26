@@ -533,6 +533,7 @@ struct ContentView: View {
             var emailCopy = email
             emailCopy.body = fetchedBody
             emailCopy.rawBody = fetchedBody
+            emailCopy.attachments = clientEmail.attachments
             
             let draft = accountManager.parseDraftFromEmail(emailCopy, accountId: folder.accountId)
             

@@ -328,6 +328,10 @@ class AccountManager: ObservableObject {
         for (index, line) in lines.enumerated() {
             let trimmedLine = line.trimmingCharacters(in: .whitespaces)
             
+            if index < 30 {
+                print("DRAFT_PARSE: Line \(index): |\(line)|")
+            }
+            
             if trimmedLine.hasPrefix("To:") {
                 let toLine = trimmedLine.replacingOccurrences(of: "To:", with: "").trimmingCharacters(in: .whitespaces)
                 toAddresses = toLine.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -393,14 +397,25 @@ class AccountManager: ObservableObject {
             }
         }
         
-        if bodyStartIndex > 0 && bodyStartIndex < lines.count {
+        if !email.attachments.isEmpty {
+            print("DRAFT_PARSE: Using pre-parsed attachments from IMAPEmail (\(email.attachments.count) attachments)")
+            attachments = email.attachments
+            if let emailBody = email.body, !emailBody.isEmpty {
+                print("DRAFT_PARSE: Using pre-parsed body from IMAPEmail (\(emailBody.count) chars)")
+                body = emailBody
+            }
+        }
+        
+        if bodyStartIndex > 0 && bodyStartIndex < lines.count && body.isEmpty {
             let fullContent = lines[bodyStartIndex...].joined(separator: "\n")
             
             if let boundary = boundary {
                 print("DRAFT_PARSE: Parsing MIME multipart with boundary: \(boundary)")
                 let parsed = parseMIMEMultipart(content: fullContent, boundary: boundary)
                 body = parsed.body
-                attachments = parsed.attachments
+                if email.attachments.isEmpty {
+                    attachments = parsed.attachments
+                }
                 print("DRAFT_PARSE: Parsed body.count=\(body.count) attachments.count=\(attachments.count)")
             } else {
                 print("DRAFT_PARSE: No boundary found, using full content as body")

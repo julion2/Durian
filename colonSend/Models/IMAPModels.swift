@@ -54,6 +54,7 @@ struct IMAPEmail: Identifiable, Hashable {
     var attributedBody: NSAttributedString?
     var rawBody: String?
     var isRead: Bool
+    var attachments: [EmailAttachment] = []
     
     // Hashable conformance - exclude NSAttributedString from hash
     func hash(into hasher: inout Hasher) {
@@ -64,6 +65,7 @@ struct IMAPEmail: Identifiable, Hashable {
         hasher.combine(date)
         hasher.combine(body)
         hasher.combine(isRead)
+        hasher.combine(attachments)
     }
     
     // Equatable conformance - exclude NSAttributedString from equality
@@ -74,7 +76,8 @@ struct IMAPEmail: Identifiable, Hashable {
                lhs.from == rhs.from &&
                lhs.date == rhs.date &&
                lhs.body == rhs.body &&
-               lhs.isRead == rhs.isRead
+               lhs.isRead == rhs.isRead &&
+               lhs.attachments == rhs.attachments
     }
 }
 

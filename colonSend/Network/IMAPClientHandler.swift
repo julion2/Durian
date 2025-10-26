@@ -11,6 +11,7 @@ import NIOCore
 class IMAPClientHandler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
     weak var imapClient: IMAPClient?
+    private var bytesReceivedInSession: Int = 0
     
     init(imapClient: IMAPClient? = nil) {
         self.imapClient = imapClient
@@ -18,12 +19,16 @@ class IMAPClientHandler: ChannelInboundHandler {
     
     func channelActive(context: ChannelHandlerContext) {
         print("IMAP connection established")
+        bytesReceivedInSession = 0
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let buffer = self.unwrapInboundIn(data)
+        
+        bytesReceivedInSession += buffer.readableBytes
+        
         if let string = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
-            print("IMAP Server: \(string)")
+            print("IMAP Server: \(string) [Session total: \(bytesReceivedInSession) bytes]")
             
             // Always append to response buffer for the current command
             Task { @MainActor in
@@ -33,31 +38,26 @@ class IMAPClientHandler: ChannelInboundHandler {
             // Check for tagged completion responses (starts with tag)
             let lines = string.components(separatedBy: .newlines)
             for line in lines {
-                if line.hasPrefix("A") && (line.contains(" OK ") || line.contains(" NO ") || line.contains(" BAD ")) {
-                    if let spaceIndex = line.firstIndex(of: " ") {
-                        let tag = String(line[..<spaceIndex])
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("A") && (trimmed.contains(" OK") || trimmed.contains(" NO") || trimmed.contains(" BAD")) {
+                    if let spaceIndex = trimmed.firstIndex(of: " ") {
+                        let tag = String(trimmed[..<spaceIndex])
+                        print("DRAFT_DEBUG: Tagged OK detected - tag=\(tag)")
                         Task { @MainActor in
-                            imapClient?.handleCommandResponse(tag: tag, isComplete: true)
+                            await imapClient?.waitForBufferStabilization(tag: tag)
                         }
                     }
                 }
             }
             
+            // IMAP Response Parsing Strategy:
+            // - LIST/EXISTS: Immediate (single-line, synchronous)
+            // - FETCH: Deferred to handleCommandResponse (multi-line, accumulation required)
+            
             // Parse LIST responses
             if string.contains("* LIST") {
                 Task { @MainActor in
                     imapClient?.parseFolderResponse(string)
-                }
-            }
-            
-            // Parse FETCH responses
-            if string.contains("* ") && string.contains("FETCH") {
-                Task { @MainActor in
-                    if string.contains("BODY[") {
-                        imapClient?.parseBodyResponse(string)
-                    } else {
-                        imapClient?.parseEmailResponse(string)
-                    }
                 }
             }
             
@@ -68,6 +68,11 @@ class IMAPClientHandler: ChannelInboundHandler {
                 }
             }
         }
+    }
+    
+    func channelReadComplete(context: ChannelHandlerContext) {
+        context.read()
+        context.fireChannelReadComplete()
     }
     
     func errorCaught(context: ChannelHandlerContext, error: Error) {

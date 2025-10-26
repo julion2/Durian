@@ -15,6 +15,18 @@ import AppKit
 // - Text Decoding: IMAPTextDecodingUtilities.swift (base64, RFC2047, quoted-printable, etc.)
 // - Text Cleaning: IMAPTextCleaningUtilities.swift (whitespace, signatures, duplicates, etc.)
 
+// MARK: - Literal Tracking
+
+struct LiteralExpectation {
+    let size: Int
+    var receivedBytes: Int = 0
+    var startOffset: Int = 0
+    
+    var isComplete: Bool { 
+        receivedBytes >= size || (size - receivedBytes) <= 2
+    }
+}
+
 // MARK: - IMAPClient Main Class
 
 @MainActor
@@ -40,13 +52,16 @@ class IMAPClient: ObservableObject {
     private var commandCounter = 1000
     private var pendingCommands: [String: CommandCompletion] = [:]
     private var lastSentTag: String?
-    private var responseBuffer: String = ""
+    private var responseBuffers: [String: String] = [:]
+    private var responseBufferLastSizes: [String: Int] = [:]
+    private var responseBufferLastUpdated: [String: Date] = [:]
+    private var literalExpectations: [String: [LiteralExpectation]] = [:]
     private var paginationState = PaginationState()
     private var attemptedSections: [UInt32: Set<String>] = [:]
     private var lastCommandTime: Date = Date.distantPast
     private let minimumCommandInterval: TimeInterval = 0.05  // 50ms between commands (faster for bulk)
     private var emailFetchStartTimes: [UInt32: Date] = [:]
-    private let emailFetchTimeout: TimeInterval = 15.0  // 15 seconds timeout (faster fail)
+    private var emailFetchTimeout: TimeInterval = 15.0  // 15 seconds timeout (faster fail)
     private var failedFetches: Set<UInt32> = []  // Track permanently failed emails
     private var bulkProcessingMode: Bool = false
     
@@ -72,6 +87,12 @@ class IMAPClient: ObservableObject {
             let bootstrap = ClientBootstrap(group: group)
                 .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
                 .channelOption(ChannelOptions.connectTimeout, value: TimeAmount.seconds(30))
+                .channelOption(ChannelOptions.autoRead, value: true)
+                .channelOption(ChannelOptions.recvAllocator, value: AdaptiveRecvByteBufferAllocator(
+                    minimum: 1024,
+                    initial: 16384,
+                    maximum: 1048576
+                ))
                 .channelInitializer { channel in
                     print("🔵 Initializing channel pipeline...")
                     let imapHandler = IMAPClientHandler(imapClient: self)
@@ -656,69 +677,179 @@ class IMAPClient: ObservableObject {
     func fetchDraftBody(uid: UInt32) async {
         let fetchCommand = "UID FETCH \(uid) (BODY[])"
         
-        print("📧 DRAFT FETCH: Sending command: \(fetchCommand)")
+        print("DRAFT_FETCH: Command sent for UID \(uid)")
         
         do {
             let response = try await executeCommand(fetchCommand, timeout: 30.0)
             
-            print("📧 DRAFT FETCH: Response length: \(response.count)")
-            print("📧 DRAFT FETCH: Response preview (first 500): \(String(response.prefix(500)))")
+            print("DRAFT_FETCH: Response received - \(response.count) bytes total")
             
             var bodyContent: String?
             
             if let bodyRange = response.range(of: "BODY\\[\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
-                print("📧 DRAFT FETCH: Found BODY[] pattern")
                 let sizeMatch = String(response[bodyRange])
                 if let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
                    let size = Int(sizeMatch[sizeRange]) {
-                    print("📧 DRAFT FETCH: Expected body size: \(size)")
+                    print("DRAFT_FETCH: Expected \(size) bytes of body data")
                     
-                    var searchStart = bodyRange.upperBound
-                    while searchStart < response.endIndex && (response[searchStart] == "\r" || response[searchStart] == "\n") {
-                        searchStart = response.index(after: searchStart)
+                    guard let responseData = response.data(using: .utf8) else {
+                        print("DRAFT_FETCH: ERROR - Cannot convert response to UTF-8 data")
+                        return
                     }
                     
-                    let searchEnd = response.index(searchStart, offsetBy: size, limitedBy: response.endIndex) ?? response.endIndex
-                    bodyContent = String(response[searchStart..<searchEnd])
-                    print("📧 DRAFT FETCH: Extracted body length: \(bodyContent?.count ?? 0)")
-                }
-            } else if let literalMatch = response.range(of: "\\{(\\d+)\\}", options: .regularExpression) {
-                print("📧 DRAFT FETCH: Found generic literal pattern")
-                let sizeStr = response[literalMatch]
-                if let sizeRange = sizeStr.range(of: "\\d+", options: .regularExpression),
-                   let size = Int(sizeStr[sizeRange]) {
-                    print("📧 DRAFT FETCH: Generic literal size: \(size)")
-                    
-                    var searchStart = literalMatch.upperBound
-                    while searchStart < response.endIndex && (response[searchStart] == "\r" || response[searchStart] == "\n") {
-                        searchStart = response.index(after: searchStart)
+                    let prefixStr = String(response[..<bodyRange.upperBound])
+                    guard let prefixData = prefixStr.data(using: .utf8) else {
+                        print("DRAFT_FETCH: ERROR - Cannot convert prefix to UTF-8 data")
+                        return
                     }
                     
-                    let searchEnd = response.index(searchStart, offsetBy: size, limitedBy: response.endIndex) ?? response.endIndex
-                    bodyContent = String(response[searchStart..<searchEnd])
-                    print("📧 DRAFT FETCH: Extracted body length: \(bodyContent?.count ?? 0)")
+                    var byteOffset = prefixData.count
+                    
+                    while byteOffset < responseData.count {
+                        let byte = responseData[byteOffset]
+                        if byte == 0x0D || byte == 0x0A {
+                            byteOffset += 1
+                        } else {
+                            break
+                        }
+                    }
+                    
+                    let endOffset = min(byteOffset + size, responseData.count)
+                    let bodyData = responseData[byteOffset..<endOffset]
+                    
+                    if let extractedBody = String(data: bodyData, encoding: .utf8) {
+                        bodyContent = extractedBody
+                        print("DRAFT_FETCH: Extracted \(extractedBody.count) chars (\(bodyData.count) bytes)")
+                    } else {
+                        print("DRAFT_FETCH: ERROR - Cannot decode body data as UTF-8")
+                    }
                 }
             }
             
             if let bodyContent = bodyContent, !bodyContent.isEmpty {
+                let (plainBody, attachments) = parseMIMEDraftBody(bodyContent)
+                
                 await MainActor.run {
                     if let index = emails.firstIndex(where: { $0.uid == uid }) {
                         var email = emails[index]
                         email.rawBody = bodyContent
-                        email.body = bodyContent
+                        email.body = plainBody
+                        email.attachments = attachments
                         emails[index] = email
-                        print("✅ DRAFT FETCH: Stored RAW body (\(bodyContent.count) bytes) for UID \(uid)")
+                        print("DRAFT_FETCH: SUCCESS - Stored \(plainBody.count) chars, \(attachments.count) attachments for UID \(uid)")
                     } else {
-                        print("⚠️ DRAFT FETCH: UID \(uid) not found in emails array")
+                        print("DRAFT_FETCH: ERROR - UID \(uid) not found in emails array")
                     }
                 }
             } else {
-                print("❌ DRAFT FETCH: No body content found in response for UID \(uid)")
+                print("DRAFT_FETCH: ERROR - No body content extracted from response")
             }
             
         } catch {
-            print("❌ DRAFT FETCH: Command failed: \(error)")
+            print("DRAFT_FETCH: ERROR - Command failed: \(error)")
         }
+    }
+    
+    private func parseMIMEDraftBody(_ mimeBody: String) -> (String, [EmailAttachment]) {
+        var plainText = ""
+        var attachments: [EmailAttachment] = []
+        
+        let lines = mimeBody.components(separatedBy: .newlines)
+        
+        guard let boundaryLine = lines.first(where: { $0.contains("boundary=") }) else {
+            print("DRAFT_MIME: No boundary found, treating as plain text")
+            return (mimeBody, [])
+        }
+        
+        guard let boundaryMatch = boundaryLine.range(of: "boundary=\"([^\"]+)\"", options: .regularExpression) else {
+            print("DRAFT_MIME: Could not extract boundary")
+            return (mimeBody, [])
+        }
+        
+        let boundaryString = String(boundaryLine[boundaryMatch])
+        guard let boundary = boundaryString.split(separator: "\"").dropFirst().first else {
+            print("DRAFT_MIME: Invalid boundary format")
+            return (mimeBody, [])
+        }
+        
+        print("DRAFT_MIME: Parsing with boundary: \(boundary)")
+        
+        let parts = mimeBody.components(separatedBy: "--\(boundary)")
+        
+        for part in parts {
+            if part.contains("Content-Type: text/plain") {
+                let partLines = part.components(separatedBy: .newlines)
+                var contentStarted = false
+                var contentLines: [String] = []
+                
+                for line in partLines {
+                    if contentStarted {
+                        contentLines.append(line)
+                    } else if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        contentStarted = true
+                    }
+                }
+                
+                plainText = contentLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                print("DRAFT_MIME: Extracted plain text (\(plainText.count) chars)")
+                
+            } else if part.contains("Content-Disposition: attachment") {
+                if let attachment = parseAttachmentPart(part) {
+                    attachments.append(attachment)
+                    print("DRAFT_MIME: Extracted attachment: \(attachment.filename)")
+                }
+            }
+        }
+        
+        return (plainText, attachments)
+    }
+    
+    private func parseAttachmentPart(_ part: String) -> EmailAttachment? {
+        let lines = part.components(separatedBy: .newlines)
+        
+        var filename: String?
+        var mimeType: String?
+        var encoding: String?
+        var contentStarted = false
+        var contentLines: [String] = []
+        
+        for line in lines {
+            if line.contains("filename=") {
+                if let filenameMatch = line.range(of: "filename=\"([^\"]+)\"", options: .regularExpression) {
+                    let filenameString = String(line[filenameMatch])
+                    filename = filenameString.split(separator: "\"").dropFirst().first.map(String.init)
+                }
+            } else if line.hasPrefix("Content-Type:") {
+                let components = line.replacingOccurrences(of: "Content-Type:", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .components(separatedBy: ";")
+                mimeType = components.first?.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if line.hasPrefix("Content-Transfer-Encoding:") {
+                encoding = line.replacingOccurrences(of: "Content-Transfer-Encoding:", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+            } else if contentStarted {
+                contentLines.append(line)
+            } else if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                contentStarted = true
+            }
+        }
+        
+        guard let filename = filename,
+              let mimeType = mimeType,
+              !contentLines.isEmpty else {
+            print("DRAFT_MIME: Missing required attachment fields")
+            return nil
+        }
+        
+        let contentString = contentLines.joined(separator: "").replacingOccurrences(of: "\r", with: "")
+        
+        guard let data = Data(base64Encoded: contentString) else {
+            print("DRAFT_MIME: Failed to decode base64 attachment data")
+            return nil
+        }
+        
+        return EmailAttachment(filename: filename, mimeType: mimeType, data: data)
     }
     
     private func extractUIDFromResponse(_ response: String) -> UInt32? {
@@ -1625,7 +1756,7 @@ class IMAPClient: ObservableObject {
         // Track the last sent tag so handler knows which responses belong to this command
         await MainActor.run {
             self.lastSentTag = tag
-            self.responseBuffer = ""
+            self.responseBuffers[tag] = ""
         }
         
         return try await withCheckedThrowingContinuation { continuation in
@@ -1661,19 +1792,210 @@ class IMAPClient: ObservableObject {
     }
     
     func appendToResponseBuffer(_ data: String) {
-        responseBuffer += data
+        guard let tag = lastSentTag else { return }
+        responseBuffers[tag, default: ""] += data
+        responseBufferLastSizes[tag] = responseBuffers[tag]!.count
+        responseBufferLastUpdated[tag] = Date()
+        
+        parseLiteralExpectations(tag: tag)
+    }
+    
+    private func parseLiteralExpectations(tag: String) {
+        guard let buffer = responseBuffers[tag] else { return }
+        guard let bufferData = buffer.data(using: .utf8) else { return }
+        
+        let literalPattern = "\\{(\\d+)\\}"
+        guard let regex = try? NSRegularExpression(pattern: literalPattern, options: []) else { return }
+        
+        let nsRange = NSRange(buffer.startIndex..<buffer.endIndex, in: buffer)
+        let matches = regex.matches(in: buffer, range: nsRange)
+        
+        if literalExpectations[tag] == nil {
+            literalExpectations[tag] = []
+        }
+        
+        var currentExpectations = literalExpectations[tag]!
+        
+        for (index, match) in matches.enumerated() {
+            guard match.numberOfRanges >= 2,
+                  let sizeRange = Range(match.range(at: 1), in: buffer),
+                  let size = Int(buffer[sizeRange]) else {
+                continue
+            }
+            
+            if index >= currentExpectations.count {
+                let matchEndUtf16 = match.range.upperBound
+                let matchEndIndex = buffer.utf16.index(buffer.utf16.startIndex, offsetBy: matchEndUtf16)
+                let matchEndStringIndex = String.Index(matchEndIndex, within: buffer)!
+                
+                let prefixString = String(buffer[..<matchEndStringIndex])
+                guard let prefixData = prefixString.data(using: .utf8) else { continue }
+                
+                var byteOffset = prefixData.count
+                while byteOffset < bufferData.count {
+                    let byte = bufferData[byteOffset]
+                    if byte == 0x0D || byte == 0x0A {
+                        byteOffset += 1
+                    } else {
+                        break
+                    }
+                }
+                
+                let expectation = LiteralExpectation(size: size, receivedBytes: 0, startOffset: byteOffset)
+                currentExpectations.append(expectation)
+                print("LITERAL_TRACK: Found literal \(index + 1) - expecting \(size) bytes at offset \(byteOffset)")
+            }
+            
+            if index < currentExpectations.count {
+                let startOffset = currentExpectations[index].startOffset
+                let availableBytes = max(0, bufferData.count - startOffset)
+                currentExpectations[index].receivedBytes = min(availableBytes, currentExpectations[index].size)
+                
+                let received = currentExpectations[index].receivedBytes
+                let expected = currentExpectations[index].size
+                let isComplete = currentExpectations[index].isComplete
+                
+                print("LITERAL_TRACK: Literal \(index + 1) - \(received)/\(expected) bytes (complete: \(isComplete))")
+            }
+        }
+        
+        literalExpectations[tag] = currentExpectations
+    }
+    
+    func waitForBufferStabilization(tag: String) async {
+        let maxWaitTime: TimeInterval = 10.0
+        let checkInterval: UInt64 = 50_000_000
+        
+        let startTime = Date()
+        
+        print("LITERAL_TRACK: Wait started - tag=\(tag)")
+        
+        while Date().timeIntervalSince(startTime) < maxWaitTime {
+            try? await Task.sleep(nanoseconds: checkInterval)
+            
+            if areLiteralsComplete(tag: tag) {
+                print("LITERAL_TRACK: All literals complete for tag=\(tag)")
+                break
+            }
+            
+            let expectations = literalExpectations[tag] ?? []
+            for (index, exp) in expectations.enumerated() {
+                print("LITERAL_TRACK: Literal \(index + 1) - \(exp.receivedBytes)/\(exp.size) bytes")
+            }
+        }
+        
+        if Date().timeIntervalSince(startTime) >= maxWaitTime {
+            print("LITERAL_TRACK: Timeout waiting for literals - tag=\(tag)")
+            let expectations = literalExpectations[tag] ?? []
+            for (index, exp) in expectations.enumerated() {
+                print("LITERAL_TRACK: TIMEOUT - Literal \(index + 1) incomplete: \(exp.receivedBytes)/\(exp.size) bytes")
+            }
+        }
+        
+        handleCommandResponse(tag: tag, isComplete: true)
+    }
+    
+    private func areLiteralsComplete(tag: String) -> Bool {
+        guard let expectations = literalExpectations[tag] else {
+            return true
+        }
+        
+        if expectations.isEmpty {
+            return true
+        }
+        
+        return expectations.allSatisfy { $0.isComplete }
     }
     
     func handleCommandResponse(tag: String, isComplete: Bool) {
-        guard let completion = pendingCommands[tag] else { return }
+        guard let completion = pendingCommands[tag] else { 
+            return 
+        }
         
         if isComplete {
-            let fullResponse = responseBuffer
+            let fullResponse = responseBuffers[tag] ?? ""
+            print("LITERAL_TRACK: Processing response - tag=\(tag), buffer=\(fullResponse.count) bytes")
+            
+            if !areLiteralsComplete(tag: tag) {
+                print("LITERAL_TRACK: Literals incomplete, waiting for more data")
+                return
+            }
+            
+            print("LITERAL_TRACK: All literals complete, returning to caller")
+            
+            if fullResponse.contains("* ") && fullResponse.contains("FETCH") {
+                if fullResponse.contains("BODY[") {
+                    parseBodyResponse(fullResponse)
+                } else {
+                    parseEmailResponse(fullResponse)
+                }
+            }
+            
             pendingCommands.removeValue(forKey: tag)
-            responseBuffer = ""
-            lastSentTag = nil
+            responseBuffers.removeValue(forKey: tag)
+            responseBufferLastSizes.removeValue(forKey: tag)
+            responseBufferLastUpdated.removeValue(forKey: tag)
+            literalExpectations.removeValue(forKey: tag)
+            if lastSentTag == tag {
+                lastSentTag = nil
+            }
             completion(.success(fullResponse))
         }
+    }
+    
+    private func isLiteralDataComplete(_ response: String) -> Bool {
+        let bodyLiteralPattern = "BODY\\[[^\\]]*\\]\\s*\\{(\\d+)\\}"
+        guard let regex = try? NSRegularExpression(pattern: bodyLiteralPattern, options: []) else {
+            return true
+        }
+        
+        guard let responseData = response.data(using: .utf8) else {
+            return true
+        }
+        
+        let nsRange = NSRange(response.startIndex..<response.endIndex, in: response)
+        let matches = regex.matches(in: response, range: nsRange)
+        
+        if matches.isEmpty {
+            return true
+        }
+        
+        print("DRAFT_DEBUG: Checking \(matches.count) BODY[] literal(s)")
+        
+        for match in matches {
+            guard match.numberOfRanges >= 2,
+                  let sizeRange = Range(match.range(at: 1), in: response),
+                  let size = Int(response[sizeRange]) else {
+                continue
+            }
+            
+            let matchEndUtf16 = match.range.upperBound
+            let matchEndIndex = response.utf16.index(response.utf16.startIndex, offsetBy: matchEndUtf16)
+            let matchEndStringIndex = String.Index(matchEndIndex, within: response)!
+            
+            let prefixString = String(response[..<matchEndStringIndex])
+            guard let prefixData = prefixString.data(using: .utf8) else {
+                continue
+            }
+            var byteOffset = prefixData.count
+            
+            while byteOffset < responseData.count {
+                let byte = responseData[byteOffset]
+                if byte == 0x0D || byte == 0x0A {
+                    byteOffset += 1
+                } else {
+                    break
+                }
+            }
+            
+            let remainingBytes = responseData.count - byteOffset
+            if remainingBytes < size {
+                print("DRAFT_DEBUG: Literal INCOMPLETE - need \(size) bytes, have \(remainingBytes)")
+                return false
+            }
+        }
+        
+        return true
     }
 
     func parseBodyResponse(_ response: String) {

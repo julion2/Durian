@@ -26,6 +26,8 @@ struct EmailComposeView: View {
     @State private var autoSaveCancellable: AnyCancellable?
     @State private var selectedSignature: String?
     @State private var showingFilePicker = false
+    @State private var selectedAttachmentIndex: Int? = nil
+    @State private var keyMonitor: Any?
     
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
@@ -81,6 +83,29 @@ struct EmailComposeView: View {
             let account = accounts.first { $0.email == defaultAccount }
             _selectedSignature = State(initialValue: account?.defaultSignature)
         }
+    }
+    
+    private var attachmentsScrollView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(draft.attachments.enumerated()), id: \.element.id) { index, attachment in
+                    AttachmentChip(
+                        filename: attachment.filename,
+                        size: attachment.sizeFormatted,
+                        isSelected: selectedAttachmentIndex == index,
+                        onClick: {
+                            selectedAttachmentIndex = index
+                        },
+                        onRemove: {
+                            removeAttachment(id: attachment.id)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
     }
     
     var body: some View {
@@ -201,22 +226,7 @@ struct EmailComposeView: View {
             }
             
             if !draft.attachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(draft.attachments) { attachment in
-                            AttachmentChip(
-                                filename: attachment.filename,
-                                size: attachment.sizeFormatted,
-                                onRemove: {
-                                    removeAttachment(id: attachment.id)
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
-                .background(Color(NSColor.controlBackgroundColor))
+                attachmentsScrollView
             }
             
             Divider()
@@ -269,9 +279,11 @@ struct EmailComposeView: View {
         .onAppear {
             currentDraft = draft
             updateBodyWithSignature()
+            setupKeyMonitor()
         }
         .onDisappear {
             autoSaveCancellable?.cancel()
+            removeKeyMonitor()
             
             print("COMPOSE: View disappearing - saving draft to server")
             Task {
@@ -515,11 +527,33 @@ struct EmailComposeView: View {
         errorMessage = message
         showError = true
     }
+    
+    private func setupKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 49 {
+                if let index = self.selectedAttachmentIndex {
+                    print("QUICKLOOK: Space pressed, opening preview for attachment \(index)")
+                    QuickLookManager.shared.showPreview(for: self.draft.attachments, startingAt: index)
+                    return nil
+                }
+            }
+            return event
+        }
+    }
+    
+    private func removeKeyMonitor() {
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
 }
 
 struct AttachmentChip: View {
     let filename: String
     let size: String
+    let isSelected: Bool
+    let onClick: () -> Void
     let onRemove: () -> Void
     
     var body: some View {
@@ -546,8 +580,15 @@ struct AttachmentChip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1))
+        .background(isSelected ? Color.accentColor.opacity(0.3) : Color.accentColor.opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+        )
         .cornerRadius(8)
+        .onTapGesture {
+            onClick()
+        }
     }
 }
 
