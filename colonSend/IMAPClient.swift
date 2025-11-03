@@ -550,10 +550,21 @@ class IMAPClient: ObservableObject {
             return ""
         }
         
+        // ENCODING FIX: For non-RFC2047 strings that came from IMAP server,
+        // we need to recover the original bytes by converting to ISO-8859-1 and back to UTF-8
+        // This fixes mojibake caused by ByteBuffer.getString() misinterpreting bytes
+        if !cleaned.contains("=?") {
+            // Not RFC2047 encoded - likely plain text that was misinterpreted
+            if let data = cleaned.data(using: .isoLatin1),
+               let utf8String = String(data: data, encoding: .utf8) {
+                cleaned = utf8String
+            }
+        }
+        
         // Apply RFC 2047 decoding for encoded subjects
         let rfc2047Decoded = decodeRFC2047(cleaned)
         
-        // Apply encoding correction for common UTF-8/Latin-1 mix-ups
+        // Apply encoding correction for remaining UTF-8/Latin-1 mix-ups
         return fixEncodingIssues(rfc2047Decoded)
     }
     
