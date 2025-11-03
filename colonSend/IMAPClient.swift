@@ -6,6 +6,7 @@ import NIOSSL
 import Security
 import Combine
 import AppKit
+import ColonMime
 
 // MARK: - Separated Components
 // Note: The following have been extracted to separate files for better organization:
@@ -50,7 +51,19 @@ class IMAPClient: ObservableObject {
     private var refreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var commandCounter = 1000
-    private var pendingCommands: [String: CommandCompletion] = [:]
+    
+    // FIX: Store command metadata to enable proper response matching
+    private struct PendingCommand {
+        let tag: String
+        let commandString: String
+        let requestedUID: UInt32?
+        let requestedSection: String?
+        let sentAt: Date
+        var responseBuffer: String
+        var completion: CommandCompletion
+    }
+    
+    private var pendingCommands: [String: PendingCommand] = [:]
     private var lastSentTag: String?
     private var responseBuffers: [String: String] = [:]
     private var responseBufferLastSizes: [String: Int] = [:]
@@ -64,6 +77,7 @@ class IMAPClient: ObservableObject {
     private var emailFetchTimeout: TimeInterval = 15.0  // 15 seconds timeout (faster fail)
     private var failedFetches: Set<UInt32> = []  // Track permanently failed emails
     private var bulkProcessingMode: Bool = false
+    private var activeFetchTasks: [UInt32: Task<Void, Never>] = [:]  // Track active fetch tasks for cancellation
     
     // MARK: - Initialization
     
@@ -579,44 +593,91 @@ class IMAPClient: ObservableObject {
             let bodyStructContent = String(response[bodyStructStart.upperBound...])
             print("📧 BODYSTRUCTURE: Content preview: \(String(bodyStructContent.prefix(200)))")
             
+            let attachments = parseIncomingAttachments(from: bodyStructContent, uid: uid)
+            if !attachments.isEmpty {
+                Task { @MainActor in
+                    if let index = emails.firstIndex(where: { $0.uid == uid }) {
+                        var email = emails[index]
+                        email.incomingAttachments = attachments
+                        emails[index] = email
+                        print("📧 BODYSTRUCTURE: Updated email \(uid) with \(attachments.count) attachments")
+                    }
+                }
+            }
+            
             // Determine the correct section to fetch based on structure
             let section = determineTextSection(from: bodyStructContent)
             print("📧 BODYSTRUCTURE: Fetching section '\(section)' for UID \(uid)")
             
-            Task {
+            // Cancel any existing fetch task for this UID
+            activeFetchTasks[uid]?.cancel()
+            
+            // Set loading state immediately
+            Task { @MainActor in
+                if let index = emails.firstIndex(where: { $0.uid == uid }) {
+                    emails[index].bodyState = .loading
+                }
+            }
+            
+            // Create and track new fetch task
+            let fetchTask = Task {
                 await fetchBody(uid: uid, section: section)
             }
+            activeFetchTasks[uid] = fetchTask
         }
     }
     
     private func determineTextSection(from bodyStructure: String) -> String {
-        // For nested multipart structures, we need to find the text/plain or text/html parts
+        // FIX: Case-insensitive matching for IMAP types (RFC 3501)
+        let normalized = bodyStructure.uppercased()
         
-        // Check if this is a complex multipart structure
-        if bodyStructure.hasPrefix("((") {
-            // This is a multipart within multipart (like multipart/related containing multipart/alternative)
-            // Look for text/plain in the first alternative group: section 1.1.1
-            if bodyStructure.contains("\"TEXT\" \"plain\"") {
-                return "1.1.1"  // multipart/related -> multipart/alternative -> text/plain
-            } else if bodyStructure.contains("\"TEXT\" \"html\"") {
-                return "1.1.2"  // multipart/related -> multipart/alternative -> text/html
+        print("📧 BODYSTRUCTURE (normalized): \(normalized.prefix(200))")
+        
+        // Check if this is a complex multipart structure (nested)
+        if normalized.hasPrefix("(((") {
+            // Triple nesting: outer multipart -> inner multipart -> parts
+            // Example: mixed -> alternative -> (text/plain, text/html)
+            // Section numbering: 1.1 for first part of inner multipart
+            if normalized.contains("\"TEXT\" \"PLAIN\"") {
+                print("📧 BODYSTRUCTURE: Triple-nested multipart - using section 1.1 for text/plain")
+                return "1.1"  // outer[1] -> inner[1] = 1.1
+            } else if normalized.contains("\"TEXT\" \"HTML\"") {
+                print("📧 BODYSTRUCTURE: Triple-nested multipart - using section 1.2 for text/html")
+                return "1.2"  // outer[1] -> inner[2] = 1.2
             } else {
-                return "1.1"    // fallback to first alternative group
+                return "1.1"    // fallback to first part of inner multipart
             }
-        } else if bodyStructure.hasPrefix("(") && bodyStructure.contains("\"alternative\"") {
-            // Simple multipart/alternative
-            if bodyStructure.contains("\"TEXT\" \"plain\"") {
-                return "1.1"    // multipart/alternative -> text/plain
-            } else if bodyStructure.contains("\"TEXT\" \"html\"") {
-                return "1.2"    // multipart/alternative -> text/html
+        } else if normalized.hasPrefix("((") {
+            // Double nesting without triple - this is less common
+            // Try section 1.1 for first nested part
+            print("📧 BODYSTRUCTURE: Double-nested multipart - using section 1.1")
+            return "1.1"
+        } else if normalized.hasPrefix("(") && normalized.contains("\"ALTERNATIVE\"") {
+            // FIX: Simple multipart/alternative - parts are numbered 1, 2 NOT 1.1, 1.2!
+            // IMAP section numbering: (part1)(part2) "ALTERNATIVE" = sections "1" and "2"
+            if normalized.contains("\"TEXT\" \"PLAIN\"") {
+                print("📧 BODYSTRUCTURE: Multipart/alternative - using section 1 for text/plain")
+                return "1"    // First part (text/plain)
+            } else if normalized.contains("\"TEXT\" \"HTML\"") {
+                print("📧 BODYSTRUCTURE: Multipart/alternative - using section 2 for text/html")
+                return "2"    // Second part (text/html)
             } else {
-                return "1.1"    // fallback to first part
+                return "1"    // fallback to first part
             }
-        } else if bodyStructure.contains("\"TEXT\" \"PLAIN\"") || bodyStructure.contains("\"TEXT\" \"plain\"") {
+        } else if normalized.hasPrefix("(") && normalized.contains("\"MIXED\"") {
+            // Multipart/mixed - text is typically first part
+            print("📧 BODYSTRUCTURE: Multipart/mixed - using section 1")
+            return "1"
+        } else if normalized.hasPrefix("(") && normalized.contains("\"RELATED\"") {
+            // Multipart/related - text is typically first part
+            print("📧 BODYSTRUCTURE: Multipart/related - using section 1")
+            return "1"
+        } else if normalized.contains("\"TEXT\" \"PLAIN\"") || normalized.contains("\"TEXT\" \"HTML\"") {
             // Simple single-part text message
             return "1"
         } else {
             // Unknown structure, try section 1
+            print("⚠️ BODYSTRUCTURE: Unknown structure, defaulting to section 1")
             return "1"
         }
     }
@@ -638,8 +699,9 @@ class IMAPClient: ObservableObject {
         // Mark this section as attempted
         attemptedSections[uid]?.insert(failedSection)
         
-        // Define fallback sections to try (ordered by preference)
-        let allFallbackSections: [String] = ["1.1.1", "1.1.2", "1.1", "1.2", "1"]
+        // FIX: Define fallback sections to try (ordered by simplest first, not most nested)
+        // Try common sections in order of likelihood: simple -> alternative -> nested
+        let allFallbackSections: [String] = ["1", "2", "1.1", "1.2", "2.1", "1.1.1", "1.1.2", "2.1.1"]
         
         // Find next section that hasn't been attempted yet
         var nextSection: String?
@@ -657,17 +719,67 @@ class IMAPClient: ObservableObject {
             
             // Set email to show error state instead of "Loading..."
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
-                emails[emailIndex].body = "Unable to load email content (all sections failed)"
+                let errorMsg = "Unable to load email content (all sections failed)"
+                emails[emailIndex].body = errorMsg
                 emails[emailIndex].attributedBody = nil
+                emails[emailIndex].bodyState = .failed(message: "All sections failed")
             }
             // Clean up tracking for this UID
             attemptedSections.removeValue(forKey: uid)
             emailFetchStartTimes.removeValue(forKey: uid)
+            activeFetchTasks.removeValue(forKey: uid)
             return
         }
         
         print("📧 Trying fallback section \(sectionToTry) for UID \(uid)")
-        await fetchBody(uid: uid, section: sectionToTry)
+        
+        // Cancel existing task and create new one for fallback
+        activeFetchTasks[uid]?.cancel()
+        let fallbackTask = Task {
+            await fetchBody(uid: uid, section: sectionToTry)
+        }
+        activeFetchTasks[uid] = fallbackTask
+    }
+    
+    /// Fetches the body structure and then the body for a specific email UID.
+    /// This is used when a user clicks on an email that doesn't have its body loaded yet.
+    func fetchEmailBody(uid: UInt32) async {
+        print("📧 FETCH_EMAIL_BODY: Fetching BODYSTRUCTURE for UID \(uid)")
+        
+        // Check if already loading or loaded
+        if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+            switch emails[emailIndex].bodyState {
+            case .loaded:
+                print("📧 FETCH_EMAIL_BODY: UID \(uid) already loaded, skipping")
+                return
+            case .loading:
+                print("📧 FETCH_EMAIL_BODY: UID \(uid) already loading, skipping")
+                return
+            case .failed:
+                print("📧 FETCH_EMAIL_BODY: UID \(uid) previously failed, retrying...")
+                // Reset failed state and continue
+                emails[emailIndex].bodyState = .loading
+            case .notLoaded:
+                // Set to loading
+                emails[emailIndex].bodyState = .loading
+            }
+        }
+        
+        let fetchCommand = "UID FETCH \(uid) (BODYSTRUCTURE)"
+        
+        do {
+            let response = try await executeCommand(fetchCommand, timeout: 30.0)
+            print("📧 FETCH_EMAIL_BODY: Got BODYSTRUCTURE response for UID \(uid)")
+            
+            // Parse the BODYSTRUCTURE and trigger body fetch
+            parseBodyStructureAndFetchBody(response: response)
+            
+        } catch {
+            print("❌ FETCH_EMAIL_BODY: Failed to fetch BODYSTRUCTURE for UID \(uid): \(error)")
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].bodyState = .failed(message: "Failed to fetch structure")
+            }
+        }
     }
 
     /// Fetches the full body of a draft email by UID.
@@ -864,6 +976,12 @@ class IMAPClient: ObservableObject {
     }
     
     private func fetchBody(uid: UInt32, section: String) async {
+        // Check for task cancellation
+        if Task.isCancelled {
+            print("📧 FETCHBODY: Task cancelled for UID \(uid)")
+            return
+        }
+        
         let command = "UID FETCH \(uid) (BODY[\(section)])"
         print("📧 FETCHBODY: Starting fetch for UID \(uid), section \(section)")
         
@@ -875,16 +993,29 @@ class IMAPClient: ObservableObject {
            Date().timeIntervalSince(startTime) > emailFetchTimeout {
             print("📧 FETCHBODY: Timeout reached for UID \(uid), giving up")
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].bodyState = .failed(message: "Timeout")
                 emails[emailIndex].body = "Email loading timed out"
                 emails[emailIndex].attributedBody = nil
                 attemptedSections.removeValue(forKey: uid)
                 emailFetchStartTimes.removeValue(forKey: uid)
+                activeFetchTasks.removeValue(forKey: uid)
             }
             return
         }
         
         do {
-            let response = try await executeCommand(command)
+            // FIX: Pass UID and section metadata for proper response matching
+            let response = try await executeCommand(command, uid: uid, section: section)
+            
+            // FIX: Check cancellation AFTER network I/O completes but BEFORE updating state
+            guard !Task.isCancelled else {
+                print("📧 FETCHBODY: Task cancelled after fetch for UID \(uid), aborting state update")
+                attemptedSections.removeValue(forKey: uid)
+                emailFetchStartTimes.removeValue(forKey: uid)
+                activeFetchTasks.removeValue(forKey: uid)
+                return
+            }
+            
             print("📧 FETCHBODY: Got response, length: \(response.count)")
             print("📧 FETCHBODY: Response preview: \(String(response.prefix(300)))")
             
@@ -952,12 +1083,17 @@ class IMAPClient: ObservableObject {
                     let cleanBody = cleanedContent.trimmingCharacters(in: .whitespacesAndNewlines)
                     print("📧 FETCHBODY: Final cleaned content length: \(cleanBody.count)")
                     let (plainBody, attributedBody) = decodeEmailBody(cleanBody)
-                    emails[emailIndex].body = plainBody.isEmpty ? "No content available" : plainBody
+                    
+                    // Update bodyState and legacy fields
+                    let finalBody = plainBody.isEmpty ? "No content available" : plainBody
+                    emails[emailIndex].body = finalBody
                     emails[emailIndex].attributedBody = attributedBody
+                    emails[emailIndex].bodyState = .loaded(body: finalBody, attributedBody: attributedBody)
                     
                     // Clean up tracking for this UID on successful load
                     attemptedSections.removeValue(forKey: uid)
                     emailFetchStartTimes.removeValue(forKey: uid)
+                    activeFetchTasks.removeValue(forKey: uid)
                 } else {
                     print("📧 FETCHBODY: No body content found in response")
                     print("📧 FETCHBODY: Full response for debugging: \(response)")
@@ -973,8 +1109,10 @@ class IMAPClient: ObservableObject {
                         print("📧 FETCHBODY: Section \(section) is empty for UID \(uid)")
                         emails[emailIndex].body = "Email appears to be empty"
                         emails[emailIndex].attributedBody = nil
+                        emails[emailIndex].bodyState = .loaded(body: "Email appears to be empty", attributedBody: nil)
                         attemptedSections.removeValue(forKey: uid)
                         emailFetchStartTimes.removeValue(forKey: uid)
+                        activeFetchTasks.removeValue(forKey: uid)
                     }
                     // Try fallback before giving error
                     else {
@@ -989,11 +1127,14 @@ class IMAPClient: ObservableObject {
         } catch {
             print("❌ FETCHBODY: Error fetching body for UID \(uid): \(error)")
             if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
-                emails[emailIndex].body = "Error loading email: \(error.localizedDescription)"
+                let errorMsg = "Error loading email: \(error.localizedDescription)"
+                emails[emailIndex].body = errorMsg
                 emails[emailIndex].attributedBody = nil
+                emails[emailIndex].bodyState = .failed(message: error.localizedDescription)
                 // Clean up tracking on error
                 attemptedSections.removeValue(forKey: uid)
                 emailFetchStartTimes.removeValue(forKey: uid)
+                activeFetchTasks.removeValue(forKey: uid)
             }
         }
     }
@@ -1312,7 +1453,10 @@ class IMAPClient: ObservableObject {
                 // If decoded content is HTML, create rich text
                 if decoded.contains("<html") || decoded.contains("<HTML") {
                     print("📧 Decoded content is HTML, processing for rich text")
-                    return processHTMLContent(decoded)
+                    let attributedString = EmailHTMLParser.parseHTML(decoded)
+                    let plainText = extractTextFromHTML(decoded)
+                    let cleanedPlainText = removeEmailSignatureClutter(cleanWhitespace(plainText))
+                    return (cleanedPlainText, attributedString)
                 }
                 let cleaned = removeEmailSignatureClutter(cleanWhitespace(decoded))
                 print("📧 Base64 decode result: \(String(cleaned.prefix(200)))")
@@ -1340,11 +1484,9 @@ class IMAPClient: ObservableObject {
         
         // Final fallback - if we still have MIME boundaries, this means our parsing failed
         if body.contains("--_") && body.contains("Content-Type:") {
-            print("📧 Using emergency MIME cleanup")
-            // Emergency cleanup for failed MIME parsing
-            let result = emergencyMimeCleanup(body)
-            print("📧 EMERGENCY RESULT: First 200 chars: \(String(result.0.prefix(200)))")
-            return result
+            print("📧 Using emergency MIME cleanup - calling parseMimeContent")
+            // Use the MIME parser for this content
+            return parseMimeContent(body)
         }
         
         // Extra aggressive check for any remaining encoded content
@@ -1360,12 +1502,10 @@ class IMAPClient: ObservableObject {
         let cleaned = cleanWhitespace(body)
         let finalCleaned = removeEmailSignatureClutter(cleaned)
         
-        // Ultra-aggressive final check - if the result still contains MIME patterns, apply emergency cleanup
+        // Ultra-aggressive final check - if the result still contains MIME patterns, apply MIME parsing
         if finalCleaned.contains("--_") || finalCleaned.contains("Content-Type:") || finalCleaned.contains("=E") {
-            print("📧 ULTRA-AGGRESSIVE: Still contains MIME patterns, applying emergency cleanup")
-            let ultraClean = emergencyMimeCleanup(finalCleaned)
-            print("📧 ULTRA RESULT: First 200 chars: \(String(ultraClean.0.prefix(200)))")
-            return ultraClean
+            print("📧 ULTRA-AGGRESSIVE: Still contains MIME patterns, calling parseMimeContent")
+            return parseMimeContent(finalCleaned)
         }
         
         // Apply encoding fixes before final return
@@ -1522,211 +1662,126 @@ class IMAPClient: ObservableObject {
     }
     
     private func parseMimeContent(_ content: String) -> (String, NSAttributedString?) {
-        print("📧 MIME PARSE START: Content has \(content.components(separatedBy: .newlines).count) lines")
+        print("📧 COLONMIME: Starting RFC-compliant MIME parsing")
+        
+        // ENCODING FIX: Convert String back to Data using ISO-8859-1 to recover original bytes
+        // This is necessary because Swift's ByteBuffer.getString() may have incorrectly
+        // interpreted non-UTF-8 bytes as UTF-8, causing mojibake.
+        // By converting back to ISO-8859-1, we recover the original bytes that VMime can
+        // then properly decode according to the email's declared charset.
+        guard let rawData = content.data(using: .isoLatin1) else {
+            print("❌ COLONMIME: Failed to convert string to data, falling back to legacy parser")
+            return parseMimeContentLegacy(content)
+        }
+        
+        print("📧 COLONMIME: Converted string to \(rawData.count) bytes using ISO-8859-1")
+        
+        // Try using ColonMime library for robust MIME parsing
+        do {
+            let message = try MimeMessage(data: rawData)
+            
+            print("📧 COLONMIME: Successfully parsed email")
+            print("📧 COLONMIME: Has HTML body: \(message.hasHtmlBody)")
+            print("📧 COLONMIME: Has text body: \(message.hasTextBody)")
+            print("📧 COLONMIME: Attachment count: \(message.attachmentCount)")
+            
+            // Get HTML body if available, otherwise plain text
+            if message.hasHtmlBody {
+                let htmlBody = message.htmlBody
+                print("📧 COLONMIME: Using HTML body (\(htmlBody.count) chars)")
+                
+                // Convert HTML to attributed string
+                let attributedString = EmailHTMLParser.parseHTML(htmlBody)
+                
+                // Also extract plain text for fallback
+                let plainText = extractTextFromHTML(htmlBody)
+                let cleanedPlainText = removeEmailSignatureClutter(cleanWhitespace(plainText))
+                
+                return (cleanedPlainText, attributedString)
+                
+            } else if message.hasTextBody {
+                let textBody = message.textBody
+                print("📧 COLONMIME: Using plain text body (\(textBody.count) chars)")
+                
+                // Clean up plain text
+                let cleanedText = cleanWhitespace(textBody)
+                let finalText = removeEmailSignatureClutter(cleanedText)
+                // Note: No need for fixEncodingIssues() anymore - VMime handles encoding correctly with raw bytes
+                
+                return (finalText, nil)
+            } else {
+                // Try the generic body property
+                let body = message.body
+                if !body.isEmpty {
+                    print("📧 COLONMIME: Using generic body (\(body.count) chars)")
+                    
+                    // Check if it's HTML
+                    if body.contains("<html") || body.contains("<HTML") {
+                        let attributedString = EmailHTMLParser.parseHTML(body)
+                        let plainText = extractTextFromHTML(body)
+                        let cleanedPlainText = removeEmailSignatureClutter(cleanWhitespace(plainText))
+                        return (cleanedPlainText, attributedString)
+                    } else {
+                        let cleanedText = cleanWhitespace(body)
+                        let finalText = removeEmailSignatureClutter(cleanedText)
+                        return (finalText, nil)
+                    }
+                }
+            }
+            
+            print("⚠️ COLONMIME: No body content found")
+            return ("", nil)
+            
+        } catch MimeError.emptyInput {
+            print("❌ COLONMIME: Empty input, falling back to legacy parser")
+            return parseMimeContentLegacy(content)
+            
+        } catch MimeError.invalidFormat {
+            print("⚠️ COLONMIME: Invalid MIME format, falling back to legacy parser")
+            return parseMimeContentLegacy(content)
+            
+        } catch {
+            print("❌ COLONMIME: Parse error: \(error), falling back to legacy parser")
+            return parseMimeContentLegacy(content)
+        }
+    }
+    
+    // Legacy MIME parser as fallback (kept for compatibility)
+    private func parseMimeContentLegacy(_ content: String) -> (String, NSAttributedString?) {
+        print("📧 LEGACY MIME: Using fallback parser")
+        
+        // Simple fallback: try to extract text content
         let lines = content.components(separatedBy: .newlines)
-        var textParts: [String] = []
-        var htmlParts: [String] = []
-        var currentPart: [String] = []
-        var isInContent = false
-        var isTextPlain = false
-        var isTextHtml = false
-        var currentEncoding: String = "7bit"  // default encoding
-        var skipUntilNextBoundary = false
-        var hasEncounteredBoundary = false
+        var textContent: [String] = []
+        var inBody = false
         
         for line in lines {
-            // Detect MIME boundary markers
-            let isBoundary = line.hasPrefix("--_") || (line.hasPrefix("--") && line.count > 10 && line.contains("_"))
-            
-            if isBoundary {
-                hasEncounteredBoundary = true
-                
-                // Process previous part if we were collecting content
-                if isInContent && !currentPart.isEmpty {
-                    let partContent = currentPart.joined(separator: "\n")
-                    let decodedContent = decodeByTransferEncoding(partContent, encoding: currentEncoding)
-                    if isTextPlain {
-                        textParts.append(decodedContent)
-                    } else if isTextHtml {
-                        htmlParts.append(decodedContent)
-                    }
-                }
-                
-                // Reset for new part
-                currentPart = []
-                isInContent = false
-                isTextPlain = false
-                isTextHtml = false
-                currentEncoding = "7bit"  // reset to default
-                skipUntilNextBoundary = false
+            // Skip MIME headers
+            if line.hasPrefix("Content-") || line.hasPrefix("MIME-") {
                 continue
             }
             
-            // If we haven't encountered a boundary yet, this might be a simple email with headers
-            if !hasEncounteredBoundary && line.hasPrefix("Content-Type:") {
-                // This is likely a simple single-part email with headers
-                if line.contains("text/plain") {
-                    isTextPlain = true
-                } else if line.contains("text/html") {
-                    isTextHtml = true
-                }
+            // Empty line indicates start of body
+            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                inBody = true
                 continue
             }
             
-            // Skip empty lines before content headers
-            if !isInContent && line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                // Empty line after headers indicates start of content
-                if hasEncounteredBoundary || isTextPlain || isTextHtml {
-                    isInContent = true
-                }
-                continue
-            }
-            
-            // Skip content-type headers and other MIME headers
-            if line.hasPrefix("Content-Type:") {
-                isTextPlain = line.contains("text/plain")
-                isTextHtml = line.contains("text/html")
-                continue
-            }
-            
-            if line.hasPrefix("Content-Transfer-Encoding:") {
-                // Extract the encoding type
-                currentEncoding = line.replacingOccurrences(of: "Content-Transfer-Encoding:", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
-                print("📧 Found encoding: \(currentEncoding)")
-                continue
-            }
-            
-            if line.hasPrefix("Content-Disposition:") || line.hasPrefix("Content-ID:") {
-                continue
-            }
-            
-            // Empty line indicates end of headers, start of content
-            if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isInContent {
-                isInContent = true
-                continue
-            }
-            
-            // Collect content lines
-            if isInContent && (isTextPlain || isTextHtml) {
-                currentPart.append(line)
+            // Collect body lines
+            if inBody && !line.hasPrefix("--") {
+                textContent.append(line)
             }
         }
         
-        // Process the final part if we were still collecting content
-        if isInContent && !currentPart.isEmpty {
-            let partContent = currentPart.joined(separator: "\n")
-            let decodedContent = decodeByTransferEncoding(partContent, encoding: currentEncoding)
-            if isTextPlain {
-                textParts.append(decodedContent)
-            } else if isTextHtml {
-                htmlParts.append(decodedContent)
-            }
-        }
+        let rawText = textContent.joined(separator: "\n")
         
-        // Process text/plain and text/html parts
-        print("📧 MIME PARSE: Found textParts=\(textParts.count), htmlParts=\(htmlParts.count)")
-        if !textParts.isEmpty && !htmlParts.isEmpty {
-            // We have both - use HTML for rich formatting but keep plain text as fallback
-            print("📧 MIME PARSE: Using HTML content (with plain text fallback)")
-            let htmlContent = htmlParts.first!
-            let (plainText, attributedText) = processHTMLContent(htmlContent)
-            return (plainText, attributedText)
-        } else if !textParts.isEmpty {
-            // Only plain text available
-            print("📧 MIME PARSE: Using plain text content")
-            let cleanText = cleanWhitespace(textParts.first!)
-            let finalText = removeEmailSignatureClutter(cleanText)
-            let encodingFixed = fixEncodingIssues(finalText)
-            return (encodingFixed, nil)
-        } else if !htmlParts.isEmpty {
-            // Only HTML available
-            print("📧 MIME PARSE: Using HTML content only")
-            let htmlContent = htmlParts.first!
-            let (plainText, attributedText) = processHTMLContent(htmlContent)
-            return (plainText, attributedText)
-        }
-        
-        // If no parts were extracted, fall back to emergency cleanup
-        if content.contains("--_") && content.contains("Content-Type:") {
-            return emergencyMimeCleanup(content)
-        }
-        
-        // Before giving up, check if the entire content might be base64
-        print("📧 MIME PARSE: No parts found, checking if content might be base64")
-        if isBase64Content(content) {
-            print("📧 MIME PARSE: Content appears to be base64, attempting decode")
-            let decoded = decodeBase64Content(content)
-            if decoded != content {
-                print("📧 MIME PARSE: Base64 decode successful in fallback")
-                if decoded.contains("<html") || decoded.contains("<HTML") {
-                    return processHTMLContent(decoded)
-                }
-                let cleaned = removeEmailSignatureClutter(cleanWhitespace(decoded))
-                return (cleaned, nil)
-            }
-        }
-        
-        // Final fallback: clean the original content
-        print("📧 MIME PARSE: Using final fallback - no parts found")
-        print("📧 MIME PARSE: textParts=\(textParts.count), htmlParts=\(htmlParts.count)")
-        let cleanText = cleanWhitespace(content)
-        let finalText = removeEmailSignatureClutter(cleanText)
-        let encodingFixed = fixEncodingIssues(finalText)
-        print("📧 FINAL FALLBACK RESULT: First 200 chars: \(String(encodingFixed.prefix(200)))")
-        return (encodingFixed, nil)
-    }
-    
-    private func processHTMLContent(_ html: String) -> (String, NSAttributedString?) {
-        // Create attributed string from HTML
-        let attributedString = EmailHTMLParser.parseHTML(html)
-        
-        // Also create a clean plain text version for fallback
-        let plainText = extractTextFromHTML(html)
-        let cleanPlainText = removeEmailSignatureClutter(cleanWhitespace(plainText))
-        
-        return (cleanPlainText, attributedString)
-    }
-    
-    private func emergencyMimeCleanup(_ content: String) -> (String, NSAttributedString?) {
-        // Emergency fallback when MIME parsing fails
-        print("🚨 Emergency MIME cleanup triggered")
-        
-        // Simple approach: find the first text/plain section and extract it
-        let parts = content.components(separatedBy: "--_")
-        
-        for part in parts {
-            if part.contains("Content-Type: text/plain") {
-                // Extract content after headers
-                let lines = part.components(separatedBy: .newlines)
-                var contentLines: [String] = []
-                var pastHeaders = false
-                
-                for line in lines {
-                    if pastHeaders {
-                        contentLines.append(line)
-                    } else if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        pastHeaders = true
-                    }
-                }
-                
-                let rawText = contentLines.joined(separator: "\n")
-                let decoded = decodeQuotedPrintable(rawText)
-                let cleaned = cleanWhitespace(decoded)
-                let finalCleaned = removeEmailSignatureClutter(cleaned)
-                
-                print("✅ Emergency cleanup extracted text: \(finalCleaned.prefix(100))...")
-                return (finalCleaned, nil)
-            }
-        }
-        
-        // Ultimate fallback: just decode quoted-printable and clean
-        print("⚠️ No text/plain part found, applying basic cleanup")
-        let decoded = decodeQuotedPrintable(content)
+        // Try to decode if base64 or quoted-printable
+        let decoded = decodeByTransferEncoding(rawText, encoding: "quoted-printable")
         let cleaned = cleanWhitespace(decoded)
-        let finalCleaned = removeEmailSignatureClutter(cleaned)
-        return (finalCleaned, nil)
+        let finalText = removeEmailSignatureClutter(cleaned)
+        
+        print("📧 LEGACY MIME: Extracted \(finalText.count) chars")
+        return (finalText, nil)
     }
     
     // MARK: - Command Execution System
@@ -1736,7 +1791,7 @@ class IMAPClient: ObservableObject {
         return "A\(commandCounter)"
     }
     
-    private func executeCommand(_ command: String, timeout: TimeInterval = 30.0) async throws -> String {
+    private func executeCommand(_ command: String, uid: UInt32? = nil, section: String? = nil, timeout: TimeInterval = 30.0) async throws -> String {
         guard let channel = self.channel else {
             throw IMAPError.noConnection
         }
@@ -1753,22 +1808,29 @@ class IMAPClient: ObservableObject {
         let tag = generateCommandTag()
         let fullCommand = "\(tag) \(command)\r\n"
         
-        // Track the last sent tag so handler knows which responses belong to this command
-        await MainActor.run {
-            self.lastSentTag = tag
-            self.responseBuffers[tag] = ""
-        }
-        
         return try await withCheckedThrowingContinuation { continuation in
-            pendingCommands[tag] = { result in
-                continuation.resume(with: result)
+            // FIX: Create PendingCommand with metadata for proper response matching
+            Task { @MainActor in
+                self.lastSentTag = tag
+                let pendingCmd = PendingCommand(
+                    tag: tag,
+                    commandString: command,
+                    requestedUID: uid,
+                    requestedSection: section,
+                    sentAt: Date(),
+                    responseBuffer: "",
+                    completion: { result in
+                        continuation.resume(with: result)
+                    }
+                )
+                self.pendingCommands[tag] = pendingCmd
             }
             
             // Set up timeout
             Task { @MainActor in
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                if let completion = pendingCommands.removeValue(forKey: tag) {
-                    completion(.failure(IMAPError.commandTimeout))
+                if let command = pendingCommands.removeValue(forKey: tag) {
+                    command.completion(.failure(IMAPError.commandTimeout))
                 }
             }
             
@@ -1782,8 +1844,9 @@ class IMAPClient: ObservableObject {
                     case .success:
                         print("✅ Command sent: \(tag) \(command)")
                     case .failure(let error):
-                        if let completion = self.pendingCommands.removeValue(forKey: tag) {
-                            completion(.failure(error))
+                        print("❌ Failed to send command: \(error)")
+                        if let command = self.pendingCommands.removeValue(forKey: tag) {
+                            command.completion(.failure(error))
                         }
                     }
                 }
@@ -1792,16 +1855,58 @@ class IMAPClient: ObservableObject {
     }
     
     func appendToResponseBuffer(_ data: String) {
-        guard let tag = lastSentTag else { return }
-        responseBuffers[tag, default: ""] += data
-        responseBufferLastSizes[tag] = responseBuffers[tag]!.count
+        // FIX: Match responses using command metadata instead of response content
+        var targetTag: String?
+        
+        // 1. Check if this is a tagged response (e.g., "A1234 OK ...")
+        if let tagMatch = data.range(of: "^A\\d+\\s", options: .regularExpression) {
+            targetTag = String(data[tagMatch]).trimmingCharacters(in: .whitespaces)
+            print("🏷️  Tagged response for: \(targetTag!)")
+        }
+        // 2. For untagged FETCH responses, match by UID using COMMAND metadata
+        else if data.contains("* ") && data.contains("FETCH") {
+            if let uidMatch = data.range(of: "UID (\\d+)", options: .regularExpression) {
+                let uidString = String(data[uidMatch]).components(separatedBy: " ").last!
+                if let uid = UInt32(uidString) {
+                    // FIX: Search pending commands by their requestedUID metadata
+                    for (tag, cmd) in pendingCommands {
+                        if cmd.requestedUID == uid {
+                            targetTag = tag
+                            print("✅ Matched untagged FETCH (UID \(uid)) to tag: \(tag)")
+                            break
+                        }
+                    }
+                    
+                    if targetTag == nil {
+                        print("⚠️  No command found requesting UID \(uid)")
+                        print("   Pending: \(pendingCommands.map { "\($0.key)→UID:\($0.value.requestedUID?.description ?? "nil")" }.joined(separator: ", "))")
+                    }
+                }
+            }
+        }
+        
+        // 3. Fallback to lastSentTag only if single command in flight
+        if targetTag == nil && pendingCommands.count == 1 {
+            targetTag = lastSentTag
+            print("📌 Using lastSentTag fallback: \(targetTag ?? "nil")")
+        }
+        
+        guard let tag = targetTag else {
+            print("❌ Could not determine target tag, dropping \(data.count) bytes")
+            return
+        }
+        
+        // Append to command's response buffer
+        pendingCommands[tag]?.responseBuffer += data
+        responseBufferLastSizes[tag] = pendingCommands[tag]?.responseBuffer.count ?? 0
         responseBufferLastUpdated[tag] = Date()
         
         parseLiteralExpectations(tag: tag)
     }
     
     private func parseLiteralExpectations(tag: String) {
-        guard let buffer = responseBuffers[tag] else { return }
+        guard let command = pendingCommands[tag] else { return }
+        let buffer = command.responseBuffer
         guard let bufferData = buffer.data(using: .utf8) else { return }
         
         let literalPattern = "\\{(\\d+)\\}"
@@ -1913,26 +2018,35 @@ class IMAPClient: ObservableObject {
         }
         
         if isComplete {
-            let fullResponse = responseBuffers[tag] ?? ""
+            guard let command = pendingCommands[tag] else {
+                print("LITERAL_TRACK: No pending command for \(tag)")
+                return
+            }
+            
+            let fullResponse = command.responseBuffer
             print("LITERAL_TRACK: Processing response - tag=\(tag), buffer=\(fullResponse.count) bytes")
             
-            if !areLiteralsComplete(tag: tag) {
-                print("LITERAL_TRACK: Literals incomplete, waiting for more data")
+            // Check if we have a tagged response
+            if !fullResponse.contains("\(tag) ") {
+                print("LITERAL_TRACK: No tagged response yet for \(tag)")
                 return
             }
             
             print("LITERAL_TRACK: All literals complete, returning to caller")
             
+            // FIX: Don't parse BODY responses here - let fetchBody() handle them
+            // parseBodyResponse was causing double-processing and consuming responses
             if fullResponse.contains("* ") && fullResponse.contains("FETCH") {
-                if fullResponse.contains("BODY[") {
-                    parseBodyResponse(fullResponse)
-                } else {
+                if fullResponse.contains("BODYSTRUCTURE") || !fullResponse.contains("BODY[") {
+                    // Only parse ENVELOPE/BODYSTRUCTURE responses here
+                    // BODY[] responses are handled by fetchBody()
                     parseEmailResponse(fullResponse)
                 }
             }
             
+            // Clean up
+            let completion = command.completion
             pendingCommands.removeValue(forKey: tag)
-            responseBuffers.removeValue(forKey: tag)
             responseBufferLastSizes.removeValue(forKey: tag)
             responseBufferLastUpdated.removeValue(forKey: tag)
             literalExpectations.removeValue(forKey: tag)
