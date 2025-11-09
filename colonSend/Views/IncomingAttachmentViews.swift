@@ -6,11 +6,16 @@
 //
 
 import SwiftUI
+import QuickLook
 
 struct IncomingAttachmentListView: View {
     let attachments: [IncomingAttachmentMetadata]
-    let onDownload: (IncomingAttachmentMetadata) -> Void
-    let onPreview: (IncomingAttachmentMetadata) -> Void
+    let emailUID: UInt32
+    let client: IMAPClient
+    
+    @StateObject private var manager = AttachmentManager.shared
+    @State private var quickLookURL: URL?
+    @State private var showQuickLook = false
     
     var body: some View {
         if !attachments.isEmpty {
@@ -25,8 +30,30 @@ struct IncomingAttachmentListView: View {
                         ForEach(attachments) { attachment in
                             IncomingAttachmentChip(
                                 attachment: attachment,
-                                onDownload: { onDownload(attachment) },
-                                onPreview: { onPreview(attachment) }
+                                emailUID: emailUID,
+                                client: client,
+                                downloadState: manager.downloadStates[attachment.id] ?? .notDownloaded,
+                                onDownload: {
+                                    Task {
+                                        await manager.saveAttachment(attachment, emailUID: emailUID, client: client)
+                                    }
+                                },
+                                onPreview: {
+                                    Task {
+                                        do {
+                                            let url = try await manager.previewAttachment(attachment, emailUID: emailUID, client: client)
+                                            quickLookURL = url
+                                            showQuickLook = true
+                                        } catch {
+                                            print("ERROR: Failed to preview attachment: \(error)")
+                                        }
+                                    }
+                                },
+                                onOpen: {
+                                    Task {
+                                        await manager.openAttachment(attachment, emailUID: emailUID, client: client)
+                                    }
+                                }
                             )
                         }
                     }
@@ -35,21 +62,28 @@ struct IncomingAttachmentListView: View {
                 }
             }
             .background(Color(NSColor.controlBackgroundColor))
+            .quickLookPreview($quickLookURL)
         }
     }
 }
 
 struct IncomingAttachmentChip: View {
     let attachment: IncomingAttachmentMetadata
+    let emailUID: UInt32
+    let client: IMAPClient
+    let downloadState: AttachmentDownloadState
     let onDownload: () -> Void
     let onPreview: () -> Void
+    let onOpen: () -> Void
     
     var body: some View {
         HStack(spacing: 6) {
+            // Icon
             Image(systemName: attachment.icon)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             
+            // Filename and size
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.filename)
                     .font(.caption)
@@ -59,46 +93,78 @@ struct IncomingAttachmentChip: View {
                     .foregroundStyle(.secondary)
             }
             
-            Button(action: onDownload) {
-                Image(systemName: "arrow.down.circle")
-                    .font(.caption)
+            // Download state indicator
+            Group {
+                switch downloadState {
+                case .notDownloaded:
+                    HStack(spacing: 4) {
+                        Button(action: onPreview) {
+                            Image(systemName: "eye")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Preview attachment")
+                        
+                        Button(action: onDownload) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Download attachment")
+                    }
                     .foregroundStyle(.secondary)
+                    
+                case .downloading(let progress):
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: 12, height: 12)
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                case .downloaded:
+                    HStack(spacing: 4) {
+                        Button(action: onOpen) {
+                            Image(systemName: "arrow.up.forward.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open attachment")
+                        
+                        Button(action: onPreview) {
+                            Image(systemName: "eye")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Preview attachment")
+                    }
+                    
+                case .failed(let error):
+                    Button(action: onDownload) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Failed: \(error). Tap to retry.")
+                }
             }
-            .buttonStyle(.plain)
-            .help("Download attachment")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Color.accentColor.opacity(0.1))
         .cornerRadius(8)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            // Double-click to preview
+            onPreview()
+        }
     }
 }
 
-#Preview("Attachment List") {
-    IncomingAttachmentListView(
-        attachments: [
-            IncomingAttachmentMetadata(
-                section: "2",
-                filename: "Proposal.pdf",
-                mimeType: "application/pdf",
-                sizeBytes: 2_300_000
-            ),
-            IncomingAttachmentMetadata(
-                section: "3",
-                filename: "Screenshot.png",
-                mimeType: "image/png",
-                sizeBytes: 458_000,
-                disposition: .inline
-            ),
-            IncomingAttachmentMetadata(
-                section: "4",
-                filename: "Report.xlsx",
-                mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                sizeBytes: 18_200_000
-            )
-        ],
-        onDownload: { _ in },
-        onPreview: { _ in }
-    )
-    .frame(width: 600)
-}
+//#Preview("Attachment List") {
+//    // Preview disabled - requires IMAPClient instance
+//}

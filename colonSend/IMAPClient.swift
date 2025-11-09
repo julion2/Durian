@@ -2173,6 +2173,107 @@ class IMAPClient: ObservableObject {
             }
         }
     }
+    
+    // MARK: - Attachment Fetching
+    
+    /// Fetches attachment data for a specific section of an email
+    /// Returns the raw binary data (Base64 decoded if needed)
+    func fetchAttachmentData(uid: UInt32, section: String) async throws -> Data {
+        print("ATTACHMENT_FETCH: Starting fetch for UID \(uid), section \(section)")
+        
+        // Use BODY.PEEK to avoid marking message as read
+        let command = "UID FETCH \(uid) (BODY.PEEK[\(section)])"
+        
+        do {
+            let response = try await executeCommand(command, uid: uid, section: section, timeout: 60.0)
+            print("ATTACHMENT_FETCH: Got response, length: \(response.count)")
+            
+            // Try to find the attachment data in the response
+            // Pattern: BODY[section] {size}\r\n<binary data>
+            if let bodyRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
+                print("ATTACHMENT_FETCH: Found BODY pattern with literal")
+                
+                // Extract size
+                let sizeMatch = String(response[bodyRange])
+                if let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
+                   let size = Int(sizeMatch[sizeRange]) {
+                    print("ATTACHMENT_FETCH: Expected \(size) bytes")
+                    
+                    // Convert response to Data to work with bytes
+                    guard let responseData = response.data(using: .utf8) else {
+                        throw AttachmentError.failedToExtract
+                    }
+                    
+                    // Find where the binary data starts (after \r\n following the size)
+                    let prefixStr = String(response[..<bodyRange.upperBound])
+                    guard let prefixData = prefixStr.data(using: .utf8) else {
+                        throw AttachmentError.failedToExtract
+                    }
+                    
+                    var byteOffset = prefixData.count
+                    
+                    // Skip CRLF after the size specification
+                    while byteOffset < responseData.count {
+                        let byte = responseData[byteOffset]
+                        if byte == 0x0D || byte == 0x0A {
+                            byteOffset += 1
+                        } else {
+                            break
+                        }
+                    }
+                    
+                    // Extract the binary data
+                    let endOffset = min(byteOffset + size, responseData.count)
+                    let attachmentData = responseData[byteOffset..<endOffset]
+                    
+                    print("ATTACHMENT_FETCH: Extracted \(attachmentData.count) bytes")
+                    
+                    // Check if data is Base64 encoded (common for attachments)
+                    // Base64 data will be ASCII text, so we can try decoding it
+                    if let dataString = String(data: attachmentData, encoding: .ascii),
+                       dataString.rangeOfCharacter(from: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=")).inverted) == nil,
+                       let decodedData = Data(base64Encoded: dataString, options: .ignoreUnknownCharacters) {
+                        print("ATTACHMENT_FETCH: Data was Base64 encoded, decoded to \(decodedData.count) bytes")
+                        return decodedData
+                    } else {
+                        // Return raw binary data
+                        return Data(attachmentData)
+                    }
+                }
+            }
+            // Pattern: BODY[section] "quoted data" (for small attachments)
+            else if let quotedRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\"([^\"]+)\"", options: .regularExpression) {
+                print("ATTACHMENT_FETCH: Found quoted BODY pattern")
+                let match = String(response[quotedRange])
+                if let startQuote = match.range(of: "\"")?.upperBound,
+                   let endQuote = match.range(of: "\"", options: .backwards)?.lowerBound {
+                    let content = String(match[startQuote..<endQuote])
+                    
+                    // Try Base64 decode
+                    if let decodedData = Data(base64Encoded: content, options: .ignoreUnknownCharacters) {
+                        print("ATTACHMENT_FETCH: Decoded quoted Base64 data to \(decodedData.count) bytes")
+                        return decodedData
+                    } else if let rawData = content.data(using: .utf8) {
+                        print("ATTACHMENT_FETCH: Using raw quoted data (\(rawData.count) bytes)")
+                        return rawData
+                    }
+                }
+            }
+            // Pattern: BODY[section] NIL
+            else if response.contains("BODY[\(section)] NIL") {
+                print("ATTACHMENT_FETCH: Section \(section) returned NIL")
+                throw AttachmentError.notFound
+            }
+            
+            print("ATTACHMENT_FETCH: ERROR - Could not parse attachment data from response")
+            print("ATTACHMENT_FETCH: Response preview: \(String(response.prefix(500)))")
+            throw AttachmentError.failedToExtract
+            
+        } catch {
+            print("ATTACHMENT_FETCH: ERROR - \(error)")
+            throw error
+        }
+    }
 }
 
 // Note: IMAPFolder, IMAPEmail, IMAPError, PaginationState, IMAPCommand, and String extension are now in Models/IMAPModels.swift

@@ -440,15 +440,13 @@ struct ContentView: View {
                 Divider()
                 
                 if !email.incomingAttachments.isEmpty {
-                    IncomingAttachmentListView(
-                        attachments: email.incomingAttachments,
-                        onDownload: { attachment in
-                            print("Download attachment: \(attachment.filename)")
-                        },
-                        onPreview: { attachment in
-                            print("Preview attachment: \(attachment.filename)")
-                        }
-                    )
+                    if let client = accountManager.getClient(for: accountId) {
+                        IncomingAttachmentListView(
+                            attachments: email.incomingAttachments,
+                            emailUID: email.uid,
+                            client: client
+                        )
+                    }
                     
                     Divider()
                 }
