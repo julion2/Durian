@@ -74,15 +74,48 @@ class AccountManager: ObservableObject {
 
         var merged: [IMAPEmail] = []
         for freshEmail in freshEmails {
-            if let existing = existingByUID[freshEmail.uid],
-               existing.body != nil && existing.body != "Loading..." {
-                var updated = freshEmail
-                updated.body = existing.body
-                updated.attributedBody = existing.attributedBody
-                merged.append(updated)
-            } else {
-                merged.append(freshEmail)
+            var updated = freshEmail
+            
+            if let existing = existingByUID[freshEmail.uid] {
+                // FIX: Prioritize fresh state over existing state
+                // The bug was: we always overwrote fresh .loaded with existing .notLoaded
+                switch (freshEmail.bodyState, existing.bodyState) {
+                case (.loaded, _):
+                    // Fresh email has loaded body - use it (it's newer)
+                    // Don't overwrite! Keep freshEmail.bodyState
+                    print("🔄 MERGE: UID \(freshEmail.uid) - Using fresh .loaded state")
+                    break
+                    
+                case (_, .loaded):
+                    // Existing has loaded body, fresh doesn't - preserve it
+                    updated.body = existing.body
+                    updated.attributedBody = existing.attributedBody
+                    updated.bodyState = existing.bodyState
+                    updated.rawBody = existing.rawBody
+                    updated.attachments = existing.attachments
+                    updated.incomingAttachments = existing.incomingAttachments
+                    print("🔄 MERGE: UID \(freshEmail.uid) - Preserving existing .loaded state")
+                    
+                case (.notLoaded, .loading):
+                    // Preserve loading state (user triggered load)
+                    updated.bodyState = .loading
+                    print("🔄 MERGE: UID \(freshEmail.uid) - Preserving .loading state")
+                    
+                case (.failed, _), (_, .failed):
+                    // If either failed, keep the failure
+                    if case .failed = existing.bodyState {
+                        updated.bodyState = existing.bodyState
+                    }
+                    print("🔄 MERGE: UID \(freshEmail.uid) - Handling .failed state")
+                    
+                default:
+                    // For all other cases, keep fresh state
+                    print("🔄 MERGE: UID \(freshEmail.uid) - Fresh: \(freshEmail.bodyState), Existing: \(existing.bodyState), Using fresh")
+                    break
+                }
             }
+            
+            merged.append(updated)
         }
 
         allEmails = merged

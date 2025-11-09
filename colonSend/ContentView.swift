@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 
 enum DetailViewMode: Equatable {
-    case emailDetail(IMAPEmail)
+    case emailDetail(emailUID: UInt32, accountId: String)
     case compose(replyTo: IMAPEmail?, forward: IMAPEmail?)
     case empty
 }
@@ -86,9 +86,17 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                             }
                             
-                            Text(email.subject)
-                                .font(.callout)
-                                .fontWeight(email.isRead ? .regular : .semibold)
+                            HStack(spacing: 4) {
+                                Text(email.subject)
+                                    .font(.callout)
+                                    .fontWeight(email.isRead ? .regular : .semibold)
+                                
+                                if !email.incomingAttachments.isEmpty {
+                                    Image(systemName: "paperclip")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
                             
                             Text(email.body ?? "")
                                 .font(.callout)
@@ -148,8 +156,19 @@ struct ContentView: View {
             }
         } detail: {
             switch detailMode {
-            case .emailDetail(let email):
-                emailDetailView(email: email)
+            case .emailDetail(let emailUID, let accountId):
+                if let email = accountManager.allEmails.first(where: { $0.uid == emailUID }) {
+                    emailDetailView(email: email, accountId: accountId)
+                        // FIX: Force view refresh when email's hash changes (includes bodyState)
+                        .id(email.hashValue)
+                } else {
+                    VStack {
+                        Text("Email not found")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
                 
             case .compose(let replyTo, let forward):
                 EmailComposeView(
@@ -161,7 +180,7 @@ struct ContentView: View {
                     currentDraft: $composeDraft,
                     onDismiss: {
                         if let lastEmail = lastViewedEmail {
-                            detailMode = .emailDetail(lastEmail)
+                            detailMode = .emailDetail(emailUID: lastEmail.uid, accountId: lastViewedEmail?.from ?? "")
                         } else {
                             detailMode = .empty
                         }
@@ -378,7 +397,7 @@ struct ContentView: View {
     }
     
     @ViewBuilder
-    private func emailDetailView(email: IMAPEmail) -> some View {
+    private func emailDetailView(email: IMAPEmail, accountId: String) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -420,14 +439,41 @@ struct ContentView: View {
                 
                 Divider()
                 
+                if !email.incomingAttachments.isEmpty {
+                    IncomingAttachmentListView(
+                        attachments: email.incomingAttachments,
+                        onDownload: { attachment in
+                            print("Download attachment: \(attachment.filename)")
+                        },
+                        onPreview: { attachment in
+                            print("Preview attachment: \(attachment.filename)")
+                        }
+                    )
+                    
+                    Divider()
+                }
+                
                 VStack(alignment: .leading, spacing: 12) {
-                    if let attributedBody = email.attributedBody {
+                    // Use bodyState for more reliable state management
+                    if let attributedBody = email.bodyState.attributedBody {
                         Text(AttributedString(attributedBody))
                             .textSelection(.enabled)
                     } else {
-                        Text(email.body ?? "Loading...")
+                        Text(email.bodyState.displayBody)
                             .font(.body)
                             .textSelection(.enabled)
+                            .foregroundColor(email.bodyState == .loading ? .secondary : .primary)
+                    }
+                }
+                .onAppear {
+                    // Trigger body loading if not yet loaded
+                    if case .notLoaded = email.bodyState {
+                        Task {
+                            if let client = accountManager.getClient(for: accountId) {
+                                print("📧 UI: Email body not loaded, triggering fetch for UID \(email.uid)")
+                                await client.fetchEmailBody(uid: email.uid)
+                            }
+                        }
                     }
                 }
                 
@@ -480,7 +526,9 @@ struct ContentView: View {
     
     private func showEmailDetail(_ email: IMAPEmail) {
         lastViewedEmail = email
-        detailMode = .emailDetail(email)
+        // Use accountManager.selectedAccount to get the current account
+        let accountId = accountManager.selectedAccount ?? ""
+        detailMode = .emailDetail(emailUID: email.uid, accountId: accountId)
         
         if !email.isRead {
             Task {

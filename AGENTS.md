@@ -25,7 +25,7 @@
 
 **Naming**: camelCase for properties/functions, PascalCase for types; descriptive names (e.g., `updateAggregatedData`, not `update`)
 
-**Error Handling**: Use `Result<T, Error>` for async completions, custom `IMAPError` enum for domain errors, print without emoji prefixes (🔵 info, ❌ error, 🔧 debug)
+**Error Handling**: Use `Result<T, Error>` for async completions, custom `IMAPError` enum for domain errors, print always without emoji prefixes (🔵 info, ❌ error, 🔧 debug), but use Keywords before the Log to make sure you can grep them.
 
 **Architecture**: Single Responsibility - separate Models/, Managers/, Network/, Utilities/ as per REFACTORING.md; extensions for utilities on IMAPClient; use @Published for observable state; AccountManager.shared singleton pattern
 
