@@ -1874,25 +1874,61 @@ class IMAPClient: ObservableObject {
             targetTag = String(data[tagMatch]).trimmingCharacters(in: .whitespaces)
             print("🏷️  Tagged response for: \(targetTag!)")
         }
-        // 2. For untagged FETCH responses, match by UID using COMMAND metadata
+        // 2. For untagged FETCH responses, match by UID AND section using COMMAND metadata
         else if data.contains("* ") && data.contains("FETCH") {
-            if let uidMatch = data.range(of: "UID (\\d+)", options: .regularExpression) {
-                let uidString = String(data[uidMatch]).components(separatedBy: " ").last!
-                if let uid = UInt32(uidString) {
-                    // FIX: Search pending commands by their requestedUID metadata
-                    for (tag, cmd) in pendingCommands {
-                        if cmd.requestedUID == uid {
+            // FIX: For BODY.PEEK responses, also match by section to avoid conflicts
+            // Extract ALL UIDs from response and match with pending commands
+            let uidPattern = "UID (\\d+)"
+            guard let uidRegex = try? NSRegularExpression(pattern: uidPattern, options: []) else {
+                return
+            }
+            
+            let nsRange = NSRange(data.startIndex..<data.endIndex, in: data)
+            let uidMatches = uidRegex.matches(in: data, range: nsRange)
+            
+            // Try to match each UID found in the response with pending commands
+            for uidMatch in uidMatches {
+                guard uidMatch.numberOfRanges >= 2,
+                      let uidRange = Range(uidMatch.range(at: 1), in: data),
+                      let uid = UInt32(data[uidRange]) else {
+                    continue
+                }
+                
+                // Check if any pending command is waiting for this UID
+                for (tag, cmd) in pendingCommands {
+                    if cmd.requestedUID == uid {
+                        // Additional check: if command has a section specified, verify it matches
+                        if let requestedSection = cmd.requestedSection {
+                            // Check if this response contains the requested section
+                            if data.contains("BODY[\(requestedSection)]") || data.contains("BODY.PEEK[\(requestedSection)]") {
+                                targetTag = tag
+                                print("✅ Matched FETCH (UID \(uid), section \(requestedSection)) to tag: \(tag)")
+                                break
+                            }
+                        } else {
+                            // No section specified, just match by UID
                             targetTag = tag
-                            print("✅ Matched untagged FETCH (UID \(uid)) to tag: \(tag)")
+                            print("✅ Matched FETCH (UID \(uid)) to tag: \(tag)")
                             break
                         }
                     }
-                    
-                    if targetTag == nil {
-                        print("⚠️  No command found requesting UID \(uid)")
-                        print("   Pending: \(pendingCommands.map { "\($0.key)→UID:\($0.value.requestedUID?.description ?? "nil")" }.joined(separator: ", "))")
-                    }
                 }
+                
+                if targetTag != nil {
+                    break  // Found a match, stop searching
+                }
+            }
+            
+            if targetTag == nil && !uidMatches.isEmpty {
+                let uids = uidMatches.compactMap { match -> String? in
+                    guard match.numberOfRanges >= 2,
+                          let uidRange = Range(match.range(at: 1), in: data) else {
+                        return nil
+                    }
+                    return String(data[uidRange])
+                }
+                print("⚠️  No command found for UIDs in response: \(uids.joined(separator: ", "))")
+                print("   Pending: \(pendingCommands.map { "\($0.key)→UID:\($0.value.requestedUID?.description ?? "nil"), section:\($0.value.requestedSection ?? "nil")" }.joined(separator: ", "))")
             }
         }
         
