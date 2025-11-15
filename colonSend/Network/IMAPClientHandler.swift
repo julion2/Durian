@@ -23,20 +23,33 @@ class IMAPClientHandler: ChannelInboundHandler {
     }
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let buffer = self.unwrapInboundIn(data)
+        var buffer = self.unwrapInboundIn(data)
         
         bytesReceivedInSession += buffer.readableBytes
         
-        if let string = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
-            print("IMAP Server: \(string) [Session total: \(bytesReceivedInSession) bytes]")
-            
-            // Always append to response buffer for the current command
-            Task { @MainActor in
-                imapClient?.appendToResponseBuffer(string)
-            }
-            
-            // Check for tagged completion responses (starts with tag)
-            let lines = string.components(separatedBy: .newlines)
+        // Read raw bytes (binary-safe)
+        guard let bytes = buffer.readBytes(length: buffer.readableBytes) else {
+            return
+        }
+        
+        let data = Data(bytes)
+        
+        // Log ASCII preview for debugging (safe for protocol, not payload)
+        if let asciiPreview = String(data: data.prefix(200), encoding: .ascii) {
+            print("IMAP Server: \(asciiPreview.prefix(100))... [Session total: \(bytesReceivedInSession) bytes]")
+        } else {
+            print("IMAP Server: <binary data> [\(data.count) bytes] [Session total: \(bytesReceivedInSession) bytes]")
+        }
+        
+        // Append to response buffer (binary-safe)
+        // Note: appendToResponseBuffer is @MainActor, so we dispatch to main thread
+        Task { @MainActor in
+            imapClient?.appendToResponseBuffer(data)
+        }
+        
+        // Check for tagged completion (ASCII protocol only)
+        if let asciiString = String(data: data, encoding: .ascii) {
+            let lines = asciiString.components(separatedBy: .newlines)
             for line in lines {
                 let trimmed = line.trimmingCharacters(in: .whitespaces)
                 if trimmed.hasPrefix("A") && (trimmed.contains(" OK") || trimmed.contains(" NO") || trimmed.contains(" BAD")) {
@@ -50,21 +63,17 @@ class IMAPClientHandler: ChannelInboundHandler {
                 }
             }
             
-            // IMAP Response Parsing Strategy:
-            // - LIST/EXISTS: Immediate (single-line, synchronous)
-            // - FETCH: Deferred to handleCommandResponse (multi-line, accumulation required)
-            
-            // Parse LIST responses
-            if string.contains("* LIST") {
+            // Parse LIST responses (ASCII protocol)
+            if asciiString.contains("* LIST") {
                 Task { @MainActor in
-                    imapClient?.parseFolderResponse(string)
+                    imapClient?.parseFolderResponse(asciiString)
                 }
             }
             
-            // Parse EXISTS responses for message count
-            if string.contains("* ") && string.contains(" EXISTS") {
+            // Parse EXISTS responses (ASCII protocol)
+            if asciiString.contains("* ") && asciiString.contains(" EXISTS") {
                 Task { @MainActor in
-                    imapClient?.parseExistsResponse(string)
+                    imapClient?.parseExistsResponse(asciiString)
                 }
             }
         }

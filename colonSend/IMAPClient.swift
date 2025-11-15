@@ -49,7 +49,7 @@ class IMAPClient: ObservableObject {
         let requestedUID: UInt32?
         let requestedSection: String?
         let sentAt: Date
-        var responseBuffer: String
+        var responseBuffer: Data  // Changed from String to Data for binary safety
         var completion: CommandCompletion
     }
     
@@ -1831,7 +1831,7 @@ class IMAPClient: ObservableObject {
                     requestedUID: uid,
                     requestedSection: section,
                     sentAt: Date(),
-                    responseBuffer: "",
+                    responseBuffer: Data(),  // Changed from "" to Data()
                     completion: { result in
                         continuation.resume(with: result)
                     }
@@ -1871,14 +1871,14 @@ class IMAPClient: ObservableObject {
         }
     }
     
-    func appendToResponseBuffer(_ data: String) {
+    func appendToResponseBuffer(_ data: Data) {
+        // Convert to ASCII string for protocol parsing only (binary data preserved in Data)
+        let asciiPreview = String(data: data.prefix(200), encoding: .ascii) ?? "<binary>"
+        
         // PHASE 1: Enhanced debug logging
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("📥 RESPONSE RECEIVED (\(data.count) bytes)")
-        print("Preview: \(String(data.prefix(200)))")
-        print("Contains UID: \(data.range(of: "UID \\d+", options: .regularExpression) != nil)")
-        print("Contains BODY: \(data.contains("BODY["))")
-        print("Contains tag: \(data.range(of: "^A\\d+", options: .regularExpression) != nil)")
+        print("Preview: \(asciiPreview)")
         print("Pending commands: \(pendingCommands.count)")
         for (tag, cmd) in pendingCommands {
             print("  - \(tag): seq=\(cmd.sequence), UID=\(cmd.requestedUID?.description ?? "nil"), section=\(cmd.requestedSection ?? "nil")")
@@ -1887,26 +1887,41 @@ class IMAPClient: ObservableObject {
         
         var targetTag: String?
         
+        // Parse protocol using ASCII (safe for IMAP protocol, not payload)
+        guard let asciiString = String(data: data, encoding: .ascii) else {
+            // If not ASCII-parseable, try to match by pending command
+            if pendingCommands.count == 1 {
+                targetTag = lastSentTag
+                print("📌 Binary data, routing to only pending command")
+            }
+            if let tag = targetTag {
+                pendingCommands[tag]?.responseBuffer.append(data)
+                responseBufferLastSizes[tag] = pendingCommands[tag]?.responseBuffer.count ?? 0
+                responseBufferLastUpdated[tag] = Date()
+            }
+            return
+        }
+        
         // Strategy 1: Direct tag match
-        if let tagMatch = data.range(of: "^A\\d+\\s", options: .regularExpression) {
-            targetTag = String(data[tagMatch]).trimmingCharacters(in: .whitespaces)
+        if let tagMatch = asciiString.range(of: "^A\\d+\\s", options: .regularExpression) {
+            targetTag = String(asciiString[tagMatch]).trimmingCharacters(in: .whitespaces)
             print("🏷️  STRATEGY 1: Tagged response for: \(targetTag!)")
         }
         // Strategy 2: Context-based matching (PHASE 2 enhancement)
-        else if data.contains("* ") && data.contains("FETCH") {
+        else if asciiString.contains("* ") && asciiString.contains("FETCH") {
             let uidPattern = "UID (\\d+)"
             guard let uidRegex = try? NSRegularExpression(pattern: uidPattern, options: []) else {
                 return
             }
             
-            let nsRange = NSRange(data.startIndex..<data.endIndex, in: data)
-            let uidMatches = uidRegex.matches(in: data, range: nsRange)
+            let nsRange = NSRange(asciiString.startIndex..<asciiString.endIndex, in: asciiString)
+            let uidMatches = uidRegex.matches(in: asciiString, range: nsRange)
             
             // Try to match each UID found in the response with pending commands
             for uidMatch in uidMatches {
                 guard uidMatch.numberOfRanges >= 2,
-                      let uidRange = Range(uidMatch.range(at: 1), in: data),
-                      let uid = UInt32(data[uidRange]) else {
+                      let uidRange = Range(uidMatch.range(at: 1), in: asciiString),
+                      let uid = UInt32(asciiString[uidRange]) else {
                     continue
                 }
                 
@@ -1916,7 +1931,7 @@ class IMAPClient: ObservableObject {
                         // Additional check: if command has a section specified, verify it matches
                         if let requestedSection = cmd.requestedSection {
                             // Check if this response contains the requested section
-                            if data.contains("BODY[\(requestedSection)]") || data.contains("BODY.PEEK[\(requestedSection)]") {
+                            if asciiString.contains("BODY[\(requestedSection)]") || asciiString.contains("BODY.PEEK[\(requestedSection)]") {
                                 targetTag = tag
                                 print("✅ STRATEGY 2: Matched FETCH (UID \(uid), section \(requestedSection)) to tag: \(tag)")
                                 break
@@ -1938,10 +1953,10 @@ class IMAPClient: ObservableObject {
             if targetTag == nil && !uidMatches.isEmpty {
                 let uids = uidMatches.compactMap { match -> String? in
                     guard match.numberOfRanges >= 2,
-                          let uidRange = Range(match.range(at: 1), in: data) else {
+                          let uidRange = Range(match.range(at: 1), in: asciiString) else {
                         return nil
                     }
-                    return String(data[uidRange])
+                    return String(asciiString[uidRange])
                 }
                 print("⚠️  No command found requesting UID \(uids.joined(separator: ", "))")
                 print("   Pending: \(pendingCommands.map { "\($0.key)→UID:\($0.value.requestedUID?.description ?? "nil"), section:\($0.value.requestedSection ?? "nil")" }.joined(separator: ", "))")
@@ -1961,12 +1976,12 @@ class IMAPClient: ObservableObject {
         
         guard let tag = targetTag else {
             print("❌ CORRELATION: Dropped \(data.count) bytes - no command match")
-            print("❌ DROPPED DATA: \(String(data.prefix(500)))")
+            print("❌ DROPPED DATA: \(asciiPreview)")
             return
         }
         
-        // Append to command's response buffer
-        pendingCommands[tag]?.responseBuffer += data
+        // Append to command's response buffer (binary-safe)
+        pendingCommands[tag]?.responseBuffer.append(data)
         responseBufferLastSizes[tag] = pendingCommands[tag]?.responseBuffer.count ?? 0
         responseBufferLastUpdated[tag] = Date()
          
@@ -1976,13 +1991,15 @@ class IMAPClient: ObservableObject {
     private func parseLiteralExpectations(tag: String) {
         guard let command = pendingCommands[tag] else { return }
         let buffer = command.responseBuffer
-        guard let bufferData = buffer.data(using: .utf8) else { return }
+        
+        // Parse protocol part as ASCII (literals are in ASCII protocol)
+        guard let asciiString = String(data: buffer, encoding: .ascii) else { return }
         
         let literalPattern = "\\{(\\d+)\\}"
         guard let regex = try? NSRegularExpression(pattern: literalPattern, options: []) else { return }
         
-        let nsRange = NSRange(buffer.startIndex..<buffer.endIndex, in: buffer)
-        let matches = regex.matches(in: buffer, range: nsRange)
+        let nsRange = NSRange(asciiString.startIndex..<asciiString.endIndex, in: asciiString)
+        let matches = regex.matches(in: asciiString, range: nsRange)
         
         if literalExpectations[tag] == nil {
             literalExpectations[tag] = []
@@ -1992,22 +2009,22 @@ class IMAPClient: ObservableObject {
         
         for (index, match) in matches.enumerated() {
             guard match.numberOfRanges >= 2,
-                  let sizeRange = Range(match.range(at: 1), in: buffer),
-                  let size = Int(buffer[sizeRange]) else {
+                  let sizeRange = Range(match.range(at: 1), in: asciiString),
+                  let size = Int(asciiString[sizeRange]) else {
                 continue
             }
             
             if index >= currentExpectations.count {
                 let matchEndUtf16 = match.range.upperBound
-                let matchEndIndex = buffer.utf16.index(buffer.utf16.startIndex, offsetBy: matchEndUtf16)
-                let matchEndStringIndex = String.Index(matchEndIndex, within: buffer)!
+                let matchEndIndex = asciiString.utf16.index(asciiString.utf16.startIndex, offsetBy: matchEndUtf16)
+                let matchEndStringIndex = String.Index(matchEndIndex, within: asciiString)!
                 
-                let prefixString = String(buffer[..<matchEndStringIndex])
-                guard let prefixData = prefixString.data(using: .utf8) else { continue }
+                let prefixString = String(asciiString[..<matchEndStringIndex])
+                let prefixByteCount = prefixString.utf8.count
                 
-                var byteOffset = prefixData.count
-                while byteOffset < bufferData.count {
-                    let byte = bufferData[byteOffset]
+                var byteOffset = prefixByteCount
+                while byteOffset < buffer.count {
+                    let byte = buffer[byteOffset]
                     if byte == 0x0D || byte == 0x0A {
                         byteOffset += 1
                     } else {
@@ -2022,7 +2039,7 @@ class IMAPClient: ObservableObject {
             
             if index < currentExpectations.count {
                 let startOffset = currentExpectations[index].startOffset
-                let availableBytes = max(0, bufferData.count - startOffset)
+                let availableBytes = max(0, buffer.count - startOffset)
                 currentExpectations[index].receivedBytes = min(availableBytes, currentExpectations[index].size)
                 
                 let received = currentExpectations[index].receivedBytes
@@ -2092,8 +2109,16 @@ class IMAPClient: ObservableObject {
                 return
             }
             
-            let fullResponse = command.responseBuffer
-            print("LITERAL_TRACK: Processing response - tag=\(tag), buffer=\(fullResponse.count) bytes")
+            let fullResponseData = command.responseBuffer
+            print("LITERAL_TRACK: Processing response - tag=\(tag), buffer=\(fullResponseData.count) bytes")
+            
+            // Convert to ISO-8859-1 to preserve raw bytes (like colonMime does)
+            // ASCII is a subset of ISO-8859-1, so protocol parsing works,
+            // but binary data in literals is preserved
+            guard let fullResponse = String(data: fullResponseData, encoding: .isoLatin1) else {
+                print("LITERAL_TRACK: ERROR - Response is not ISO-8859-1 parseable")
+                return
+            }
             
             // Check if we have a tagged response
             if !fullResponse.contains("\(tag) ") {
@@ -2122,6 +2147,8 @@ class IMAPClient: ObservableObject {
             if lastSentTag == tag {
                 lastSentTag = nil
             }
+            
+            // Return full response as String (for compatibility with existing code)
             completion(.success(fullResponse))
         }
     }
@@ -2234,17 +2261,167 @@ class IMAPClient: ObservableObject {
     
     // MARK: - Attachment Fetching
     
-    /// PHASE 1 & 2: Fetches attachment data with retry logic and dynamic timeout
-    /// Returns the raw binary data (Base64 decoded if needed)
-    func fetchAttachmentData(uid: UInt32, section: String, maxRetries: Int = 3) async throws -> Data {
-        // PHASE 2: Wrap in circuit breaker
-        return try await attachmentCircuitBreaker.execute {
-            try await self.fetchAttachmentDataInternal(uid: uid, section: section, maxRetries: maxRetries)
+    /// Feature flag for gradual rollout of colonMime attachment support
+    private let useColonMimeAttachments: Bool = true
+    
+    /// PHASE 3: Fetches attachment data using colonMime or legacy parser
+    /// Returns the raw binary data
+    func fetchAttachmentData(uid: UInt32, section: String, maxRetries: Int = 1) async throws -> Data {
+        // Use colonMime if enabled, otherwise fall back to legacy
+        if useColonMimeAttachments {
+            print("ATTACHMENT_FETCH: Using colonMime implementation")
+            return try await attachmentCircuitBreaker.execute {
+                try await self.fetchAttachmentDataColonMime(uid: uid, section: section)
+            }
+        } else {
+            print("ATTACHMENT_FETCH: Using legacy implementation")
+            return try await attachmentCircuitBreaker.execute {
+                try await self.fetchAttachmentDataLegacy(uid: uid, section: section, maxRetries: maxRetries)
+            }
         }
     }
     
-    /// Internal implementation with retry logic
-    private func fetchAttachmentDataInternal(uid: UInt32, section: String, maxRetries: Int) async throws -> Data {
+    // MARK: - colonMime Integration
+    
+    /// Fetches and parses entire RFC822 message using colonMime
+    /// Returns cached message if available
+    private func fetchParsedMessage(uid: UInt32) async throws -> MimeMessage {
+        print("COLONMIME_FETCH: Checking cache for UID \(uid)")
+        
+        // Check cache first
+        if let cached = await MessageCacheManager.shared.getMessage(uid: uid) {
+            print("COLONMIME_FETCH: Using cached message for UID \(uid)")
+            return cached
+        }
+        
+        print("COLONMIME_FETCH: Fetching full message for UID \(uid)")
+        
+        // Fetch entire RFC822 message
+        let command = "UID FETCH \(uid) (BODY.PEEK[])"
+        let response = try await executeCommand(command, uid: uid, timeout: 60.0)
+        
+        // Extract message data from IMAP response
+        guard let responseData = extractMessageData(from: response) else {
+            throw AttachmentError.failedToExtract
+        }
+        
+        print("COLONMIME_FETCH: Parsing \(responseData.count) bytes with colonMime")
+        
+        // Parse with colonMime
+        let message = try MimeMessage(data: responseData)
+        
+        print("COLONMIME_FETCH: Successfully parsed message")
+        print("COLONMIME_FETCH: - Attachments: \(message.attachmentCount)")
+        print("COLONMIME_FETCH: - Has HTML: \(message.hasHtmlBody)")
+        print("COLONMIME_FETCH: - Has Text: \(message.hasTextBody)")
+        
+        // Cache for future use
+        await MessageCacheManager.shared.cacheMessage(message, uid: uid, rawData: responseData)
+        
+        return message
+    }
+    
+    /// Extracts raw message data from IMAP FETCH response
+    private func extractMessageData(from response: String) -> Data? {
+        // Convert to Data using ISO-8859-1 (preserves binary)
+        guard let responseData = response.data(using: .isoLatin1) else {
+            print("COLONMIME_FETCH: ERROR - Cannot convert response to ISO-8859-1")
+            return nil
+        }
+        
+        // Find BODY[] {size} pattern
+        guard let bodyRange = response.range(of: "BODY\\[\\]\\s*\\{(\\d+)\\}", options: .regularExpression) else {
+            print("COLONMIME_FETCH: ERROR - No BODY[] literal found")
+            print("COLONMIME_FETCH: Response preview: \(String(response.prefix(200)))")
+            return nil
+        }
+        
+        // Extract size
+        let sizeMatch = String(response[bodyRange])
+        guard let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
+              let size = Int(sizeMatch[sizeRange]) else {
+            print("COLONMIME_FETCH: ERROR - Cannot parse size")
+            return nil
+        }
+        
+        print("COLONMIME_FETCH: Expected \(size) bytes of message data")
+        
+        // Calculate byte offset
+        let prefixStr = String(response[..<bodyRange.upperBound])
+        guard let prefixData = prefixStr.data(using: .isoLatin1) else {
+            return nil
+        }
+        
+        var byteOffset = prefixData.count
+        
+        // Skip CRLF after literal size (exactly 2 bytes: 0x0D 0x0A)
+        if byteOffset + 1 < responseData.count,
+           responseData[byteOffset] == 0x0D,
+           responseData[byteOffset + 1] == 0x0A {
+            byteOffset += 2
+        }
+        
+        let endOffset = min(byteOffset + size, responseData.count)
+        let messageData = responseData[byteOffset..<endOffset]
+        
+        print("COLONMIME_FETCH: Extracted \(messageData.count) bytes (expected \(size))")
+        
+        if messageData.count < size {
+            print("⚠️ COLONMIME_FETCH: WARNING - Incomplete data")
+        }
+        
+        return Data(messageData)
+    }
+    
+    /// Maps IMAP section number to colonMime attachment index
+    private func mapSectionToAttachmentIndex(section: String, message: MimeMessage) -> Int {
+        guard let sectionNum = Int(section) else {
+            print("SECTION_MAP: Invalid section '\(section)', using index 0")
+            return 0
+        }
+        
+        // Section 2 → index 0, Section 3 → index 1, etc.
+        let attachmentIndex = sectionNum - 2
+        let finalIndex = max(0, attachmentIndex)
+        
+        print("SECTION_MAP: Section '\(section)' → attachment index \(finalIndex)")
+        return finalIndex
+    }
+    
+    /// Fetches attachment using colonMime
+    private func fetchAttachmentDataColonMime(uid: UInt32, section: String) async throws -> Data {
+        print("ATTACHMENT_FETCH_COLONMIME: Fetching attachment for UID \(uid), section \(section)")
+        
+        do {
+            let message = try await fetchParsedMessage(uid: uid)
+            let attachmentIndex = mapSectionToAttachmentIndex(section: section, message: message)
+            
+            guard attachmentIndex >= 0 && attachmentIndex < message.attachmentCount else {
+                print("ATTACHMENT_FETCH_COLONMIME: ERROR - Invalid index \(attachmentIndex) (total: \(message.attachmentCount))")
+                throw AttachmentError.notFound
+            }
+            
+            guard let attachment = message.extractAttachment(at: attachmentIndex) else {
+                print("ATTACHMENT_FETCH_COLONMIME: ERROR - Failed to extract at index \(attachmentIndex)")
+                throw AttachmentError.failedToExtract
+            }
+            
+            print("ATTACHMENT_FETCH_COLONMIME: SUCCESS - \(attachment.filename) (\(attachment.data.count) bytes)")
+            return attachment.data
+            
+        } catch let error as MimeError {
+            print("COLONMIME_FALLBACK: MimeError, using legacy parser")
+            return try await fetchAttachmentDataLegacy(uid: uid, section: section, maxRetries: 1)
+        } catch {
+            print("COLONMIME_FALLBACK: Unexpected error, using legacy parser")
+            return try await fetchAttachmentDataLegacy(uid: uid, section: section, maxRetries: 1)
+        }
+    }
+    
+    // MARK: - Legacy Attachment Fetching
+    
+    /// Legacy implementation with retry logic (renamed for clarity)
+    private func fetchAttachmentDataLegacy(uid: UInt32, section: String, maxRetries: Int) async throws -> Data {
         var attempt = 0
         var lastError: Error?
         
@@ -2295,17 +2472,17 @@ class IMAPClient: ObservableObject {
     
     /// PHASE 1: Calculate dynamic timeout based on attachment size
     private func calculateDynamicTimeout(expectedBytes: Int64) -> TimeInterval {
-        // Assume minimum speed of 100 KB/s
-        let minimumSpeed: Double = 100_000  // bytes/sec
-        let baseTimeout: TimeInterval = 60.0
+        // Assume minimum speed of 500 KB/s (increased from 100 KB/s now that corruption is fixed)
+        let minimumSpeed: Double = 500_000  // bytes/sec
+        let baseTimeout: TimeInterval = 30.0  // Reduced from 60s
         
         guard expectedBytes > 0 else { return baseTimeout }
         
-        // Calculate time needed at minimum speed, with 2x safety margin
-        let calculatedTimeout = Double(expectedBytes) / minimumSpeed * 2.0
+        // Calculate time needed at minimum speed, with 1.5x safety margin (reduced from 2x)
+        let calculatedTimeout = Double(expectedBytes) / minimumSpeed * 1.5
         
-        // Clamp between 60s and 300s (5 minutes)
-        return max(baseTimeout, min(300.0, calculatedTimeout))
+        // Clamp between 30s and 120s (reduced from 60s-300s)
+        return max(baseTimeout, min(120.0, calculatedTimeout))
     }
     
     /// PHASE 1: Fetch expected attachment size from BODYSTRUCTURE
@@ -2349,14 +2526,16 @@ class IMAPClient: ObservableObject {
                let size = Int(sizeMatch[sizeRange]) {
                 print("ATTACHMENT_FETCH: Expected \(size) bytes")
                 
-                // Convert response to Data to work with bytes
-                guard let responseData = response.data(using: .utf8) else {
+                // Convert response to Data using ISO-8859-1 to preserve raw bytes
+                // The response String was created from bytes using ISO-8859-1, so converting
+                // back with ISO-8859-1 gives us the original bytes without corruption
+                guard let responseData = response.data(using: .isoLatin1) else {
                     throw AttachmentError.failedToExtract
                 }
                 
                 // Find where the binary data starts (after \r\n following the size)
                 let prefixStr = String(response[..<bodyRange.upperBound])
-                guard let prefixData = prefixStr.data(using: .utf8) else {
+                guard let prefixData = prefixStr.data(using: .isoLatin1) else {
                     throw AttachmentError.failedToExtract
                 }
                 
