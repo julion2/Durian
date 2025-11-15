@@ -16,18 +16,6 @@ import ColonMime
 // - Text Decoding: IMAPTextDecodingUtilities.swift (base64, RFC2047, quoted-printable, etc.)
 // - Text Cleaning: IMAPTextCleaningUtilities.swift (whitespace, signatures, duplicates, etc.)
 
-// MARK: - Literal Tracking
-
-struct LiteralExpectation {
-    let size: Int
-    var receivedBytes: Int = 0
-    var startOffset: Int = 0
-    
-    var isComplete: Bool { 
-        receivedBytes >= size || (size - receivedBytes) <= 2
-    }
-}
-
 // MARK: - IMAPClient Main Class
 
 @MainActor
@@ -51,10 +39,12 @@ class IMAPClient: ObservableObject {
     private var refreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     private var commandCounter = 1000
+    private var commandSequence: UInt64 = 0  // PHASE 1: Sequential command tracking
     
     // FIX: Store command metadata to enable proper response matching
     private struct PendingCommand {
         let tag: String
+        let sequence: UInt64  // PHASE 1: Add sequence number
         let commandString: String
         let requestedUID: UInt32?
         let requestedSection: String?
@@ -64,6 +54,19 @@ class IMAPClient: ObservableObject {
     }
     
     private var pendingCommands: [String: PendingCommand] = [:]
+    
+    // PHASE 2: Correlation system
+    private var enhancedCommands: [UUID: EnhancedPendingCommand] = [:]
+    private var tagToCorrelation: [String: UUID] = [:]
+    
+    // PHASE 2: Circuit breaker for attachments
+    private let attachmentCircuitBreaker = AttachmentFetchCircuitBreaker()
+    
+    // PHASE 3: Streaming pipeline
+    private let streamRouter = ResponseStreamRouter()
+    
+    // PHASE 3: State machines for critical commands
+    private var stateMachines: [String: CommandStateMachine] = [:]
     private var lastSentTag: String?
     private var responseBuffers: [String: String] = [:]
     private var responseBufferLastSizes: [String: Int] = [:]
@@ -932,7 +935,6 @@ class IMAPClient: ObservableObject {
         
         var filename: String?
         var mimeType: String?
-        var encoding: String?
         var contentStarted = false
         var contentLines: [String] = []
         
@@ -947,10 +949,6 @@ class IMAPClient: ObservableObject {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .components(separatedBy: ";")
                 mimeType = components.first?.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else if line.hasPrefix("Content-Transfer-Encoding:") {
-                encoding = line.replacingOccurrences(of: "Content-Transfer-Encoding:", with: "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
             } else if contentStarted {
                 contentLines.append(line)
             } else if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1807,7 +1805,7 @@ class IMAPClient: ObservableObject {
             throw IMAPError.noConnection
         }
         
-        // Rate limiting: enforce minimum interval between commands (adaptive based on bulk mode)
+        // PHASE 1: Rate limiting with adaptive intervals
         let effectiveInterval = bulkProcessingMode ? minimumCommandInterval : minimumCommandInterval * 2
         let timeSinceLastCommand = Date().timeIntervalSince(lastCommandTime)
         if timeSinceLastCommand < effectiveInterval {
@@ -1816,15 +1814,19 @@ class IMAPClient: ObservableObject {
         }
         
         lastCommandTime = Date()
+        commandSequence += 1  // PHASE 1: Increment sequence
         let tag = generateCommandTag()
         let fullCommand = "\(tag) \(command)\r\n"
         
+        // PHASE 1: Enhanced logging with sequence tracking
+        print("📤 CMD[\(commandSequence)]: \(tag) \(command.prefix(100))")
+        
         return try await withCheckedThrowingContinuation { continuation in
-            // FIX: Create PendingCommand with metadata for proper response matching
             Task { @MainActor in
                 self.lastSentTag = tag
                 let pendingCmd = PendingCommand(
                     tag: tag,
+                    sequence: commandSequence,  // PHASE 1: Store sequence
                     commandString: command,
                     requestedUID: uid,
                     requestedSection: section,
@@ -1835,12 +1837,16 @@ class IMAPClient: ObservableObject {
                     }
                 )
                 self.pendingCommands[tag] = pendingCmd
+                
+                // PHASE 1: Debug pending commands
+                print("📋 PENDING: \(pendingCommands.count) commands - Tags: \(pendingCommands.keys.sorted().joined(separator: ", "))")
             }
             
-            // Set up timeout
+            // PHASE 1: Enhanced timeout with dynamic calculation
             Task { @MainActor in
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 if let command = pendingCommands.removeValue(forKey: tag) {
+                    print("⏱️ TIMEOUT: \(tag) after \(timeout)s (seq: \(command.sequence))")
                     command.completion(.failure(IMAPError.commandTimeout))
                 }
             }
@@ -1853,9 +1859,9 @@ class IMAPClient: ObservableObject {
                 Task { @MainActor in
                     switch result {
                     case .success:
-                        print("✅ Command sent: \(tag) \(command)")
+                        print("✅ SENT[\(self.commandSequence)]: \(tag)")
                     case .failure(let error):
-                        print("❌ Failed to send command: \(error)")
+                        print("❌ SEND_FAILED[\(self.commandSequence)]: \(tag) - \(error)")
                         if let command = self.pendingCommands.removeValue(forKey: tag) {
                             command.completion(.failure(error))
                         }
@@ -1866,18 +1872,28 @@ class IMAPClient: ObservableObject {
     }
     
     func appendToResponseBuffer(_ data: String) {
-        // FIX: Match responses using command metadata instead of response content
+        // PHASE 1: Enhanced debug logging
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📥 RESPONSE RECEIVED (\(data.count) bytes)")
+        print("Preview: \(String(data.prefix(200)))")
+        print("Contains UID: \(data.range(of: "UID \\d+", options: .regularExpression) != nil)")
+        print("Contains BODY: \(data.contains("BODY["))")
+        print("Contains tag: \(data.range(of: "^A\\d+", options: .regularExpression) != nil)")
+        print("Pending commands: \(pendingCommands.count)")
+        for (tag, cmd) in pendingCommands {
+            print("  - \(tag): seq=\(cmd.sequence), UID=\(cmd.requestedUID?.description ?? "nil"), section=\(cmd.requestedSection ?? "nil")")
+        }
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
         var targetTag: String?
         
-        // 1. Check if this is a tagged response (e.g., "A1234 OK ...")
+        // Strategy 1: Direct tag match
         if let tagMatch = data.range(of: "^A\\d+\\s", options: .regularExpression) {
             targetTag = String(data[tagMatch]).trimmingCharacters(in: .whitespaces)
-            print("🏷️  Tagged response for: \(targetTag!)")
+            print("🏷️  STRATEGY 1: Tagged response for: \(targetTag!)")
         }
-        // 2. For untagged FETCH responses, match by UID AND section using COMMAND metadata
+        // Strategy 2: Context-based matching (PHASE 2 enhancement)
         else if data.contains("* ") && data.contains("FETCH") {
-            // FIX: For BODY.PEEK responses, also match by section to avoid conflicts
-            // Extract ALL UIDs from response and match with pending commands
             let uidPattern = "UID (\\d+)"
             guard let uidRegex = try? NSRegularExpression(pattern: uidPattern, options: []) else {
                 return
@@ -1902,20 +1918,20 @@ class IMAPClient: ObservableObject {
                             // Check if this response contains the requested section
                             if data.contains("BODY[\(requestedSection)]") || data.contains("BODY.PEEK[\(requestedSection)]") {
                                 targetTag = tag
-                                print("✅ Matched FETCH (UID \(uid), section \(requestedSection)) to tag: \(tag)")
+                                print("✅ STRATEGY 2: Matched FETCH (UID \(uid), section \(requestedSection)) to tag: \(tag)")
                                 break
                             }
                         } else {
                             // No section specified, just match by UID
                             targetTag = tag
-                            print("✅ Matched FETCH (UID \(uid)) to tag: \(tag)")
+                            print("✅ STRATEGY 2: Matched FETCH (UID \(uid)) to tag: \(tag)")
                             break
                         }
                     }
                 }
                 
                 if targetTag != nil {
-                    break  // Found a match, stop searching
+                    break
                 }
             }
             
@@ -1927,19 +1943,25 @@ class IMAPClient: ObservableObject {
                     }
                     return String(data[uidRange])
                 }
-                print("⚠️  No command found for UIDs in response: \(uids.joined(separator: ", "))")
+                print("⚠️  No command found requesting UID \(uids.joined(separator: ", "))")
                 print("   Pending: \(pendingCommands.map { "\($0.key)→UID:\($0.value.requestedUID?.description ?? "nil"), section:\($0.value.requestedSection ?? "nil")" }.joined(separator: ", "))")
             }
         }
         
-        // 3. Fallback to lastSentTag only if single command in flight
+        // Strategy 3: Temporal matching (PHASE 1 - FIFO fallback)
         if targetTag == nil && pendingCommands.count == 1 {
             targetTag = lastSentTag
-            print("📌 Using lastSentTag fallback: \(targetTag ?? "nil")")
+            print("📌 STRATEGY 3: Using lastSentTag fallback: \(targetTag ?? "nil")")
+        } else if targetTag == nil && pendingCommands.count > 1 {
+            // PHASE 1: Route to oldest command by sequence number
+            let oldestCommand = pendingCommands.values.min(by: { $0.sequence < $1.sequence })
+            targetTag = oldestCommand?.tag
+            print("📌 STRATEGY 3: Routing to oldest command by sequence (seq: \(oldestCommand?.sequence ?? 0), tag: \(targetTag ?? "nil"))")
         }
         
         guard let tag = targetTag else {
-            print("❌ Could not determine target tag, dropping \(data.count) bytes")
+            print("❌ CORRELATION: Dropped \(data.count) bytes - no command match")
+            print("❌ DROPPED DATA: \(String(data.prefix(500)))")
             return
         }
         
@@ -1947,7 +1969,7 @@ class IMAPClient: ObservableObject {
         pendingCommands[tag]?.responseBuffer += data
         responseBufferLastSizes[tag] = pendingCommands[tag]?.responseBuffer.count ?? 0
         responseBufferLastUpdated[tag] = Date()
-        
+         
         parseLiteralExpectations(tag: tag)
     }
     
@@ -2060,7 +2082,7 @@ class IMAPClient: ObservableObject {
     }
     
     func handleCommandResponse(tag: String, isComplete: Bool) {
-        guard let completion = pendingCommands[tag] else { 
+        guard pendingCommands[tag] != nil else { 
             return 
         }
         
@@ -2212,103 +2234,195 @@ class IMAPClient: ObservableObject {
     
     // MARK: - Attachment Fetching
     
-    /// Fetches attachment data for a specific section of an email
+    /// PHASE 1 & 2: Fetches attachment data with retry logic and dynamic timeout
     /// Returns the raw binary data (Base64 decoded if needed)
-    func fetchAttachmentData(uid: UInt32, section: String) async throws -> Data {
-        print("ATTACHMENT_FETCH: Starting fetch for UID \(uid), section \(section)")
-        
-        // Use BODY.PEEK to avoid marking message as read
-        let command = "UID FETCH \(uid) (BODY.PEEK[\(section)])"
-        
-        do {
-            let response = try await executeCommand(command, uid: uid, section: section, timeout: 60.0)
-            print("ATTACHMENT_FETCH: Got response, length: \(response.count)")
-            
-            // Try to find the attachment data in the response
-            // Pattern: BODY[section] {size}\r\n<binary data>
-            if let bodyRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
-                print("ATTACHMENT_FETCH: Found BODY pattern with literal")
-                
-                // Extract size
-                let sizeMatch = String(response[bodyRange])
-                if let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
-                   let size = Int(sizeMatch[sizeRange]) {
-                    print("ATTACHMENT_FETCH: Expected \(size) bytes")
-                    
-                    // Convert response to Data to work with bytes
-                    guard let responseData = response.data(using: .utf8) else {
-                        throw AttachmentError.failedToExtract
-                    }
-                    
-                    // Find where the binary data starts (after \r\n following the size)
-                    let prefixStr = String(response[..<bodyRange.upperBound])
-                    guard let prefixData = prefixStr.data(using: .utf8) else {
-                        throw AttachmentError.failedToExtract
-                    }
-                    
-                    var byteOffset = prefixData.count
-                    
-                    // Skip CRLF after the size specification
-                    while byteOffset < responseData.count {
-                        let byte = responseData[byteOffset]
-                        if byte == 0x0D || byte == 0x0A {
-                            byteOffset += 1
-                        } else {
-                            break
-                        }
-                    }
-                    
-                    // Extract the binary data
-                    let endOffset = min(byteOffset + size, responseData.count)
-                    let attachmentData = responseData[byteOffset..<endOffset]
-                    
-                    print("ATTACHMENT_FETCH: Extracted \(attachmentData.count) bytes")
-                    
-                    // Check if data is Base64 encoded (common for attachments)
-                    // Base64 data will be ASCII text, so we can try decoding it
-                    if let dataString = String(data: attachmentData, encoding: .ascii),
-                       dataString.rangeOfCharacter(from: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=")).inverted) == nil,
-                       let decodedData = Data(base64Encoded: dataString, options: .ignoreUnknownCharacters) {
-                        print("ATTACHMENT_FETCH: Data was Base64 encoded, decoded to \(decodedData.count) bytes")
-                        return decodedData
-                    } else {
-                        // Return raw binary data
-                        return Data(attachmentData)
-                    }
-                }
-            }
-            // Pattern: BODY[section] "quoted data" (for small attachments)
-            else if let quotedRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\"([^\"]+)\"", options: .regularExpression) {
-                print("ATTACHMENT_FETCH: Found quoted BODY pattern")
-                let match = String(response[quotedRange])
-                if let startQuote = match.range(of: "\"")?.upperBound,
-                   let endQuote = match.range(of: "\"", options: .backwards)?.lowerBound {
-                    let content = String(match[startQuote..<endQuote])
-                    
-                    // Try Base64 decode
-                    if let decodedData = Data(base64Encoded: content, options: .ignoreUnknownCharacters) {
-                        print("ATTACHMENT_FETCH: Decoded quoted Base64 data to \(decodedData.count) bytes")
-                        return decodedData
-                    } else if let rawData = content.data(using: .utf8) {
-                        print("ATTACHMENT_FETCH: Using raw quoted data (\(rawData.count) bytes)")
-                        return rawData
-                    }
-                }
-            }
-            // Pattern: BODY[section] NIL
-            else if response.contains("BODY[\(section)] NIL") {
-                print("ATTACHMENT_FETCH: Section \(section) returned NIL")
-                throw AttachmentError.notFound
-            }
-            
-            print("ATTACHMENT_FETCH: ERROR - Could not parse attachment data from response")
-            print("ATTACHMENT_FETCH: Response preview: \(String(response.prefix(500)))")
-            throw AttachmentError.failedToExtract
-            
-        } catch {
-            print("ATTACHMENT_FETCH: ERROR - \(error)")
-            throw error
+    func fetchAttachmentData(uid: UInt32, section: String, maxRetries: Int = 3) async throws -> Data {
+        // PHASE 2: Wrap in circuit breaker
+        return try await attachmentCircuitBreaker.execute {
+            try await self.fetchAttachmentDataInternal(uid: uid, section: section, maxRetries: maxRetries)
         }
+    }
+    
+    /// Internal implementation with retry logic
+    private func fetchAttachmentDataInternal(uid: UInt32, section: String, maxRetries: Int) async throws -> Data {
+        var attempt = 0
+        var lastError: Error?
+        
+        // PHASE 1: Fetch BODYSTRUCTURE first to get expected size
+        let expectedSize = try await fetchAttachmentExpectedSize(uid: uid, section: section)
+        
+        while attempt < maxRetries {
+            do {
+                // PHASE 1: Dynamic timeout based on expected size
+                let dynamicTimeout = calculateDynamicTimeout(expectedBytes: expectedSize)
+                print("ATTACHMENT_FETCH: Attempt \(attempt + 1)/\(maxRetries) for UID \(uid), section \(section)")
+                print("ATTACHMENT_FETCH: Expected size: \(expectedSize) bytes, timeout: \(dynamicTimeout)s")
+                
+                // Use BODY.PEEK to avoid marking message as read
+                let command = "UID FETCH \(uid) (BODY.PEEK[\(section)])"
+                
+                let response = try await executeCommand(command, uid: uid, section: section, timeout: dynamicTimeout)
+                print("ATTACHMENT_FETCH: Got response, length: \(response.count)")
+                
+                // Extract and decode attachment data
+                let data = try extractAttachmentFromResponse(response, section: section, expectedSize: expectedSize)
+                
+                // PHASE 1: Verify data integrity
+                if data.count < expectedSize / 2 {
+                    print("⚠️ ATTACHMENT_FETCH: Data size (\(data.count)) much smaller than expected (\(expectedSize)) - may be corrupted")
+                }
+                
+                return data
+                
+            } catch {
+                attempt += 1
+                lastError = error
+                
+                if attempt < maxRetries {
+                    // PHASE 1: Exponential backoff
+                    let delay = pow(2.0, Double(attempt))
+                    print("⚠️ ATTACHMENT_FETCH: Attempt \(attempt) failed: \(error)")
+                    print("⚠️ ATTACHMENT_FETCH: Retrying in \(delay)s...")
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                } else {
+                    print("❌ ATTACHMENT_FETCH: All \(maxRetries) attempts failed")
+                }
+            }
+        }
+        
+        throw lastError ?? AttachmentError.failedToExtract
+    }
+    
+    /// PHASE 1: Calculate dynamic timeout based on attachment size
+    private func calculateDynamicTimeout(expectedBytes: Int64) -> TimeInterval {
+        // Assume minimum speed of 100 KB/s
+        let minimumSpeed: Double = 100_000  // bytes/sec
+        let baseTimeout: TimeInterval = 60.0
+        
+        guard expectedBytes > 0 else { return baseTimeout }
+        
+        // Calculate time needed at minimum speed, with 2x safety margin
+        let calculatedTimeout = Double(expectedBytes) / minimumSpeed * 2.0
+        
+        // Clamp between 60s and 300s (5 minutes)
+        return max(baseTimeout, min(300.0, calculatedTimeout))
+    }
+    
+    /// PHASE 1: Fetch expected attachment size from BODYSTRUCTURE
+    private func fetchAttachmentExpectedSize(uid: UInt32, section: String) async throws -> Int64 {
+        // If we already have this email loaded, extract size from BODYSTRUCTURE
+        if let email = emails.first(where: { $0.uid == uid }) {
+            for attachment in email.incomingAttachments {
+                if attachment.section == section {
+                    return attachment.sizeBytes
+                }
+            }
+        }
+        
+        // Otherwise, fetch BODYSTRUCTURE
+        let command = "UID FETCH \(uid) (BODYSTRUCTURE)"
+        let response = try await executeCommand(command, uid: uid, timeout: 30.0)
+        
+        // Parse BODYSTRUCTURE to extract size for this section
+        // This is a simplified version - in production, you'd parse the full structure
+        if let sizeMatch = response.range(of: "\\{(\\d+)\\}", options: .regularExpression) {
+            let sizeStr = String(response[sizeMatch])
+            if let sizeRange = sizeStr.range(of: "\\d+", options: .regularExpression),
+               let size = Int64(sizeStr[sizeRange]) {
+                return size
+            }
+        }
+        
+        // Default fallback
+        return 1_000_000  // 1 MB default
+    }
+    
+    /// Extract attachment data from IMAP response
+    private func extractAttachmentFromResponse(_ response: String, section: String, expectedSize: Int64) throws -> Data {
+        // Pattern: BODY[section] {size}\r\n<binary data>
+        if let bodyRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\\{(\\d+)\\}", options: .regularExpression) {
+            print("ATTACHMENT_FETCH: Found BODY pattern with literal")
+            
+            // Extract size
+            let sizeMatch = String(response[bodyRange])
+            if let sizeRange = sizeMatch.range(of: "\\d+", options: .regularExpression),
+               let size = Int(sizeMatch[sizeRange]) {
+                print("ATTACHMENT_FETCH: Expected \(size) bytes")
+                
+                // Convert response to Data to work with bytes
+                guard let responseData = response.data(using: .utf8) else {
+                    throw AttachmentError.failedToExtract
+                }
+                
+                // Find where the binary data starts (after \r\n following the size)
+                let prefixStr = String(response[..<bodyRange.upperBound])
+                guard let prefixData = prefixStr.data(using: .utf8) else {
+                    throw AttachmentError.failedToExtract
+                }
+                
+                var byteOffset = prefixData.count
+                
+                // Skip CRLF after the size specification
+                while byteOffset < responseData.count {
+                    let byte = responseData[byteOffset]
+                    if byte == 0x0D || byte == 0x0A {
+                        byteOffset += 1
+                    } else {
+                        break
+                    }
+                }
+                
+                // Extract the binary data
+                let endOffset = min(byteOffset + size, responseData.count)
+                let attachmentData = responseData[byteOffset..<endOffset]
+                
+                print("ATTACHMENT_FETCH: Extracted \(attachmentData.count) bytes (expected \(size))")
+                
+                // PHASE 1: Verify we got all the data
+                if attachmentData.count < size {
+                    print("⚠️ ATTACHMENT_FETCH: Incomplete data - got \(attachmentData.count)/\(size) bytes")
+                    throw AttachmentError.downloadTimeout
+                }
+                
+                // Check if data is Base64 encoded (common for attachments)
+                if let dataString = String(data: attachmentData, encoding: .ascii),
+                   dataString.rangeOfCharacter(from: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/=\r\n")).inverted) == nil,
+                   let decodedData = Data(base64Encoded: dataString, options: .ignoreUnknownCharacters) {
+                    print("ATTACHMENT_FETCH: Data was Base64 encoded, decoded to \(decodedData.count) bytes")
+                    return decodedData
+                } else {
+                    // Return raw binary data
+                    return Data(attachmentData)
+                }
+            }
+        }
+        // Pattern: BODY[section] "quoted data" (for small attachments)
+        else if let quotedRange = response.range(of: "BODY\\[\(NSRegularExpression.escapedPattern(for: section))\\]\\s*\"([^\"]+)\"", options: .regularExpression) {
+            print("ATTACHMENT_FETCH: Found quoted BODY pattern")
+            let match = String(response[quotedRange])
+            if let startQuote = match.range(of: "\"")?.upperBound,
+               let endQuote = match.range(of: "\"", options: .backwards)?.lowerBound {
+                let content = String(match[startQuote..<endQuote])
+                
+                // Try Base64 decode
+                if let decodedData = Data(base64Encoded: content, options: .ignoreUnknownCharacters) {
+                    print("ATTACHMENT_FETCH: Decoded quoted Base64 data to \(decodedData.count) bytes")
+                    return decodedData
+                } else if let rawData = content.data(using: .utf8) {
+                    print("ATTACHMENT_FETCH: Using raw quoted data (\(rawData.count) bytes)")
+                    return rawData
+                }
+            }
+        }
+        // Pattern: BODY[section] NIL
+        else if response.contains("BODY[\(section)] NIL") {
+            print("ATTACHMENT_FETCH: Section \(section) returned NIL")
+            throw AttachmentError.notFound
+        }
+        
+        print("ATTACHMENT_FETCH: ERROR - Could not parse attachment data from response")
+        print("ATTACHMENT_FETCH: Response preview: \(String(response.prefix(500)))")
+        throw AttachmentError.failedToExtract
     }
 }
 

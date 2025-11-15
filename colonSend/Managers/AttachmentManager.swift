@@ -33,12 +33,14 @@ class AttachmentManager: ObservableObject {
     }
     
     /// Downloads an attachment from IMAP server and caches it locally
+    /// Enhanced with retry logic, circuit breaker, and progress tracking
     func downloadAttachment(
         _ metadata: IncomingAttachmentMetadata,
         emailUID: UInt32,
         client: IMAPClient
     ) async throws -> URL {
         print("ATTACHMENT_MANAGER: Downloading \(metadata.filename) from UID \(emailUID), section \(metadata.section)")
+        print("ATTACHMENT_MANAGER: Expected size: \(metadata.sizeBytes) bytes")
         
         // Check if already cached
         if let cached = cachedAttachments.values.first(where: { 
@@ -59,14 +61,24 @@ class AttachmentManager: ObservableObject {
         downloadStates[metadata.id] = .downloading(progress: 0.0)
         
         do {
-            // Fetch attachment data from IMAP
+            // PHASE 1 & 2: Fetch with retry and circuit breaker (built into client.fetchAttachmentData)
+            let startTime = Date()
             let data = try await client.fetchAttachmentData(uid: emailUID, section: metadata.section)
+            let downloadTime = Date().timeIntervalSince(startTime)
             
-            print("ATTACHMENT_MANAGER: Downloaded \(data.count) bytes")
-            downloadStates[metadata.id] = .downloading(progress: 0.5)
+            print("ATTACHMENT_MANAGER: Downloaded \(data.count) bytes in \(String(format: "%.2f", downloadTime))s")
+            print("ATTACHMENT_MANAGER: Download speed: \(String(format: "%.1f", Double(data.count) / downloadTime / 1024)) KB/s")
+            
+            downloadStates[metadata.id] = .downloading(progress: 0.7)
+            
+            // PHASE 1: Verify data integrity
+            if data.count == 0 {
+                throw AttachmentError.corruptedData
+            }
             
             // Save to cache
             let cacheURL = try saveToCache(data: data, filename: metadata.filename, emailUID: emailUID)
+            downloadStates[metadata.id] = .downloading(progress: 0.9)
             
             // Create cached attachment record
             let cached = CachedAttachment(
@@ -86,7 +98,7 @@ class AttachmentManager: ObservableObject {
             
             downloadStates[metadata.id] = .downloaded(cachePath: cacheURL.path)
             
-            print("ATTACHMENT_MANAGER: Saved to cache at \(cacheURL.path)")
+            print("ATTACHMENT_MANAGER: SUCCESS - Saved to cache at \(cacheURL.path)")
             
             // Check cache size and cleanup if needed
             Task {
@@ -95,6 +107,10 @@ class AttachmentManager: ObservableObject {
             
             return cacheURL
             
+        } catch AttachmentError.circuitBreakerOpen {
+            print("ATTACHMENT_MANAGER: CIRCUIT BREAKER OPEN - Attachment downloads temporarily disabled")
+            downloadStates[metadata.id] = .failed(error: "Download service temporarily unavailable. Please try again in 30 seconds.")
+            throw AttachmentError.circuitBreakerOpen
         } catch {
             print("ATTACHMENT_MANAGER: ERROR - \(error)")
             downloadStates[metadata.id] = .failed(error: error.localizedDescription)

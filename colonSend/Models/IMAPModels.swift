@@ -153,6 +153,8 @@ enum IMAPError: Error {
     case connectionFailed
     case commandTimeout
     case invalidResponse
+    case invalidStateTransition(from: String, to: String)  // PHASE 3: State machine errors
+    case unexpectedData(String)  // PHASE 3: Unexpected data in state
 }
 
 // MARK: - Pagination State
