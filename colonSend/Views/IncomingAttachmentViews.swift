@@ -52,7 +52,7 @@ struct IncomingAttachmentListView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
             }
             .quickLookPreview($quickLookURL)
         }
@@ -89,21 +89,12 @@ struct IncomingAttachmentChip: View {
             Group {
                 switch downloadState {
                 case .notDownloaded:
-                    HStack(spacing: 6) {
-                        Button(action: onPreview) {
-                            Image(systemName: "eye")
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Preview attachment")
-                        
-                        Button(action: onDownload) {
-                            Image(systemName: "arrow.down.circle")
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Download attachment")
+                    Button(action: onDownload) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.title3)
                     }
+                    .buttonStyle(.plain)
+                    .help("Download attachment")
                     .foregroundStyle(.secondary)
                     
                 case .downloading(let progress):
@@ -117,27 +108,18 @@ struct IncomingAttachmentChip: View {
                     }
                     
                 case .downloaded:
-                    HStack(spacing: 6) {
-                        Button(action: onOpen) {
-                            Image(systemName: "arrow.up.forward.circle.fill")
-                                .font(.subheadline)
-                                .foregroundStyle(.green)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Open attachment")
-                        
-                        Button(action: onPreview) {
-                            Image(systemName: "eye")
-                                .font(.subheadline)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Preview attachment")
+                    Button(action: onOpen) {
+                        Image(systemName: "arrow.up.forward.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.green)
                     }
+                    .buttonStyle(.plain)
+                    .help("Open attachment")
                     
                 case .failed(let error):
                     Button(action: onDownload) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.subheadline)
+                            .font(.title3)
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
