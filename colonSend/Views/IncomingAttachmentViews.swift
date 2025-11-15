@@ -19,49 +19,41 @@ struct IncomingAttachmentListView: View {
     
     var body: some View {
         if !attachments.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Attachments (\(attachments.count))")
-                    .font(.headline)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(attachments) { attachment in
-                            IncomingAttachmentChip(
-                                attachment: attachment,
-                                emailUID: emailUID,
-                                client: client,
-                                downloadState: manager.downloadStates[attachment.id] ?? .notDownloaded,
-                                onDownload: {
-                                    Task {
-                                        await manager.saveAttachment(attachment, emailUID: emailUID, client: client)
-                                    }
-                                },
-                                onPreview: {
-                                    Task {
-                                        do {
-                                            let url = try await manager.previewAttachment(attachment, emailUID: emailUID, client: client)
-                                            quickLookURL = url
-                                            showQuickLook = true
-                                        } catch {
-                                            print("ERROR: Failed to preview attachment: \(error)")
-                                        }
-                                    }
-                                },
-                                onOpen: {
-                                    Task {
-                                        await manager.openAttachment(attachment, emailUID: emailUID, client: client)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(attachments) { attachment in
+                        IncomingAttachmentChip(
+                            attachment: attachment,
+                            emailUID: emailUID,
+                            client: client,
+                            downloadState: manager.downloadStates[attachment.id] ?? .notDownloaded,
+                            onDownload: {
+                                Task {
+                                    await manager.saveAttachment(attachment, emailUID: emailUID, client: client)
+                                }
+                            },
+                            onPreview: {
+                                Task {
+                                    do {
+                                        let url = try await manager.previewAttachment(attachment, emailUID: emailUID, client: client)
+                                        quickLookURL = url
+                                        showQuickLook = true
+                                    } catch {
+                                        print("ERROR: Failed to preview attachment: \(error)")
                                     }
                                 }
-                            )
-                        }
+                            },
+                            onOpen: {
+                                Task {
+                                    await manager.openAttachment(attachment, emailUID: emailUID, client: client)
+                                }
+                            }
+                        )
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
-            .background(Color(NSColor.controlBackgroundColor))
             .quickLookPreview($quickLookURL)
         }
     }
@@ -155,7 +147,7 @@ struct IncomingAttachmentChip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1))
+        .background(Color.accentColor.opacity(0.08))
         .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {

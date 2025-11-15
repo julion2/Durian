@@ -437,8 +437,6 @@ struct ContentView: View {
                     .font(.callout)
                 }
                 
-                Divider()
-                
                 if !email.incomingAttachments.isEmpty {
                     if let client = accountManager.getClient(for: accountId) {
                         IncomingAttachmentListView(
@@ -447,9 +445,9 @@ struct ContentView: View {
                             client: client
                         )
                     }
-                    
-                    Divider()
                 }
+                
+                Divider()
                 
                 VStack(alignment: .leading, spacing: 12) {
                     // Use bodyState for more reliable state management
