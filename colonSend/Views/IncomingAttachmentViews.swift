@@ -52,7 +52,7 @@ struct IncomingAttachmentListView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
             }
             .quickLookPreview($quickLookURL)
         }
@@ -69,19 +69,19 @@ struct IncomingAttachmentChip: View {
     let onOpen: () -> Void
     
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             // Icon
             Image(systemName: attachment.icon)
-                .font(.caption)
+                .font(.body)
                 .foregroundStyle(.secondary)
             
             // Filename and size
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(attachment.filename)
-                    .font(.caption)
+                    .font(.subheadline)
                     .lineLimit(1)
                 Text(attachment.sizeFormatted)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             
@@ -89,17 +89,17 @@ struct IncomingAttachmentChip: View {
             Group {
                 switch downloadState {
                 case .notDownloaded:
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Button(action: onPreview) {
                             Image(systemName: "eye")
-                                .font(.caption)
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .help("Preview attachment")
                         
                         Button(action: onDownload) {
                             Image(systemName: "arrow.down.circle")
-                                .font(.caption)
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .help("Download attachment")
@@ -109,18 +109,18 @@ struct IncomingAttachmentChip: View {
                 case .downloading(let progress):
                     HStack(spacing: 4) {
                         ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 12, height: 12)
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
                         Text("\(Int(progress * 100))%")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     
                 case .downloaded:
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Button(action: onOpen) {
                             Image(systemName: "arrow.up.forward.circle.fill")
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.green)
                         }
                         .buttonStyle(.plain)
@@ -128,7 +128,7 @@ struct IncomingAttachmentChip: View {
                         
                         Button(action: onPreview) {
                             Image(systemName: "eye")
-                                .font(.caption)
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .help("Preview attachment")
@@ -137,7 +137,7 @@ struct IncomingAttachmentChip: View {
                 case .failed(let error):
                     Button(action: onDownload) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.red)
                     }
                     .buttonStyle(.plain)
@@ -145,10 +145,10 @@ struct IncomingAttachmentChip: View {
                 }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Color.accentColor.opacity(0.08))
-        .cornerRadius(8)
+        .cornerRadius(10)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             // Double-click to preview
