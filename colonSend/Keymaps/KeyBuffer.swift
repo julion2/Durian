@@ -34,7 +34,7 @@ class KeyBuffer: ObservableObject {
     
     // MARK: - Init
     
-    init(timeout: TimeInterval = 0.5) {
+    init(timeout: TimeInterval = 1.0) {  // 1 second for comfortable typing of sequences
         self.timeout = timeout
     }
     

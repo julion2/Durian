@@ -256,23 +256,21 @@ struct ContentView: View {
         // Navigation with count support (5j, 12k)
         keymapHandler.registerHandler(for: .nextEmail) { count in
             await MainActor.run {
-                for _ in 0..<count {
-                    Self.selectNextEmail(
-                        selectedEmail: selectedEmailBinding,
-                        allEmails: accountManager.allEmails
-                    )
-                }
+                Self.selectNextEmailWithCount(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails,
+                    count: count
+                )
             }
         }
         
         keymapHandler.registerHandler(for: .prevEmail) { count in
             await MainActor.run {
-                for _ in 0..<count {
-                    Self.selectPreviousEmail(
-                        selectedEmail: selectedEmailBinding,
-                        allEmails: accountManager.allEmails
-                    )
-                }
+                Self.selectPreviousEmailWithCount(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails,
+                    count: count
+                )
             }
         }
         
@@ -425,6 +423,45 @@ struct ContentView: View {
     private static func selectLastEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
         let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
         selectedEmail.wrappedValue = sortedEmails.last?.id
+    }
+    
+    // Count-aware navigation methods for 5j, 12k etc.
+    private static func selectNextEmailWithCount(
+        selectedEmail: Binding<Email.ID?>,
+        allEmails: [IMAPEmail],
+        count: Int
+    ) {
+        guard !allEmails.isEmpty else { return }
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        
+        if let currentID = selectedEmail.wrappedValue,
+           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }) {
+            // Calculate target index: current + count, clamped to valid range
+            let targetIndex = min(currentIndex + count, sortedEmails.count - 1)
+            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
+        } else if selectedEmail.wrappedValue == nil {
+            // No selection: jump to the count-th email (or last if count too large)
+            let targetIndex = min(count - 1, sortedEmails.count - 1)
+            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
+        }
+    }
+    
+    private static func selectPreviousEmailWithCount(
+        selectedEmail: Binding<Email.ID?>,
+        allEmails: [IMAPEmail],
+        count: Int
+    ) {
+        guard !allEmails.isEmpty else { return }
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        
+        if let currentID = selectedEmail.wrappedValue,
+           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }) {
+            // Calculate target index: current - count, clamped to 0
+            let targetIndex = max(currentIndex - count, 0)
+            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
+        } else if selectedEmail.wrappedValue == nil {
+            selectedEmail.wrappedValue = sortedEmails.first?.id
+        }
     }
     
     private static func handleReloadAction(

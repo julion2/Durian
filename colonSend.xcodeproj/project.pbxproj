@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		F907D6B22EB8B8CC00037BBE /* ColonMime in Frameworks */ = {isa = PBXBuildFile; productRef = F907D6B12EB8B8CC00037BBE /* ColonMime */; };
 		F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86A82ED8912E00C2F5CF /* GRDB */; };
-		F90F86AC2ED89A0000C2F5CF /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */; };
+		F90F89432ED8AE6800C2F5CF /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */; };
 		F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4502EA3F44300214258 /* SwiftSMTP */; };
 		F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4522EA3F44300214258 /* SwiftSMTPVapor */; };
 		F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */ = {isa = PBXBuildFile; productRef = F9BED1162E784F2400A0A48D /* NIOIMAP */; };
@@ -33,6 +33,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F90F89432ED8AE6800C2F5CF /* TOMLDecoder in Frameworks */,
 				F907D6B22EB8B8CC00037BBE /* ColonMime in Frameworks */,
 				F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */,
 				F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */,

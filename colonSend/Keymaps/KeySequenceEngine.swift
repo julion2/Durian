@@ -113,11 +113,13 @@ class KeySequenceEngine: ObservableObject {
         // Create key event
         let keyEvent = KeyEvent(key: key, modifiers: modifiers)
         
+        print("KEYSEQ: Key pressed: '\(key)' modifiers: \(modifiers) normalized: '\(keyEvent.normalized)'")
+        
         // Add to buffer
         buffer.append(keyEvent)
         currentSequence = buffer.displayString
         
-        print("KEYSEQ: Buffer = '\(buffer.asString)'")
+        print("KEYSEQ: Buffer = '\(buffer.asString)' (count: \(buffer.count))")
         
         // Try to match
         let result = matcher.match(buffer: buffer.asString)
@@ -152,14 +154,8 @@ class KeySequenceEngine: ObservableObject {
         }
         
         Task {
-            // Execute action `count` times
-            for i in 0..<count {
-                if i > 0 {
-                    // Small delay between repeated actions for UI responsiveness
-                    try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
-                }
-                await handler(count)
-            }
+            // Pass count to handler - handler is responsible for repeating if needed
+            await handler(count)
         }
     }
     

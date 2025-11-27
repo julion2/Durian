@@ -142,16 +142,23 @@ class KeymapHandler: ObservableObject {
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard isAppInForeground,
               keymapsManager.keymaps.globalSettings.keymapsEnabled else {
+            print("KEYMAPS: Event ignored - app not in foreground or keymaps disabled")
             return false
         }
         
+        let key = event.charactersIgnoringModifiers ?? ""
+        print("KEYMAPS: Received key event: '\(key)' keyCode: \(event.keyCode)")
+        
         // First, check for legacy keymaps with modifiers (Cmd+r, etc.)
         if handleLegacyKeymap(event) {
+            print("KEYMAPS: Handled by legacy keymap")
             return true
         }
         
         // Then delegate to sequence engine
-        return sequenceEngine.handleKeyEvent(event)
+        let consumed = sequenceEngine.handleKeyEvent(event)
+        print("KEYMAPS: Sequence engine returned: \(consumed)")
+        return consumed
     }
     
     /// Handle keymaps.toml defined shortcuts with modifiers
