@@ -197,6 +197,10 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            KeySequenceIndicator()
+                .padding()
+        }
         .onAppear {
             setupKeyboardShortcuts()
             registerKeymapHandlers()
@@ -248,29 +252,32 @@ struct ContentView: View {
         let selectedEmailBinding = $selectedEmail
         let detailModeBinding = $detailMode
         let lastViewedEmailBinding = $lastViewedEmail
-        let allEmails = accountManager.allEmails
         
-        // Navigation - Next/Previous Email (j/k)
-        keymapHandler.registerHandler(for: "next_email") {
+        // Navigation with count support (5j, 12k)
+        keymapHandler.registerHandler(for: .nextEmail) { count in
             await MainActor.run {
-                Self.selectNextEmail(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails
-                )
+                for _ in 0..<count {
+                    Self.selectNextEmail(
+                        selectedEmail: selectedEmailBinding,
+                        allEmails: accountManager.allEmails
+                    )
+                }
             }
         }
         
-        keymapHandler.registerHandler(for: "prev_email") {
+        keymapHandler.registerHandler(for: .prevEmail) { count in
             await MainActor.run {
-                Self.selectPreviousEmail(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails
-                )
+                for _ in 0..<count {
+                    Self.selectPreviousEmail(
+                        selectedEmail: selectedEmailBinding,
+                        allEmails: accountManager.allEmails
+                    )
+                }
             }
         }
         
-        // Navigation - First/Last Email
-        keymapHandler.registerHandler(for: "first_email") {
+        // Navigation - First/Last Email (gg, G)
+        keymapHandler.registerSimpleHandler(for: .firstEmail) {
             await MainActor.run {
                 Self.selectFirstEmail(
                     selectedEmail: selectedEmailBinding,
@@ -279,7 +286,7 @@ struct ContentView: View {
             }
         }
         
-        keymapHandler.registerHandler(for: "last_email") {
+        keymapHandler.registerSimpleHandler(for: .lastEmail) {
             await MainActor.run {
                 Self.selectLastEmail(
                     selectedEmail: selectedEmailBinding,
@@ -288,8 +295,8 @@ struct ContentView: View {
             }
         }
         
-        // Open Email (o / Enter)
-        keymapHandler.registerHandler(for: "open_email") {
+        // Open Email (o)
+        keymapHandler.registerSimpleHandler(for: .openEmail) {
             await MainActor.run {
                 if let emailID = selectedEmailBinding.wrappedValue,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
@@ -307,14 +314,14 @@ struct ContentView: View {
         }
         
         // Compose (c)
-        keymapHandler.registerHandler(for: "compose") {
+        keymapHandler.registerSimpleHandler(for: .compose) {
             await MainActor.run {
                 detailModeBinding.wrappedValue = .compose(replyTo: nil, forward: nil)
             }
         }
         
         // Reply (r)
-        keymapHandler.registerHandler(for: "reply") {
+        keymapHandler.registerSimpleHandler(for: .reply) {
             await MainActor.run {
                 if let emailID = selectedEmailBinding.wrappedValue,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
@@ -324,8 +331,20 @@ struct ContentView: View {
             }
         }
         
+        // Reply All (R)
+        keymapHandler.registerSimpleHandler(for: .replyAll) {
+            await MainActor.run {
+                if let emailID = selectedEmailBinding.wrappedValue,
+                   let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    lastViewedEmailBinding.wrappedValue = email
+                    // TODO: Implement reply all properly
+                    detailModeBinding.wrappedValue = .compose(replyTo: email, forward: nil)
+                }
+            }
+        }
+        
         // Forward (f)
-        keymapHandler.registerHandler(for: "forward") {
+        keymapHandler.registerSimpleHandler(for: .forward) {
             await MainActor.run {
                 if let emailID = selectedEmailBinding.wrappedValue,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
@@ -336,7 +355,7 @@ struct ContentView: View {
         }
         
         // Close detail view (Escape / q)
-        keymapHandler.registerHandler(for: "close_detail") {
+        keymapHandler.registerSimpleHandler(for: .closeDetail) {
             await MainActor.run {
                 let currentMode = detailModeBinding.wrappedValue
                 if case .emailDetail = currentMode {
@@ -352,19 +371,19 @@ struct ContentView: View {
             }
         }
         
-        // Reload inbox
-        keymapHandler.registerHandler(for: "reload_inbox") {
-            await Self.handleReloadAction(
-                accountManager: accountManager, 
+        // Toggle read status (u)
+        keymapHandler.registerSimpleHandler(for: .toggleRead) {
+            await Self.handleToggleReadAction(
+                selectedEmail: selectedEmailBinding.wrappedValue,
+                accountManager: accountManager,
                 keymapsManager: keymapsManager
             )
         }
         
-        // Toggle read status
-        keymapHandler.registerHandler(for: "toggle_read") {
-            await Self.handleToggleReadAction(
-                selectedEmail: selectedEmailBinding.wrappedValue,
-                accountManager: accountManager,
+        // Reload inbox (legacy: Cmd+r)
+        keymapHandler.registerLegacyHandler(for: "reload_inbox") {
+            await Self.handleReloadAction(
+                accountManager: accountManager, 
                 keymapsManager: keymapsManager
             )
         }
@@ -738,6 +757,38 @@ struct ContentView: View {
         }
     }
 
+}
+
+// MARK: - Key Sequence Indicator
+
+/// Shows the current key sequence being typed (vim-style)
+struct KeySequenceIndicator: View {
+    @ObservedObject private var keymapHandler = KeymapHandler.shared
+    
+    var body: some View {
+        if !keymapHandler.currentSequence.isEmpty {
+            HStack(spacing: 4) {
+                Image(systemName: "keyboard")
+                    .font(.caption)
+                Text(keymapHandler.currentSequence)
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(NSColor.controlBackgroundColor))
+                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            .animation(.easeInOut(duration: 0.15), value: keymapHandler.currentSequence)
+        }
+    }
 }
 
 struct Folder: Identifiable, Hashable {

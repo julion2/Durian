@@ -1,0 +1,139 @@
+//
+//  KeymapTypes.swift
+//  colonSend
+//
+//  Key sequence types and action definitions
+//
+
+import Foundation
+
+// MARK: - KeymapAction Enum
+
+/// All available actions that can be triggered by keymaps
+enum KeymapAction: String, CaseIterable {
+    // Navigation
+    case nextEmail = "next_email"
+    case prevEmail = "prev_email"
+    case firstEmail = "first_email"
+    case lastEmail = "last_email"
+    case pageDown = "page_down"
+    case pageUp = "page_up"
+    
+    // Email Actions
+    case openEmail = "open_email"
+    case compose = "compose"
+    case reply = "reply"
+    case replyAll = "reply_all"
+    case forward = "forward"
+    case deleteEmail = "delete"
+    case toggleRead = "toggle_read"
+    case toggleStar = "toggle_star"
+    
+    // View Control
+    case closeDetail = "close_detail"
+    case reloadInbox = "reload_inbox"
+    
+    // Folder Navigation (Future)
+    case goInbox = "go_inbox"
+    case goSent = "go_sent"
+    case goDrafts = "go_drafts"
+    case goArchive = "go_archive"
+    
+    /// Whether this action supports count prefix (5j, 10k, etc.)
+    var supportsCount: Bool {
+        switch self {
+        case .nextEmail, .prevEmail, .pageDown, .pageUp, .deleteEmail:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - KeyEvent
+
+/// Represents a single key press event
+struct KeyEvent: Equatable {
+    let key: String
+    let modifiers: Set<KeyModifier>
+    let timestamp: Date
+    
+    init(key: String, modifiers: Set<KeyModifier> = [], timestamp: Date = Date()) {
+        self.key = key
+        self.modifiers = modifiers
+        self.timestamp = timestamp
+    }
+    
+    /// String representation for matching (e.g., "shift+g" or "j")
+    var normalized: String {
+        if modifiers.isEmpty {
+            return key.lowercased()
+        }
+        
+        // Special case: Shift+letter becomes uppercase
+        if modifiers == [.shift] && key.count == 1 && key.first?.isLetter == true {
+            return key.uppercased()
+        }
+        
+        let modStr = modifiers.sorted(by: { $0.rawValue < $1.rawValue })
+            .map { $0.rawValue }
+            .joined(separator: "+")
+        return "\(modStr)+\(key.lowercased())"
+    }
+}
+
+// MARK: - KeyModifier
+
+/// Keyboard modifiers
+enum KeyModifier: String, Comparable {
+    case cmd = "cmd"
+    case ctrl = "ctrl"
+    case option = "option"
+    case shift = "shift"
+    
+    static func < (lhs: KeyModifier, rhs: KeyModifier) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+}
+
+// MARK: - MatchResult
+
+/// Result of attempting to match a key sequence
+enum SequenceMatchResult: Equatable {
+    /// No match found - clear buffer
+    case noMatch
+    
+    /// Partial match - waiting for more keys (e.g., "g" waiting for "g")
+    case partial
+    
+    /// Full match found
+    case match(action: KeymapAction, count: Int)
+    
+    static func == (lhs: SequenceMatchResult, rhs: SequenceMatchResult) -> Bool {
+        switch (lhs, rhs) {
+        case (.noMatch, .noMatch):
+            return true
+        case (.partial, .partial):
+            return true
+        case (.match(let a1, let c1), .match(let a2, let c2)):
+            return a1 == a2 && c1 == c2
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - SequenceDefinition
+
+/// Defines a key sequence and its action
+struct SequenceDefinition {
+    let sequence: String      // e.g., "gg", "dd", "j"
+    let action: KeymapAction
+    let description: String
+    
+    init(_ sequence: String, _ action: KeymapAction, _ description: String = "") {
+        self.sequence = sequence
+        self.action = action
+        self.description = description
+    }
+}

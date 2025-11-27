@@ -1,52 +1,98 @@
+//
+//  KeymapHandler.swift
+//  colonSend
+//
+//  Handles keyboard events and delegates to KeySequenceEngine
+//
+
 import Foundation
 import SwiftUI
 import Combine
 import AppKit
 
+@MainActor
 class KeymapHandler: ObservableObject {
     static let shared = KeymapHandler()
     
+    // MARK: - Dependencies
+    
     private var keymapsManager = KeymapsManager.shared
+    private let sequenceEngine = KeySequenceEngine.shared
+    
+    // MARK: - State
+    
     private var cancellables = Set<AnyCancellable>()
     private var keyEventMonitor: Any?
     private var isAppInForeground = false
     
-    // Keymap action handlers
-    private var actionHandlers: [String: () async -> Void] = [:]
+    // Legacy action handlers (for keymaps.toml defined shortcuts with modifiers)
+    private var legacyActionHandlers: [String: () async -> Void] = [:]
+    
+    // MARK: - Published (proxy from sequence engine)
+    
+    @Published private(set) var currentSequence: String = ""
+    @Published private(set) var isWaitingForMore: Bool = false
+    
+    // MARK: - Init
     
     private init() {
         setupForegroundDetection()
         setupKeymapObserver()
+        setupSequenceEngineBindings()
     }
     
     deinit {
-        stopKeyEventMonitoring()
+        // Note: Can't call MainActor methods in deinit
+        // The event monitor will be cleaned up when the app terminates
+        if let monitor = keyEventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
     
     // MARK: - Public API
     
-    func registerHandler(for action: String, handler: @escaping () async -> Void) {
-        actionHandlers[action] = handler
-        print("🎹 Handler registered for action: \(action)")
+    /// Register a handler for a KeymapAction (goes through sequence engine)
+    func registerHandler(for action: KeymapAction, handler: @escaping (Int) async -> Void) {
+        sequenceEngine.registerHandler(for: action, handler: handler)
+        print("KEYMAPS: Handler registered for action: \(action.rawValue)")
+    }
+    
+    /// Register a simple handler (count ignored)
+    func registerSimpleHandler(for action: KeymapAction, handler: @escaping () async -> Void) {
+        sequenceEngine.registerSimpleHandler(for: action, handler: handler)
+        print("KEYMAPS: Simple handler registered for action: \(action.rawValue)")
+    }
+    
+    /// Register a legacy handler for keymaps.toml defined shortcuts (Cmd+r, etc.)
+    func registerLegacyHandler(for action: String, handler: @escaping () async -> Void) {
+        legacyActionHandlers[action] = handler
+        print("KEYMAPS: Legacy handler registered for action: \(action)")
     }
     
     func startKeyEventMonitoring() {
         stopKeyEventMonitoring()
         
         keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handleKeyEvent(event)
-            return event
+            if self?.handleKeyEvent(event) == true {
+                return nil // Consume event
+            }
+            return event // Pass through
         }
         
-        print("🎹 Key event monitoring started")
+        print("KEYMAPS: Key event monitoring started")
     }
     
     func stopKeyEventMonitoring() {
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
-            print("🎹 Key event monitoring stopped")
+            print("KEYMAPS: Key event monitoring stopped")
         }
+    }
+    
+    /// Clear the sequence buffer
+    func clearSequence() {
+        sequenceEngine.clearBuffer()
     }
     
     // MARK: - Private Methods
@@ -59,7 +105,7 @@ class KeymapHandler: ObservableObject {
         ) { [weak self] _ in
             self?.isAppInForeground = true
             self?.startKeyEventMonitoring()
-            print("🎹 App became active - keymap monitoring enabled")
+            print("KEYMAPS: App became active")
         }
         
         NotificationCenter.default.addObserver(
@@ -69,43 +115,71 @@ class KeymapHandler: ObservableObject {
         ) { [weak self] _ in
             self?.isAppInForeground = false
             self?.stopKeyEventMonitoring()
-            print("🎹 App resigned active - keymap monitoring disabled")
+            self?.sequenceEngine.clearBuffer()
+            print("KEYMAPS: App resigned active")
         }
     }
     
     private func setupKeymapObserver() {
         keymapsManager.$keymaps
             .sink { [weak self] _ in
-                print("🎹 Keymaps updated, refreshing handlers")
+                print("KEYMAPS: Config updated")
             }
             .store(in: &cancellables)
     }
     
-    private func handleKeyEvent(_ event: NSEvent) {
+    private func setupSequenceEngineBindings() {
+        // Bind sequence engine state to this handler for UI
+        sequenceEngine.$currentSequence
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$currentSequence)
+        
+        sequenceEngine.$isWaitingForMore
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$isWaitingForMore)
+    }
+    
+    private func handleKeyEvent(_ event: NSEvent) -> Bool {
         guard isAppInForeground,
               keymapsManager.keymaps.globalSettings.keymapsEnabled else {
-            return
+            return false
         }
         
+        // First, check for legacy keymaps with modifiers (Cmd+r, etc.)
+        if handleLegacyKeymap(event) {
+            return true
+        }
+        
+        // Then delegate to sequence engine
+        return sequenceEngine.handleKeyEvent(event)
+    }
+    
+    /// Handle keymaps.toml defined shortcuts with modifiers
+    private func handleLegacyKeymap(_ event: NSEvent) -> Bool {
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
         let modifiers = getModifiers(from: event)
         
-        // Check all enabled keymaps
+        // Only handle if there are modifiers (except pure shift)
+        guard !modifiers.isEmpty && modifiers != ["shift"] else {
+            return false
+        }
+        
+        // Check keymaps.toml entries
         for keymapEntry in keymapsManager.keymaps.keymaps {
             guard keymapEntry.enabled else { continue }
+            guard !keymapEntry.modifiers.isEmpty else { continue } // Skip no-modifier entries
             
             if keymapEntry.key.lowercased() == key && Set(keymapEntry.modifiers) == Set(modifiers) {
-                
-                if let handler = actionHandlers[keymapEntry.action] {
+                if let handler = legacyActionHandlers[keymapEntry.action] {
                     Task {
                         await handler()
                     }
-                } else {
-                    print("KEYMAPS: No handler for action: \(keymapEntry.action)")
+                    return true
                 }
-                break
             }
         }
+        
+        return false
     }
     
     private func getModifiers(from event: NSEvent) -> [String] {
@@ -125,10 +199,5 @@ class KeymapHandler: ObservableObject {
         }
         
         return modifiers
-    }
-    
-    private func formatKeyCombo(key: String, modifiers: [String]) -> String {
-        let modStr = modifiers.isEmpty ? "" : modifiers.joined(separator: "+") + "+"
-        return modStr + key
     }
 }

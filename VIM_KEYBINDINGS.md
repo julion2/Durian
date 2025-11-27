@@ -2,169 +2,179 @@
 
 ## Übersicht
 
-colonSend unterstützt Vim-inspirierte Keybindings für schnelle Keyboard-Navigation.
+colonSend unterstützt ein vollständiges Vim-Style Key-Sequence System mit Count-Unterstützung.
 
-## Navigation (Email-Liste)
+## Key-Sequence System
 
-| Tastenkombination | Aktion | Beschreibung |
-|-------------------|--------|--------------|
-| `j` / `↓` | Nächste Email | Wählt die nächste Email in der Liste aus |
-| `k` / `↑` | Vorherige Email | Wählt die vorherige Email in der Liste aus |
-| `Shift+G` | Letzte Email | Springt zur letzten Email in der Liste |
-| `Ctrl+d` | Page Down | Eine Seite nach unten scrollen |
-| `Ctrl+u` | Page Up | Eine Seite nach oben scrollen |
+Das System unterstützt:
+- **Einzelne Tasten**: `j`, `k`, `o`, `c`, `r`, `f`
+- **Sequenzen**: `gg`, `dd`, `gi`, `gs`
+- **Count-Prefix**: `5j`, `12k`, `3dd`
+- **UI-Feedback**: Zeigt aktuelle Sequenz unten rechts an
+
+### Wie es funktioniert
+
+1. Taste drücken → Buffer sammelt Keys
+2. Match prüfen:
+   - **Full Match** → Action ausführen
+   - **Partial Match** → Auf mehr Keys warten
+   - **No Match** → Buffer leeren
+3. Timeout nach 500ms → Buffer leeren
+
+## Navigation
+
+| Sequenz | Aktion | Beschreibung |
+|---------|--------|--------------|
+| `j` | Nächste Email | Wählt nächste Email aus |
+| `k` | Vorherige Email | Wählt vorherige Email aus |
+| `5j` | 5× Nächste | 5 Emails nach unten |
+| `10k` | 10× Vorherige | 10 Emails nach oben |
+| `gg` | Erste Email | Springt zur ersten Email |
+| `G` | Letzte Email | Springt zur letzten Email (Shift+G) |
 
 ## Email-Aktionen
 
-| Tastenkombination | Aktion | Beschreibung |
-|-------------------|--------|--------------|
-| `o` / `Enter` | Email öffnen | Öffnet die ausgewählte Email |
+| Sequenz | Aktion | Beschreibung |
+|---------|--------|--------------|
+| `o` | Email öffnen | Öffnet ausgewählte Email |
 | `c` | Compose | Neue Email verfassen |
-| `r` | Reply | Auf ausgewählte Email antworten |
-| `f` | Forward | Ausgewählte Email weiterleiten |
-| `u` | Toggle Read | Markiert Email als gelesen/ungelesen |
-| `Escape` / `q` | Zurück | Schließt Detail-Ansicht (q ist disabled by default) |
+| `r` | Reply | Auf Email antworten |
+| `R` | Reply All | Allen antworten (Shift+R) |
+| `f` | Forward | Email weiterleiten |
+| `u` | Toggle Read | Read/Unread umschalten |
+| `dd` | Delete | Email löschen (mit Count: 3dd) |
+| `s` | Toggle Star | Stern umschalten |
 
-## Folder-Aktionen
+## View Control
 
-| Tastenkombination | Aktion | Beschreibung |
-|-------------------|--------|--------------|
-| `Cmd+r` | Reload | Lädt den aktuellen Folder neu |
+| Sequenz | Aktion | Beschreibung |
+|---------|--------|--------------|
+| `q` | Quit/Back | Detail-Ansicht schließen |
+| `Escape` | Clear | Buffer leeren / Zurück |
 
-## Deaktivierte Keybindings (Standard)
+## Folder Navigation (Go-Commands)
 
-Diese Keybindings sind definiert, aber standardmäßig deaktiviert. Du kannst sie in `~/.config/colonSend/keymaps.toml` aktivieren:
+| Sequenz | Aktion | Beschreibung |
+|---------|--------|--------------|
+| `gi` | Go Inbox | Wechselt zur Inbox |
+| `gs` | Go Sent | Wechselt zu Gesendet |
+| `gd` | Go Drafts | Wechselt zu Entwürfe |
+| `ga` | Go Archive | Wechselt zu Archiv |
 
-| Tastenkombination | Aktion | Hinweis |
-|-------------------|--------|---------|
-| `g` (double-tap) | Erste Email | `enabled = false` (Konflikt mit einzelnem 'g') |
-| `Shift+r` | Reply All | `enabled = false` (Konflikt mit 'r') |
-| `d` | Delete | `enabled = false` (gefährlich ohne Bestätigung) |
-| `s` | Toggle Star | `enabled = false` (noch nicht implementiert) |
-| `q` | Quit View | `enabled = false` (Escape bevorzugt) |
-| `/` | Search | `enabled = false` (noch nicht implementiert) |
+## Legacy Keymaps (mit Modifier)
+
+Diese werden über `keymaps.toml` definiert:
+
+| Tastenkombination | Aktion |
+|-------------------|--------|
+| `Cmd+r` | Inbox neu laden |
+| `Cmd+Shift+K` | Keymaps neu laden |
+
+## UI-Indikator
+
+Wenn du eine Sequenz tippst, erscheint unten rechts ein kleiner Indikator:
+
+```
+┌──────────────┐
+│ ⌨️  5j       │
+└──────────────┘
+```
+
+Der verschwindet nach:
+- Erfolgreicher Action
+- Timeout (500ms)
+- Escape drücken
+- Ungültige Sequenz
 
 ## Konfiguration
 
-Alle Keybindings sind in `~/.config/colonSend/keymaps.toml` konfigurierbar:
+Die Sequenzen sind in `colonSend/Keymaps/SequenceMatcher.swift` definiert:
 
-```toml
-[[keymaps]]
-action = "next_email"
-key = "j"
-modifiers = []
-description = "Select next email (vim down)"
-enabled = true
+```swift
+let sequences: [SequenceDefinition] = [
+    SequenceDefinition("j", .nextEmail, "Next email"),
+    SequenceDefinition("gg", .firstEmail, "First email"),
+    // ...
+]
 ```
 
-### Keybinding aktivieren/deaktivieren
+### Timeout anpassen
 
-Setze `enabled = true` oder `enabled = false` für jedes Keybinding.
-
-### Keybinding ändern
-
-Ändere den `key` und/oder `modifiers` Wert:
-
-```toml
-[[keymaps]]
-action = "reply"
-key = "r"
-modifiers = ["cmd"]  # Ändert zu Cmd+r
-enabled = true
+In `KeyBuffer.swift`:
+```swift
+init(timeout: TimeInterval = 0.5) // 500ms default
 ```
 
-### Verfügbare Modifiers
+## Count-Unterstützung
 
-- `"cmd"` - Command/⌘
-- `"shift"` - Shift/⇧
-- `"option"` - Option/⌥
-- `"ctrl"` - Control/⌃
+Nicht alle Aktionen unterstützen Counts:
 
-### Global Settings
+| Aktion | Count Support |
+|--------|---------------|
+| `nextEmail` | ✅ Ja |
+| `prevEmail` | ✅ Ja |
+| `deleteEmail` | ✅ Ja |
+| `pageDown` | ✅ Ja |
+| `pageUp` | ✅ Ja |
+| `compose` | ❌ Nein |
+| `reply` | ❌ Nein |
+| `forward` | ❌ Nein |
+| `firstEmail` | ❌ Nein |
 
-```toml
-[global_settings]
-keymaps_enabled = true        # Alle Keybindings aktivieren/deaktivieren
-show_keymap_hints = true      # Zeigt Keymap-Hinweise (noch nicht implementiert)
+## Architektur
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     KeySequenceEngine                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
+│  │ KeyBuffer    │───▶│SequenceMatcher│───▶│ ActionDispatch│    │
+│  │              │    │              │    │              │      │
+│  │ "5" "j"      │    │ Matches:     │    │ Execute:     │      │
+│  │ "g" "g"      │    │ - count: 5   │    │ next_email   │      │
+│  │ "d" "d"      │    │ - action: j  │    │ × 5 times    │      │
+│  └──────────────┘    └──────────────┘    └──────────────┘      │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌──────────────┐                                              │
+│  │ TimeoutTimer │  500ms - clears buffer if no input           │
+│  └──────────────┘                                              │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Keybindings neu laden
+## Dateien
 
-Nach Änderungen in `keymaps.toml`:
-- **App neu starten** (empfohlen)
-- Oder: Menü → **Reload Keymaps** (`Cmd+r`)
-
-## Bekannte Einschränkungen
-
-1. **Kein Vim-Mode System**: Es gibt keinen separaten Normal/Insert/Command Mode
-2. **Keine Key-Sequenzen**: `gg` (double-tap) wird noch nicht unterstützt
-3. **Kein Leader-Key**: Keine Space-basierte Leader-Key-Sequenzen
-4. **Focus-Handling**: Keybindings funktionieren nur wenn die App im Vordergrund ist
-
-## Zukünftige Features
-
-- [ ] Vim-Mode System (Normal/Insert/Command)
-- [ ] Key-Sequenzen (`gg`, `gi`, etc.)
-- [ ] Leader-Key Support (Space als Leader)
-- [ ] Visual Mode für Mehrfachauswahl
-- [ ] Search mit `/`
-- [ ] Email-Markierungen (`m` + key)
-- [ ] Quick-Jump zu Folders (`g`+`i`/`s`/`d`)
+| Datei | Beschreibung |
+|-------|--------------|
+| `Keymaps/KeymapTypes.swift` | Enums, Typen, KeymapAction |
+| `Keymaps/KeyBuffer.swift` | Key-Sammlung mit Timeout |
+| `Keymaps/SequenceMatcher.swift` | Pattern Matching |
+| `Keymaps/KeySequenceEngine.swift` | Hauptlogik |
+| `KeymapHandler.swift` | NSEvent Integration |
 
 ## Troubleshooting
 
-### Keybindings funktionieren nicht
+### Sequenz wird nicht erkannt
 
-1. Prüfe `keymaps_enabled = true` in `keymaps.toml`
-2. Prüfe `enabled = true` für spezifische Keybindings
-3. App neu starten
-4. Prüfe Logs: `print("KEYMAPS: ...")`
+1. Prüfe die Logs: `print("KEYSEQ: ...")`
+2. Prüfe ob Action in SequenceMatcher definiert ist
+3. Prüfe ob Handler registriert ist
 
-### Konflikt mit System-Shortcuts
+### UI-Indikator erscheint nicht
 
-Wenn ein Keybinding mit einem macOS System-Shortcut kollidiert:
-1. Ändere das Keybinding in `keymaps.toml`
-2. Oder deaktiviere das System-Shortcut in **Systemeinstellungen → Tastatur → Shortcuts**
+1. Prüfe `keymapsManager.keymaps.globalSettings.keymapsEnabled`
+2. App muss im Vordergrund sein
 
-### Keybinding wird nicht erkannt
+### Count funktioniert nicht
 
-Prüfe die exakte Key-Schreibweise in TOML:
-- Buchstaben: `"j"`, `"k"`, `"r"`
-- Pfeiltasten: `"Up"`, `"Down"`, `"Left"`, `"Right"`
-- Spezial: `"Return"`, `"Escape"`, `"Delete"`, `"Space"`
-- Groß/Klein: `"G"` + `modifiers = ["shift"]` für Shift+G
-
-## Beispiel-Konfiguration
-
-```toml
-# Minimal vim-style config
-[global_settings]
-keymaps_enabled = true
-show_keymap_hints = true
-
-# Basic navigation
-[[keymaps]]
-action = "next_email"
-key = "j"
-modifiers = []
-enabled = true
-
-[[keymaps]]
-action = "prev_email"
-key = "k"
-modifiers = []
-enabled = true
-
-# Actions
-[[keymaps]]
-action = "open_email"
-key = "o"
-modifiers = []
-enabled = true
-
-[[keymaps]]
-action = "reply"
-key = "r"
-modifiers = []
-enabled = true
+Prüfe `supportsCount` in `KeymapAction`:
+```swift
+var supportsCount: Bool {
+    switch self {
+    case .nextEmail, .prevEmail: return true
+    default: return false
+    }
+}
 ```
