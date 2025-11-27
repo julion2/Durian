@@ -1034,6 +1034,22 @@ class IMAPClient: ObservableObject {
             return
         }
         
+        // Check cache first
+        if !accountId.isEmpty,
+           let cached = EmailBodyCache.shared.getCachedBody(uid: uid, accountId: accountId) {
+            print("📧 FETCHBODY: Using cached body for UID \(uid)")
+            if let emailIndex = emails.firstIndex(where: { $0.uid == uid }) {
+                emails[emailIndex].body = cached.plainBody
+                emails[emailIndex].attributedBody = cached.attributedBody
+                emails[emailIndex].bodyState = .loaded(body: cached.plainBody, attributedBody: cached.attributedBody)
+                
+                // Cleanup tracking
+                attemptedSections.removeValue(forKey: uid)
+                emailFetchStartTimes.removeValue(forKey: uid)
+            }
+            return
+        }
+        
         let command = "UID FETCH \(uid) (BODY[\(section)])"
         print("📧 FETCHBODY: Starting fetch for UID \(uid), section \(section)")
         
@@ -1141,6 +1157,16 @@ class IMAPClient: ObservableObject {
                     emails[emailIndex].body = finalBody
                     emails[emailIndex].attributedBody = attributedBody
                     emails[emailIndex].bodyState = .loaded(body: finalBody, attributedBody: attributedBody)
+                    
+                    // Cache the body for future use
+                    if !accountId.isEmpty {
+                        EmailBodyCache.shared.cacheBody(
+                            uid: uid,
+                            accountId: accountId,
+                            plainBody: finalBody,
+                            attributedBody: attributedBody
+                        )
+                    }
                     
                     // Clean up tracking for this UID on successful load
                     attemptedSections.removeValue(forKey: uid)

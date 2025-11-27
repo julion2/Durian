@@ -18,6 +18,10 @@ class AttachmentManager: ObservableObject {
     private let cacheDirectory: URL
     private let maxCacheSize: Int64 = 500_000_000 // 500 MB
     
+    // Hit-Rate Tracking
+    private var cacheHits: Int = 0
+    private var cacheMisses: Int = 0
+    
     private init() {
         // Set up cache directory in Application Support
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -50,12 +54,17 @@ class AttachmentManager: ObservableObject {
                 print("ATTACHMENT_MANAGER: Using cached file at \(cached.localPath.path)")
                 downloadStates[metadata.id] = .downloaded(cachePath: cached.localPath.path)
                 updateAccessInfo(for: cached.id)
+                // Track cache hit
+                cacheHits += 1
                 return cached.localPath
             } else {
                 // Cached file missing, remove from cache
                 cachedAttachments.removeValue(forKey: cached.id)
             }
         }
+        
+        // Track cache miss
+        cacheMisses += 1
         
         // Set downloading state
         downloadStates[metadata.id] = .downloading(progress: 0.0)
@@ -253,5 +262,28 @@ class AttachmentManager: ObservableObject {
     private func saveCachedAttachments() {
         guard let data = try? JSONEncoder().encode(cachedAttachments) else { return }
         try? data.write(to: metadataURL)
+    }
+    
+    // MARK: - Statistics
+    
+    /// Returns cache statistics including hit rate
+    func getStats() -> (
+        count: Int,
+        totalSize: Int64,
+        hitRate: Double,
+        hits: Int,
+        misses: Int
+    ) {
+        let totalSize = cachedAttachments.values.reduce(0) { $0 + $1.sizeBytes }
+        let totalRequests = cacheHits + cacheMisses
+        let hitRate = totalRequests > 0 ? Double(cacheHits) / Double(totalRequests) : 0.0
+        
+        return (
+            count: cachedAttachments.count,
+            totalSize: totalSize,
+            hitRate: hitRate,
+            hits: cacheHits,
+            misses: cacheMisses
+        )
     }
 }
