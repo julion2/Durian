@@ -34,45 +34,39 @@ class IMAPClientHandler: ChannelInboundHandler {
         
         let data = Data(bytes)
         
-        // Log ASCII preview for debugging (safe for protocol, not payload)
-        if let asciiPreview = String(data: data.prefix(200), encoding: .ascii) {
-            print("IMAP Server: \(asciiPreview.prefix(100))... [Session total: \(bytesReceivedInSession) bytes]")
-        } else {
-            print("IMAP Server: <binary data> [\(data.count) bytes] [Session total: \(bytesReceivedInSession) bytes]")
+        // FIX 2: Reduce logging frequency - only log large chunks
+        if data.count > 10_000 {
+            print("IMAP Server: \(data.count) bytes [Session: \(bytesReceivedInSession)]")
         }
         
-        // Append to response buffer (binary-safe)
-        // Note: appendToResponseBuffer is @MainActor, so we dispatch to main thread
+        // FIX 4: Consolidate all async work into a single Task
+        // This reduces Task creation overhead and MainActor contention
         Task { @MainActor in
+            // Append to response buffer (binary-safe)
             imapClient?.appendToResponseBuffer(data)
-        }
-        
-        // Check for tagged completion (ASCII protocol only)
-        if let asciiString = String(data: data, encoding: .ascii) {
-            let lines = asciiString.components(separatedBy: .newlines)
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("A") && (trimmed.contains(" OK") || trimmed.contains(" NO") || trimmed.contains(" BAD")) {
-                    if let spaceIndex = trimmed.firstIndex(of: " ") {
-                        let tag = String(trimmed[..<spaceIndex])
-                        print("DRAFT_DEBUG: Tagged OK detected - tag=\(tag)")
-                        Task { @MainActor in
+            
+            // Check for tagged completion and parse responses (ASCII protocol only)
+            if let asciiString = String(data: data, encoding: .ascii) {
+                let lines = asciiString.components(separatedBy: .newlines)
+                
+                // Check for tagged completion
+                for line in lines {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("A") && (trimmed.contains(" OK") || trimmed.contains(" NO") || trimmed.contains(" BAD")) {
+                        if let spaceIndex = trimmed.firstIndex(of: " ") {
+                            let tag = String(trimmed[..<spaceIndex])
                             await imapClient?.waitForBufferStabilization(tag: tag)
                         }
                     }
                 }
-            }
-            
-            // Parse LIST responses (ASCII protocol)
-            if asciiString.contains("* LIST") {
-                Task { @MainActor in
+                
+                // Parse LIST responses (ASCII protocol)
+                if asciiString.contains("* LIST") {
                     imapClient?.parseFolderResponse(asciiString)
                 }
-            }
-            
-            // Parse EXISTS responses (ASCII protocol)
-            if asciiString.contains("* ") && asciiString.contains(" EXISTS") {
-                Task { @MainActor in
+                
+                // Parse EXISTS responses (ASCII protocol)
+                if asciiString.contains("* ") && asciiString.contains(" EXISTS") {
                     imapClient?.parseExistsResponse(asciiString)
                 }
             }

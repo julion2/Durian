@@ -85,6 +85,9 @@ class IMAPClient: ObservableObject {
     private var bulkProcessingMode: Bool = false
     private var activeFetchTasks: [UInt32: Task<Void, Never>] = [:]  // Track active fetch tasks for cancellation
     
+    // FIX 1: Timeout Task tracking to prevent Task leak
+    private var timeoutTasks: [String: Task<Void, any Error>] = [:]
+    
     // STABILITY FIX: Keepalive timer to prevent server disconnects
     private var keepaliveTimer: Timer?
     private let keepaliveInterval: TimeInterval = 180  // Send NOOP every 3 minutes
@@ -95,6 +98,10 @@ class IMAPClient: ObservableObject {
     private var reconnectAttempts: Int = 0
     private let maxReconnectAttempts: Int = 3
     private var isReconnecting: Bool = false
+    
+    // FIX 3: Track active polling tasks to limit concurrency
+    private var activePollingTasks: Set<String> = []
+    private let maxConcurrentPolling: Int = 5  // Limit to 5 concurrent polls
     
     // MARK: - Initialization
     
@@ -1015,6 +1022,12 @@ class IMAPClient: ObservableObject {
     }
     
     private func fetchBody(uid: UInt32, section: String) async {
+        // FIX 5: Use defer to ensure cleanup happens even on error/cancellation
+        defer {
+            activeFetchTasks.removeValue(forKey: uid)
+            print("📧 FETCHBODY: Cleanup completed for UID \(uid)")
+        }
+        
         // Check for task cancellation
         if Task.isCancelled {
             print("📧 FETCHBODY: Task cancelled for UID \(uid)")
@@ -1037,7 +1050,7 @@ class IMAPClient: ObservableObject {
                 emails[emailIndex].attributedBody = nil
                 attemptedSections.removeValue(forKey: uid)
                 emailFetchStartTimes.removeValue(forKey: uid)
-                activeFetchTasks.removeValue(forKey: uid)
+                // FIX 5: activeFetchTasks cleanup handled by defer
             }
             return
         }
@@ -1051,7 +1064,7 @@ class IMAPClient: ObservableObject {
                 print("📧 FETCHBODY: Task cancelled after fetch for UID \(uid), aborting state update")
                 attemptedSections.removeValue(forKey: uid)
                 emailFetchStartTimes.removeValue(forKey: uid)
-                activeFetchTasks.removeValue(forKey: uid)
+                // FIX 5: activeFetchTasks cleanup handled by defer
                 return
             }
             
@@ -1253,6 +1266,13 @@ class IMAPClient: ObservableObject {
         enhancedCommands.removeAll()
         tagToCorrelation.removeAll()
         stateMachines.removeAll()
+        
+        // FIX 1: Cancel all timeout Tasks to prevent leak
+        for (tag, task) in timeoutTasks {
+            print("DISCONNECT: Cancelling timeout task for \(tag)")
+            task.cancel()
+        }
+        timeoutTasks.removeAll()
         
         try? await channel?.close()
         eventLoopGroup = nil
@@ -2007,14 +2027,17 @@ class IMAPClient: ObservableObject {
                 print("📋 PENDING: \(pendingCommands.count) commands - Tags: \(pendingCommands.keys.sorted().joined(separator: ", "))")
             }
             
-            // PHASE 1: Enhanced timeout with dynamic calculation
-            Task { @MainActor in
+            // FIX 1: Store timeout Task so it can be cancelled on success
+            let timeoutTask = Task { @MainActor in
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
                 if let command = pendingCommands.removeValue(forKey: tag) {
                     print("⏱️ TIMEOUT: \(tag) after \(timeout)s (seq: \(command.sequence))")
                     command.completion(.failure(IMAPError.commandTimeout))
                 }
+                // Cleanup timeout task from tracking
+                timeoutTasks.removeValue(forKey: tag)
             }
+            timeoutTasks[tag] = timeoutTask
             
             // Send command
             var buffer = channel.allocator.buffer(capacity: fullCommand.count)
@@ -2037,18 +2060,14 @@ class IMAPClient: ObservableObject {
     }
     
     func appendToResponseBuffer(_ data: Data) {
+        // FIX 2: Reduced excessive logging - only log large chunks or errors
         // Convert to ASCII string for protocol parsing only (binary data preserved in Data)
         let asciiPreview = String(data: data.prefix(200), encoding: .ascii) ?? "<binary>"
         
-        // PHASE 1: Enhanced debug logging
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("📥 RESPONSE RECEIVED (\(data.count) bytes)")
-        print("Preview: \(asciiPreview)")
-        print("Pending commands: \(pendingCommands.count)")
-        for (tag, cmd) in pendingCommands {
-            print("  - \(tag): seq=\(cmd.sequence), UID=\(cmd.requestedUID?.description ?? "nil"), section=\(cmd.requestedSection ?? "nil")")
+        // Only log for large chunks (>10KB) or when debugging is needed
+        if data.count > 10_000 {
+            print("📥 RESPONSE: \(data.count) bytes, pending: \(pendingCommands.count)")
         }
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         
         var targetTag: String?
         
@@ -2231,10 +2250,22 @@ class IMAPClient: ObservableObject {
     }
     
     func waitForBufferStabilization(tag: String) async {
+        // FIX 3: Limit concurrent polling operations
+        while activePollingTasks.count >= maxConcurrentPolling {
+            try? await Task.sleep(nanoseconds: 100_000_000)  // Wait 100ms
+        }
+        
+        activePollingTasks.insert(tag)
+        defer {
+            activePollingTasks.remove(tag)
+        }
+        
         let maxWaitTime: TimeInterval = 10.0
-        let checkInterval: UInt64 = 50_000_000
+        // FIX 2: Increase check interval from 50ms to 200ms to reduce CPU load
+        let checkInterval: UInt64 = 200_000_000  // 200ms instead of 50ms
         
         let startTime = Date()
+        var lastLogTime = startTime
         
         print("LITERAL_TRACK: Wait started - tag=\(tag)")
         
@@ -2246,17 +2277,24 @@ class IMAPClient: ObservableObject {
                 break
             }
             
-            let expectations = literalExpectations[tag] ?? []
-            for (index, exp) in expectations.enumerated() {
-                print("LITERAL_TRACK: Literal \(index + 1) - \(exp.receivedBytes)/\(exp.size) bytes")
+            // FIX 2: Only log every 1 second instead of every 50ms
+            let now = Date()
+            if now.timeIntervalSince(lastLogTime) >= 1.0 {
+                let expectations = literalExpectations[tag] ?? []
+                if !expectations.isEmpty {
+                    let progress = expectations.map { "\($0.receivedBytes)/\($0.size)" }.joined(separator: ", ")
+                    print("LITERAL_TRACK: Progress for \(tag): [\(progress)]")
+                }
+                lastLogTime = now
             }
         }
         
         if Date().timeIntervalSince(startTime) >= maxWaitTime {
             print("LITERAL_TRACK: Timeout waiting for literals - tag=\(tag)")
             let expectations = literalExpectations[tag] ?? []
-            for (index, exp) in expectations.enumerated() {
-                print("LITERAL_TRACK: TIMEOUT - Literal \(index + 1) incomplete: \(exp.receivedBytes)/\(exp.size) bytes")
+            if !expectations.isEmpty {
+                let progress = expectations.map { "\($0.receivedBytes)/\($0.size)" }.joined(separator: ", ")
+                print("LITERAL_TRACK: TIMEOUT - Incomplete: [\(progress)]")
             }
         }
         
@@ -2324,6 +2362,10 @@ class IMAPClient: ObservableObject {
             if lastSentTag == tag {
                 lastSentTag = nil
             }
+            
+            // FIX 1: Cancel and remove timeout Task to prevent leak
+            timeoutTasks[tag]?.cancel()
+            timeoutTasks.removeValue(forKey: tag)
             
             // Return full response as String (for compatibility with existing code)
             completion(.success(fullResponse))
