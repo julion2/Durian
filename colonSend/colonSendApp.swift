@@ -25,7 +25,7 @@ struct colonSendApp: App {
                 Button("Reload Keymaps") {
                     KeymapsManager.shared.reloadKeymaps()
                 }
-                .keyboardShortcut("r", modifiers: .command)
+                .keyboardShortcut("k", modifiers: [.command, .shift])
             }
         }
     }
