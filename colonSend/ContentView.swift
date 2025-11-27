@@ -437,21 +437,17 @@ struct ContentView: View {
                     .font(.callout)
                 }
                 
-                Divider()
-                
                 if !email.incomingAttachments.isEmpty {
-                    IncomingAttachmentListView(
-                        attachments: email.incomingAttachments,
-                        onDownload: { attachment in
-                            print("Download attachment: \(attachment.filename)")
-                        },
-                        onPreview: { attachment in
-                            print("Preview attachment: \(attachment.filename)")
-                        }
-                    )
-                    
-                    Divider()
+                    if let client = accountManager.getClient(for: accountId) {
+                        IncomingAttachmentListView(
+                            attachments: email.incomingAttachments,
+                            emailUID: email.uid,
+                            client: client
+                        )
+                    }
                 }
+                
+                Divider()
                 
                 VStack(alignment: .leading, spacing: 12) {
                     // Use bodyState for more reliable state management

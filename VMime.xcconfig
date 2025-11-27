@@ -1,0 +1,16 @@
+//
+// VMime.xcconfig
+// Build configuration for VMime library
+//
+
+// Header Search Paths
+HEADER_SEARCH_PATHS = $(inherited) $(HOME)/.local/include
+
+// Library Search Paths  
+LIBRARY_SEARCH_PATHS = $(inherited) $(HOME)/.local/lib
+
+// Other Linker Flags
+OTHER_LDFLAGS = $(inherited) -lvmime
+
+// Runtime Search Paths
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks $(HOME)/.local/lib

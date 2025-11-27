@@ -87,6 +87,9 @@ enum AttachmentError: Error, LocalizedError {
     case cacheError
     case parseError
     case notFound
+    case circuitBreakerOpen
+    case downloadTimeout
+    case corruptedData
     
     var errorDescription: String? {
         switch self {
@@ -99,7 +102,13 @@ enum AttachmentError: Error, LocalizedError {
         case .parseError:
             return "Failed to parse attachment metadata"
         case .notFound:
-            return "Attachment not found"
+            return "Attachment not found on server"
+        case .circuitBreakerOpen:
+            return "Attachment download temporarily unavailable (circuit breaker open)"
+        case .downloadTimeout:
+            return "Attachment download timed out"
+        case .corruptedData:
+            return "Attachment data appears to be corrupted"
         }
     }
 }

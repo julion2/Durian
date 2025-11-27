@@ -6,99 +6,139 @@
 //
 
 import SwiftUI
+import QuickLook
 
 struct IncomingAttachmentListView: View {
     let attachments: [IncomingAttachmentMetadata]
-    let onDownload: (IncomingAttachmentMetadata) -> Void
-    let onPreview: (IncomingAttachmentMetadata) -> Void
+    let emailUID: UInt32
+    let client: IMAPClient
+    
+    @StateObject private var manager = AttachmentManager.shared
+    @State private var quickLookURL: URL?
+    @State private var showQuickLook = false
     
     var body: some View {
         if !attachments.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Attachments (\(attachments.count))")
-                    .font(.headline)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(attachments) { attachment in
-                            IncomingAttachmentChip(
-                                attachment: attachment,
-                                onDownload: { onDownload(attachment) },
-                                onPreview: { onPreview(attachment) }
-                            )
-                        }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(attachments) { attachment in
+                        IncomingAttachmentChip(
+                            attachment: attachment,
+                            emailUID: emailUID,
+                            client: client,
+                            downloadState: manager.downloadStates[attachment.id] ?? .notDownloaded,
+                            onDownload: {
+                                Task {
+                                    await manager.saveAttachment(attachment, emailUID: emailUID, client: client)
+                                }
+                            },
+                            onPreview: {
+                                Task {
+                                    do {
+                                        let url = try await manager.previewAttachment(attachment, emailUID: emailUID, client: client)
+                                        quickLookURL = url
+                                        showQuickLook = true
+                                    } catch {
+                                        print("ERROR: Failed to preview attachment: \(error)")
+                                    }
+                                }
+                            },
+                            onOpen: {
+                                Task {
+                                    await manager.openAttachment(attachment, emailUID: emailUID, client: client)
+                                }
+                            }
+                        )
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 6)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 2)
             }
-            .background(Color(NSColor.controlBackgroundColor))
+            .quickLookPreview($quickLookURL)
         }
     }
 }
 
 struct IncomingAttachmentChip: View {
     let attachment: IncomingAttachmentMetadata
+    let emailUID: UInt32
+    let client: IMAPClient
+    let downloadState: AttachmentDownloadState
     let onDownload: () -> Void
     let onPreview: () -> Void
+    let onOpen: () -> Void
     
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            // Icon
             Image(systemName: attachment.icon)
-                .font(.caption)
+                .font(.body)
                 .foregroundStyle(.secondary)
             
-            VStack(alignment: .leading, spacing: 2) {
+            // Filename and size
+            VStack(alignment: .leading, spacing: 3) {
                 Text(attachment.filename)
-                    .font(.caption)
+                    .font(.subheadline)
                     .lineLimit(1)
                 Text(attachment.sizeFormatted)
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             
-            Button(action: onDownload) {
-                Image(systemName: "arrow.down.circle")
-                    .font(.caption)
+            // Download state indicator
+            Group {
+                switch downloadState {
+                case .notDownloaded:
+                    Button(action: onDownload) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Download attachment")
                     .foregroundStyle(.secondary)
+                    
+                case .downloading(let progress):
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                case .downloaded:
+                    Button(action: onOpen) {
+                        Image(systemName: "arrow.up.forward.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open attachment")
+                    
+                case .failed(let error):
+                    Button(action: onDownload) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.title3)
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Failed: \(error). Tap to retry.")
+                }
             }
-            .buttonStyle(.plain)
-            .help("Download attachment")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.1))
-        .cornerRadius(8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.accentColor.opacity(0.08))
+        .cornerRadius(10)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            // Double-click to preview
+            onPreview()
+        }
     }
 }
 
-#Preview("Attachment List") {
-    IncomingAttachmentListView(
-        attachments: [
-            IncomingAttachmentMetadata(
-                section: "2",
-                filename: "Proposal.pdf",
-                mimeType: "application/pdf",
-                sizeBytes: 2_300_000
-            ),
-            IncomingAttachmentMetadata(
-                section: "3",
-                filename: "Screenshot.png",
-                mimeType: "image/png",
-                sizeBytes: 458_000,
-                disposition: .inline
-            ),
-            IncomingAttachmentMetadata(
-                section: "4",
-                filename: "Report.xlsx",
-                mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                sizeBytes: 18_200_000
-            )
-        ],
-        onDownload: { _ in },
-        onPreview: { _ in }
-    )
-    .frame(width: 600)
-}
+//#Preview("Attachment List") {
+//    // Preview disabled - requires IMAPClient instance
+//}

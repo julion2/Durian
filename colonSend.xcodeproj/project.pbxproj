@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		F907D6B22EB8B8CC00037BBE /* ColonMime in Frameworks */ = {isa = PBXBuildFile; productRef = F907D6B12EB8B8CC00037BBE /* ColonMime */; };
+		F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86A82ED8912E00C2F5CF /* GRDB */; };
 		F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4502EA3F44300214258 /* SwiftSMTP */; };
 		F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4522EA3F44300214258 /* SwiftSMTPVapor */; };
 		F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */ = {isa = PBXBuildFile; productRef = F9BED1162E784F2400A0A48D /* NIOIMAP */; };
@@ -34,6 +35,7 @@
 				F907D6B22EB8B8CC00037BBE /* ColonMime in Frameworks */,
 				F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */,
 				F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */,
+				F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */,
 				F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */,
 				F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */,
 			);
@@ -83,6 +85,7 @@
 				F926D4502EA3F44300214258 /* SwiftSMTP */,
 				F926D4522EA3F44300214258 /* SwiftSMTPVapor */,
 				F907D6B12EB8B8CC00037BBE /* ColonMime */,
+				F90F86A82ED8912E00C2F5CF /* GRDB */,
 			);
 			productName = colonSend;
 			productReference = F9BED1042E78416900A0A48D /* colonSend.app */;
@@ -117,6 +120,7 @@
 				F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
 				F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */,
 				F907D6B02EB8B8CC00037BBE /* XCLocalSwiftPackageReference "../colonMime" */,
+				F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F9BED1052E78416900A0A48D /* Products */;
@@ -382,6 +386,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
 		F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sersoft-gmbh/swift-smtp.git";
@@ -412,6 +424,11 @@
 		F907D6B12EB8B8CC00037BBE /* ColonMime */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ColonMime;
+		};
+		F90F86A82ED8912E00C2F5CF /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */;
+			productName = GRDB;
 		};
 		F926D4502EA3F44300214258 /* SwiftSMTP */ = {
 			isa = XCSwiftPackageProductDependency;
