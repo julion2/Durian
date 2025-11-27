@@ -21,8 +21,15 @@ enum StreamEvent<T> {
     case error(Error)
 }
 
+// STABILITY FIX: Use identifiable subscription tokens instead of closure comparison
 struct StreamSubscription {
+    let id: UUID
     let cancel: () -> Void
+    
+    init(id: UUID = UUID(), cancel: @escaping () -> Void) {
+        self.id = id
+        self.cancel = cancel
+    }
 }
 
 // MARK: - Attachment Stream
@@ -34,7 +41,8 @@ class AttachmentStream: DataStream {
     private let uid: UInt32
     private let section: String
     private let expectedSize: Int64
-    private var subscribers: [(StreamEvent<Data>) -> Void] = []
+    // STABILITY FIX: Use identified subscribers to enable proper cleanup
+    private var subscribers: [UUID: (StreamEvent<Data>) -> Void] = [:]
     private var receivedBytes: Int = 0
     private var buffer: Data = Data()
     private var isCompleted: Bool = false
@@ -48,21 +56,24 @@ class AttachmentStream: DataStream {
         let estimatedCapacity = Int(Double(expectedSize) * 1.4)
         buffer.reserveCapacity(estimatedCapacity)
         
-        print("📦 STREAM: Created for UID \(uid), section \(section), expecting \(expectedSize) bytes")
+        print("STREAM: Created for UID \(uid), section \(section), expecting \(expectedSize) bytes")
     }
     
     func subscribe(_ handler: @escaping (StreamEvent<Data>) -> Void) -> StreamSubscription {
-        subscribers.append(handler)
+        let subscriptionId = UUID()
+        subscribers[subscriptionId] = handler
         
         // If already completed, immediately notify
         if isCompleted {
             handler(.complete)
         }
         
-        return StreamSubscription { [weak self] in
+        // STABILITY FIX: Return subscription with ID for proper removal
+        return StreamSubscription(id: subscriptionId) { [weak self] in
             guard let self = self else { return }
             Task { @MainActor in
-                self.subscribers.removeAll { $0 as AnyObject === handler as AnyObject }
+                self.subscribers.removeValue(forKey: subscriptionId)
+                print("STREAM: Unsubscribed \(subscriptionId)")
             }
         }
     }
@@ -115,7 +126,10 @@ class AttachmentStream: DataStream {
     }
     
     private func emitEvent(_ event: StreamEvent<Data>) {
-        subscribers.forEach { $0(event) }
+        // STABILITY FIX: Iterate over values of the dictionary
+        subscribers.values.forEach { handler in
+            handler(event)
+        }
     }
     
     private func decodeIfBase64(_ data: Data) -> Data {

@@ -150,11 +150,12 @@ struct IMAPEmail: Identifiable, Hashable {
 enum IMAPError: Error {
     case noConnection
     case authenticationFailed
-    case connectionFailed
+    case connectionFailed(String)  // STABILITY FIX: Added message for better error reporting
     case commandTimeout
     case invalidResponse
     case invalidStateTransition(from: String, to: String)  // PHASE 3: State machine errors
     case unexpectedData(String)  // PHASE 3: Unexpected data in state
+    case unexpectedResponse(String)  // STABILITY FIX: For buffer overflow handling
 }
 
 // MARK: - Pagination State

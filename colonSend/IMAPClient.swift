@@ -41,6 +41,9 @@ class IMAPClient: ObservableObject {
     private var commandCounter = 1000
     private var commandSequence: UInt64 = 0  // PHASE 1: Sequential command tracking
     
+    // STABILITY FIX: Maximum response buffer size to prevent memory exhaustion
+    private let maxResponseBufferSize: Int = 50_000_000  // 50 MB limit
+    
     // FIX: Store command metadata to enable proper response matching
     private struct PendingCommand {
         let tag: String
@@ -81,6 +84,17 @@ class IMAPClient: ObservableObject {
     private var failedFetches: Set<UInt32> = []  // Track permanently failed emails
     private var bulkProcessingMode: Bool = false
     private var activeFetchTasks: [UInt32: Task<Void, Never>] = [:]  // Track active fetch tasks for cancellation
+    
+    // STABILITY FIX: Keepalive timer to prevent server disconnects
+    private var keepaliveTimer: Timer?
+    private let keepaliveInterval: TimeInterval = 180  // Send NOOP every 3 minutes
+    private var lastActivityTime: Date = Date()
+    
+    // STABILITY FIX: Connection recovery state
+    private var lastConnectedAccount: MailAccount?
+    private var reconnectAttempts: Int = 0
+    private let maxReconnectAttempts: Int = 3
+    private var isReconnecting: Bool = false
     
     // MARK: - Initialization
     
@@ -131,12 +145,16 @@ class IMAPClient: ObservableObject {
                                     channel.pipeline.addHandler(imapHandler)
                                 }
                             case .failure(let error):
-                                print("❌ Failed to create SSL handler: \(error)")
-                                return channel.pipeline.addHandler(imapHandler)
+                                // STABILITY FIX: Don't silently fall back to unencrypted connection
+                                print("❌ SECURITY: Failed to create SSL handler: \(error)")
+                                print("❌ SECURITY: Connection will be aborted - SSL is required but failed")
+                                return channel.eventLoop.makeFailedFuture(IMAPError.connectionFailed("SSL handler creation failed: \(error)"))
                             }
                         } catch {
-                            print("❌ Failed to create SSL context: \(error)")
-                            return channel.pipeline.addHandler(imapHandler)
+                            // STABILITY FIX: Don't silently fall back to unencrypted connection
+                            print("❌ SECURITY: Failed to create SSL context: \(error)")
+                            print("❌ SECURITY: Connection will be aborted - SSL is required but failed")
+                            return channel.eventLoop.makeFailedFuture(IMAPError.connectionFailed("SSL context creation failed: \(error)"))
                         }
                     } else {
                         print("🔵 Using plain connection (no SSL)")
@@ -155,8 +173,16 @@ class IMAPClient: ObservableObject {
             isConnected = true
             connectionStatus = "Connected"
             
+            // STABILITY FIX: Store account for reconnection
+            lastConnectedAccount = account
+            reconnectAttempts = 0
+            
             // Start auto-refresh timer
             setupAutoRefresh()
+            
+            // STABILITY FIX: Start keepalive timer
+            startKeepalive()
+            updateActivityTime()
             
         } catch {
             connectionStatus = "Error: \(error.localizedDescription)"
@@ -597,8 +623,12 @@ class IMAPClient: ObservableObject {
             return
         }
 
-        let uidString = String(response[uidMatch]).components(separatedBy: " ").last!
-        let uid = UInt32(uidString)!
+        // STABILITY FIX: Removed force unwraps - use safe optional binding
+        guard let uidString = String(response[uidMatch]).components(separatedBy: " ").last,
+              let uid = UInt32(uidString) else {
+            print("BODYSTRUCTURE: ERROR - Could not parse UID from response")
+            return
+        }
         
         print("📧 BODYSTRUCTURE: Parsing for UID \(uid)")
         
@@ -1194,6 +1224,36 @@ class IMAPClient: ObservableObject {
     func disconnect() async {
         connectionStatus = "Disconnecting..."
         
+        // STABILITY FIX: Cancel all pending commands before disconnecting
+        // This prevents memory leaks and hung async operations
+        let pendingCount = pendingCommands.count
+        if pendingCount > 0 {
+            print("DISCONNECT: Cancelling \(pendingCount) pending commands")
+            for (tag, command) in pendingCommands {
+                print("DISCONNECT: Cancelling command \(tag)")
+                command.completion(.failure(IMAPError.connectionFailed("Connection closed")))
+            }
+            pendingCommands.removeAll()
+        }
+        
+        // Cancel all active fetch tasks
+        for (uid, task) in activeFetchTasks {
+            print("DISCONNECT: Cancelling fetch task for UID \(uid)")
+            task.cancel()
+        }
+        activeFetchTasks.removeAll()
+        
+        // Clear response buffers
+        responseBuffers.removeAll()
+        responseBufferLastSizes.removeAll()
+        responseBufferLastUpdated.removeAll()
+        literalExpectations.removeAll()
+        
+        // Clear enhanced command tracking
+        enhancedCommands.removeAll()
+        tagToCorrelation.removeAll()
+        stateMachines.removeAll()
+        
         try? await channel?.close()
         eventLoopGroup = nil
         
@@ -1202,6 +1262,11 @@ class IMAPClient: ObservableObject {
         
         // Stop auto-refresh timer
         stopAutoRefresh()
+        
+        // STABILITY FIX: Stop keepalive timer
+        stopKeepalive()
+        
+        print("DISCONNECT: Cleanup complete")
     }
     
     // MARK: - Auto-refresh functionality
@@ -1241,6 +1306,106 @@ class IMAPClient: ObservableObject {
     private func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+    }
+    
+    // MARK: - STABILITY FIX: Keepalive Management
+    
+    private func startKeepalive() {
+        stopKeepalive()
+        
+        keepaliveTimer = Timer.scheduledTimer(withTimeInterval: keepaliveInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.sendKeepaliveIfNeeded()
+            }
+        }
+        print("KEEPALIVE: Started timer (interval: \(keepaliveInterval)s)")
+    }
+    
+    private func stopKeepalive() {
+        keepaliveTimer?.invalidate()
+        keepaliveTimer = nil
+    }
+    
+    private func sendKeepaliveIfNeeded() async {
+        // Only send NOOP if there's been no activity recently
+        let timeSinceActivity = Date().timeIntervalSince(lastActivityTime)
+        
+        guard isConnected && timeSinceActivity > keepaliveInterval / 2 else {
+            return
+        }
+        
+        print("KEEPALIVE: Sending NOOP (no activity for \(Int(timeSinceActivity))s)")
+        
+        do {
+            let response = try await executeCommand("NOOP", timeout: 10.0)
+            if response.contains("OK") {
+                print("KEEPALIVE: Server responded OK")
+            } else {
+                print("KEEPALIVE: Unexpected response: \(response.prefix(100))")
+            }
+        } catch {
+            print("KEEPALIVE: Failed - \(error)")
+            // Connection may be dead, trigger reconnect
+            await handleConnectionLost()
+        }
+    }
+    
+    /// Updates last activity time (call this after any successful command)
+    private func updateActivityTime() {
+        lastActivityTime = Date()
+    }
+    
+    // MARK: - STABILITY FIX: Connection Recovery
+    
+    private func handleConnectionLost() async {
+        guard !isReconnecting else {
+            print("RECONNECT: Already attempting reconnection")
+            return
+        }
+        
+        guard let account = lastConnectedAccount else {
+            print("RECONNECT: No account to reconnect to")
+            return
+        }
+        
+        guard reconnectAttempts < maxReconnectAttempts else {
+            print("RECONNECT: Max attempts (\(maxReconnectAttempts)) reached, giving up")
+            connectionStatus = "Connection lost"
+            reconnectAttempts = 0
+            return
+        }
+        
+        isReconnecting = true
+        reconnectAttempts += 1
+        
+        // Exponential backoff: 2s, 4s, 8s
+        let delay = pow(2.0, Double(reconnectAttempts))
+        print("RECONNECT: Attempt \(reconnectAttempts)/\(maxReconnectAttempts) in \(delay)s")
+        connectionStatus = "Reconnecting (\(reconnectAttempts)/\(maxReconnectAttempts))..."
+        
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        
+        // Disconnect cleanly first
+        await disconnect()
+        
+        // Attempt reconnection
+        print("RECONNECT: Connecting to \(account.imap.host)")
+        await connect(account: account)
+        
+        if isConnected {
+            print("RECONNECT: Success!")
+            reconnectAttempts = 0
+            
+            // Re-select the folder if one was selected
+            if let folder = selectedFolder {
+                print("RECONNECT: Re-selecting folder \(folder)")
+                await selectFolder(folder)
+            }
+        } else {
+            print("RECONNECT: Failed, will retry")
+        }
+        
+        isReconnecting = false
     }
     
     private func refreshCurrentFolder() async {
@@ -1980,6 +2145,18 @@ class IMAPClient: ObservableObject {
             return
         }
         
+        // STABILITY FIX: Check buffer size limit before appending
+        let currentSize = pendingCommands[tag]?.responseBuffer.count ?? 0
+        if currentSize + data.count > maxResponseBufferSize {
+            print("❌ BUFFER_OVERFLOW: Response buffer for \(tag) would exceed \(maxResponseBufferSize) bytes")
+            print("❌ BUFFER_OVERFLOW: Current: \(currentSize), incoming: \(data.count)")
+            // Complete with error and clean up
+            if let command = pendingCommands.removeValue(forKey: tag) {
+                command.completion(.failure(IMAPError.unexpectedResponse("Response too large (>\(maxResponseBufferSize / 1_000_000)MB)")))
+            }
+            return
+        }
+        
         // Append to command's response buffer (binary-safe)
         pendingCommands[tag]?.responseBuffer.append(data)
         responseBufferLastSizes[tag] = pendingCommands[tag]?.responseBuffer.count ?? 0
@@ -2261,24 +2438,80 @@ class IMAPClient: ObservableObject {
     
     // MARK: - Attachment Fetching
     
-    /// Feature flag for gradual rollout of colonMime attachment support
-    private let useColonMimeAttachments: Bool = true
+    /// Feature flag: Use direct IMAP section fetch (most reliable) vs colonMime (experimental)
+    /// STABILITY FIX: Direct IMAP fetch is more reliable because section numbers match exactly
+    private let useDirectIMAPFetch: Bool = true
     
-    /// PHASE 3: Fetches attachment data using colonMime or legacy parser
+    /// Fetches attachment data with improved error handling and retry logic
     /// Returns the raw binary data
-    func fetchAttachmentData(uid: UInt32, section: String, maxRetries: Int = 1) async throws -> Data {
-        // Use colonMime if enabled, otherwise fall back to legacy
-        if useColonMimeAttachments {
-            print("ATTACHMENT_FETCH: Using colonMime implementation")
+    func fetchAttachmentData(uid: UInt32, section: String, maxRetries: Int = 3) async throws -> Data {
+        print("ATTACHMENT_FETCH: Starting fetch for UID \(uid), section \(section)")
+        
+        // STABILITY FIX: Use direct IMAP fetch - section numbers match BODYSTRUCTURE exactly
+        if useDirectIMAPFetch {
+            print("ATTACHMENT_FETCH: Using direct IMAP section fetch (most reliable)")
+            return try await attachmentCircuitBreaker.execute {
+                try await self.fetchAttachmentDataDirect(uid: uid, section: section, maxRetries: maxRetries)
+            }
+        } else {
+            // Experimental: colonMime approach (has section mapping issues)
+            print("ATTACHMENT_FETCH: Using colonMime implementation (experimental)")
             return try await attachmentCircuitBreaker.execute {
                 try await self.fetchAttachmentDataColonMime(uid: uid, section: section)
             }
-        } else {
-            print("ATTACHMENT_FETCH: Using legacy implementation")
-            return try await attachmentCircuitBreaker.execute {
-                try await self.fetchAttachmentDataLegacy(uid: uid, section: section, maxRetries: maxRetries)
+        }
+    }
+    
+    /// STABILITY FIX: Direct IMAP section fetch - most reliable method
+    /// Fetches exactly the section specified without any index mapping
+    private func fetchAttachmentDataDirect(uid: UInt32, section: String, maxRetries: Int) async throws -> Data {
+        var lastError: Error = AttachmentError.failedToExtract
+        
+        for attempt in 1...maxRetries {
+            do {
+                print("ATTACHMENT_FETCH_DIRECT: Attempt \(attempt)/\(maxRetries) for UID \(uid), section \(section)")
+                
+                // Get expected size for timeout calculation
+                let expectedSize = try await fetchAttachmentExpectedSize(uid: uid, section: section)
+                let timeout = calculateDynamicTimeout(expectedBytes: expectedSize)
+                
+                print("ATTACHMENT_FETCH_DIRECT: Expected \(expectedSize) bytes, timeout \(timeout)s")
+                
+                // Fetch the exact section - no mapping needed
+                let command = "UID FETCH \(uid) (BODY.PEEK[\(section)])"
+                let response = try await executeCommand(command, uid: uid, section: section, timeout: timeout)
+                
+                // Extract binary data from response
+                let data = try extractAttachmentFromResponse(response, section: section, expectedSize: expectedSize)
+                
+                // Validate data integrity
+                if data.count == 0 {
+                    throw AttachmentError.failedToExtract
+                }
+                
+                // Warning if data is significantly smaller than expected (but don't fail)
+                if expectedSize > 0 && data.count < expectedSize / 2 {
+                    print("ATTACHMENT_FETCH_DIRECT: WARNING - Data size (\(data.count)) much smaller than expected (\(expectedSize))")
+                }
+                
+                print("ATTACHMENT_FETCH_DIRECT: SUCCESS - \(data.count) bytes")
+                return data
+                
+            } catch {
+                lastError = error
+                print("ATTACHMENT_FETCH_DIRECT: Attempt \(attempt) failed: \(error)")
+                
+                if attempt < maxRetries {
+                    // Exponential backoff: 1s, 2s, 4s
+                    let delay = pow(2.0, Double(attempt - 1))
+                    print("ATTACHMENT_FETCH_DIRECT: Retrying in \(delay)s...")
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
             }
         }
+        
+        print("ATTACHMENT_FETCH_DIRECT: All \(maxRetries) attempts failed")
+        throw lastError
     }
     
     // MARK: - colonMime Integration
