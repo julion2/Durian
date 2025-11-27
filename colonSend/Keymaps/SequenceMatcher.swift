@@ -26,6 +26,7 @@ class SequenceMatcher {
         // Double-tap sequences
         SequenceDefinition("gg", .firstEmail, "First email"),
         SequenceDefinition("dd", .deleteEmail, "Delete email"),
+        SequenceDefinition("zz", .centerView, "Center current email in view"),
         
         // Email actions
         SequenceDefinition("o", .openEmail, "Open email"),

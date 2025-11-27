@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var triggerSend = false
     @State private var composeDraft: EmailDraft?
     @State private var draftLoadingTask: Task<Void, Never>?
+    @State private var centerViewTrigger = false  // Trigger for zz (center current email)
 
     var body: some View {
         NavigationSplitView {
@@ -111,6 +112,14 @@ struct ContentView: View {
                             // Auto-scroll only if item is outside visible area (anchor: nil = minimum scroll)
                             if let emailID = newSelection {
                                 scrollProxy.scrollTo(emailID, anchor: nil)
+                            }
+                        }
+                        .onChange(of: centerViewTrigger) { _ in
+                            // zz - center current email in view
+                            if let emailID = selectedEmail {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    scrollProxy.scrollTo(emailID, anchor: .center)
+                                }
                             }
                         }
                     }
@@ -320,6 +329,14 @@ struct ContentView: View {
                     allEmails: accountManager.allEmails,
                     count: 10 * count  // Half-page = ~10 emails
                 )
+            }
+        }
+        
+        // Center view (zz)
+        let centerViewBinding = $centerViewTrigger
+        keymapHandler.registerSimpleHandler(for: .centerView) {
+            await MainActor.run {
+                centerViewBinding.wrappedValue.toggle()
             }
         }
         

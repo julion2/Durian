@@ -32,6 +32,7 @@ enum KeymapAction: String, CaseIterable {
     // View Control
     case closeDetail = "close_detail"
     case reloadInbox = "reload_inbox"
+    case centerView = "center_view"
     
     // Folder Navigation (Future)
     case goInbox = "go_inbox"
