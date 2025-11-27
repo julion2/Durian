@@ -91,16 +91,17 @@ class KeymapHandler: ObservableObject {
         let modifiers = getModifiers(from: event)
         
         // Check all enabled keymaps
-        for (action, keymap) in keymapsManager.keymaps.keymaps {
-            guard keymap.enabled else { continue }
+        for keymapEntry in keymapsManager.keymaps.keymaps {
+            guard keymapEntry.enabled else { continue }
             
-            if keymap.key.lowercased() == key && Set(keymap.modifiers) == Set(modifiers) {
+            if keymapEntry.key.lowercased() == key && Set(keymapEntry.modifiers) == Set(modifiers) {
                 
-                if let handler = actionHandlers[action] {
+                if let handler = actionHandlers[keymapEntry.action] {
                     Task {
                         await handler()
                     }
                 } else {
+                    print("KEYMAPS: No handler for action: \(keymapEntry.action)")
                 }
                 break
             }

@@ -229,7 +229,130 @@ struct ContentView: View {
         let accountManager = self.accountManager
         let keymapsManager = self.keymapsManager
         
-        // Register reload inbox handler
+        // Register all keymap handlers
+        registerAllHandlers(accountManager: accountManager, keymapsManager: keymapsManager)
+        
+        print("🎹 Keymap handlers registered")
+        
+        // Re-register handlers when keymaps change
+        keymapsManager.$keymaps
+            .sink { _ in
+                print("🎹 Keymaps changed, re-registering handlers")
+                // Handlers will be re-evaluated on next key press
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func registerAllHandlers(accountManager: AccountManager, keymapsManager: KeymapsManager) {
+        // Capture the binding values we need
+        let selectedEmailBinding = $selectedEmail
+        let detailModeBinding = $detailMode
+        let lastViewedEmailBinding = $lastViewedEmail
+        let allEmails = accountManager.allEmails
+        
+        // Navigation - Next/Previous Email (j/k)
+        keymapHandler.registerHandler(for: "next_email") {
+            await MainActor.run {
+                Self.selectNextEmail(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails
+                )
+            }
+        }
+        
+        keymapHandler.registerHandler(for: "prev_email") {
+            await MainActor.run {
+                Self.selectPreviousEmail(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails
+                )
+            }
+        }
+        
+        // Navigation - First/Last Email
+        keymapHandler.registerHandler(for: "first_email") {
+            await MainActor.run {
+                Self.selectFirstEmail(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails
+                )
+            }
+        }
+        
+        keymapHandler.registerHandler(for: "last_email") {
+            await MainActor.run {
+                Self.selectLastEmail(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails
+                )
+            }
+        }
+        
+        // Open Email (o / Enter)
+        keymapHandler.registerHandler(for: "open_email") {
+            await MainActor.run {
+                if let emailID = selectedEmailBinding.wrappedValue,
+                   let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    lastViewedEmailBinding.wrappedValue = email
+                    let accountId = accountManager.selectedAccount ?? ""
+                    detailModeBinding.wrappedValue = .emailDetail(emailUID: email.uid, accountId: accountId)
+                    
+                    if !email.isRead {
+                        Task {
+                            await accountManager.markAsRead(uid: email.uid)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Compose (c)
+        keymapHandler.registerHandler(for: "compose") {
+            await MainActor.run {
+                detailModeBinding.wrappedValue = .compose(replyTo: nil, forward: nil)
+            }
+        }
+        
+        // Reply (r)
+        keymapHandler.registerHandler(for: "reply") {
+            await MainActor.run {
+                if let emailID = selectedEmailBinding.wrappedValue,
+                   let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    lastViewedEmailBinding.wrappedValue = email
+                    detailModeBinding.wrappedValue = .compose(replyTo: email, forward: nil)
+                }
+            }
+        }
+        
+        // Forward (f)
+        keymapHandler.registerHandler(for: "forward") {
+            await MainActor.run {
+                if let emailID = selectedEmailBinding.wrappedValue,
+                   let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    lastViewedEmailBinding.wrappedValue = email
+                    detailModeBinding.wrappedValue = .compose(replyTo: nil, forward: email)
+                }
+            }
+        }
+        
+        // Close detail view (Escape / q)
+        keymapHandler.registerHandler(for: "close_detail") {
+            await MainActor.run {
+                let currentMode = detailModeBinding.wrappedValue
+                if case .emailDetail = currentMode {
+                    detailModeBinding.wrappedValue = .empty
+                    selectedEmailBinding.wrappedValue = nil
+                } else if case .compose = currentMode {
+                    if let lastEmail = lastViewedEmailBinding.wrappedValue {
+                        detailModeBinding.wrappedValue = .emailDetail(emailUID: lastEmail.uid, accountId: lastEmail.from)
+                    } else {
+                        detailModeBinding.wrappedValue = .empty
+                    }
+                }
+            }
+        }
+        
+        // Reload inbox
         keymapHandler.registerHandler(for: "reload_inbox") {
             await Self.handleReloadAction(
                 accountManager: accountManager, 
@@ -237,36 +360,52 @@ struct ContentView: View {
             )
         }
         
-        // Register toggle read status handler
+        // Toggle read status
         keymapHandler.registerHandler(for: "toggle_read") {
             await Self.handleToggleReadAction(
-                selectedEmail: selectedEmail,
+                selectedEmail: selectedEmailBinding.wrappedValue,
                 accountManager: accountManager,
                 keymapsManager: keymapsManager
             )
         }
+    }
+    
+    // MARK: - Navigation Helper Methods
+    
+    private static func selectNextEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
+        guard !allEmails.isEmpty else { return }
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
         
-        print("🎹 Keymap handlers registered")
+        if let currentID = selectedEmail.wrappedValue,
+           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }),
+           currentIndex < sortedEmails.count - 1 {
+            selectedEmail.wrappedValue = sortedEmails[currentIndex + 1].id
+        } else if selectedEmail.wrappedValue == nil {
+            selectedEmail.wrappedValue = sortedEmails.first?.id
+        }
+    }
+    
+    private static func selectPreviousEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
+        guard !allEmails.isEmpty else { return }
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
         
-        // Re-register handlers when keymaps change
-        keymapsManager.$keymaps
-            .sink { [weak keymapHandler] _ in
-                print("🎹 Keymaps changed, re-registering handlers")
-                keymapHandler?.registerHandler(for: "reload_inbox") {
-                    await Self.handleReloadAction(
-                        accountManager: accountManager, 
-                        keymapsManager: keymapsManager
-                    )
-                }
-                keymapHandler?.registerHandler(for: "toggle_read") {
-                    await Self.handleToggleReadAction(
-                        selectedEmail: selectedEmail,
-                        accountManager: accountManager,
-                        keymapsManager: keymapsManager
-                    )
-                }
-            }
-            .store(in: &cancellables)
+        if let currentID = selectedEmail.wrappedValue,
+           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }),
+           currentIndex > 0 {
+            selectedEmail.wrappedValue = sortedEmails[currentIndex - 1].id
+        } else if selectedEmail.wrappedValue == nil {
+            selectedEmail.wrappedValue = sortedEmails.first?.id
+        }
+    }
+    
+    private static func selectFirstEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        selectedEmail.wrappedValue = sortedEmails.first?.id
+    }
+    
+    private static func selectLastEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        selectedEmail.wrappedValue = sortedEmails.last?.id
     }
     
     private static func handleReloadAction(
