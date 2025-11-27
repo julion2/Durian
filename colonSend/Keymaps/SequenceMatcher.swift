@@ -19,6 +19,10 @@ class SequenceMatcher {
         SequenceDefinition("k", .prevEmail, "Previous email"),
         SequenceDefinition("G", .lastEmail, "Last email (Shift+G)"),
         
+        // Half-page navigation (Ctrl+d/u)
+        SequenceDefinition("ctrl+d", .pageDown, "Half-page down"),
+        SequenceDefinition("ctrl+u", .pageUp, "Half-page up"),
+        
         // Double-tap sequences
         SequenceDefinition("gg", .firstEmail, "First email"),
         SequenceDefinition("dd", .deleteEmail, "Delete email"),

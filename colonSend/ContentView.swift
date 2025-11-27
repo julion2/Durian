@@ -302,6 +302,27 @@ struct ContentView: View {
             }
         }
         
+        // Half-page navigation (Ctrl+d, Ctrl+u)
+        keymapHandler.registerHandler(for: .pageDown) { count in
+            await MainActor.run {
+                Self.selectNextEmailWithCount(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails,
+                    count: 10 * count  // Half-page = ~10 emails
+                )
+            }
+        }
+        
+        keymapHandler.registerHandler(for: .pageUp) { count in
+            await MainActor.run {
+                Self.selectPreviousEmailWithCount(
+                    selectedEmail: selectedEmailBinding,
+                    allEmails: accountManager.allEmails,
+                    count: 10 * count  // Half-page = ~10 emails
+                )
+            }
+        }
+        
         // Open Email (o)
         keymapHandler.registerSimpleHandler(for: .openEmail) {
             await MainActor.run {
