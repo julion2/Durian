@@ -66,43 +66,52 @@ struct ContentView: View {
                 }
                 
                 if !accountManager.allEmails.isEmpty {
-                    List(accountManager.allEmails.sorted { $0.uid > $1.uid }, selection: $selectedEmail) { email in
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                // Unread indicator
-                                if !email.isRead {
-                                    Circle()
-                                        .fill(.blue)
-                                        .frame(width: 8, height: 8)
-                                }
-                                
-                                Text(formatSenderName(email.from))
-                                    .font(.headline)
-                                    .fontWeight(email.isRead ? .regular : .bold)
-                                
-                                Spacer()
-                                
-                                Text(formatDate(email.date))
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            HStack(spacing: 4) {
-                                Text(email.subject)
-                                    .font(.callout)
-                                    .fontWeight(email.isRead ? .regular : .semibold)
-                                
-                                if !email.incomingAttachments.isEmpty {
-                                    Image(systemName: "paperclip")
-                                        .font(.caption)
+                    ScrollViewReader { scrollProxy in
+                        List(accountManager.allEmails.sorted { $0.uid > $1.uid }, selection: $selectedEmail) { email in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack {
+                                    // Unread indicator
+                                    if !email.isRead {
+                                        Circle()
+                                            .fill(.blue)
+                                            .frame(width: 8, height: 8)
+                                    }
+                                    
+                                    Text(formatSenderName(email.from))
+                                        .font(.headline)
+                                        .fontWeight(email.isRead ? .regular : .bold)
+                                    
+                                    Spacer()
+                                    
+                                    Text(formatDate(email.date))
+                                        .font(.callout)
                                         .foregroundStyle(.secondary)
                                 }
+                                
+                                HStack(spacing: 4) {
+                                    Text(email.subject)
+                                        .font(.callout)
+                                        .fontWeight(email.isRead ? .regular : .semibold)
+                                    
+                                    if !email.incomingAttachments.isEmpty {
+                                        Image(systemName: "paperclip")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                
+                                Text(email.body ?? "")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
                             }
-                            
-                            Text(email.body ?? "")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                            .id(email.id)  // Important: ID for scroll targeting
+                        }
+                        .onChange(of: selectedEmail) { newSelection in
+                            // Auto-scroll only if item is outside visible area (anchor: nil = minimum scroll)
+                            if let emailID = newSelection {
+                                scrollProxy.scrollTo(emailID, anchor: nil)
+                            }
                         }
                     }
                 } else if accountManager.isLoadingEmails {
