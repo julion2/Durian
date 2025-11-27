@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Combine
+import TOMLDecoder
 
 enum DetailViewMode: Equatable {
     case emailDetail(emailUID: UInt32, accountId: String)
@@ -666,62 +667,175 @@ class ConfigManager {
     }
     
     private func loadConfig() {
-        let configURL = getConfigURL()
+        let tomlURL = getConfigURL()
+        let jsonURL = getLegacyConfigURL()
         
         // Create config directory if it doesn't exist
-        let configDir = configURL.deletingLastPathComponent()
+        let configDir = tomlURL.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: configDir.path) {
             do {
                 try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
             } catch {
-                print("Failed to create config directory: \(error)")
+                print("CONFIG_ERROR: Failed to create config directory: \(error)")
                 return
             }
         }
         
-        // Create default config if it doesn't exist
-        if !FileManager.default.fileExists(atPath: configURL.path) {
-            createDefaultConfig(at: configURL)
+        // Migration: Check if JSON config exists but TOML doesn't
+        if FileManager.default.fileExists(atPath: jsonURL.path) && !FileManager.default.fileExists(atPath: tomlURL.path) {
+            migrateFromJSON(jsonURL: jsonURL, tomlURL: tomlURL)
         }
         
-        // Load config
+        // Create default config if it doesn't exist
+        if !FileManager.default.fileExists(atPath: tomlURL.path) {
+            createDefaultConfig(at: tomlURL)
+        }
+        
+        // Load config from TOML
         do {
-            let data = try Data(contentsOf: configURL)
-            config = try JSONDecoder().decode(AppConfig.self, from: data)
+            let tomlString = try String(contentsOf: tomlURL, encoding: .utf8)
+            config = try TOMLDecoder().decode(AppConfig.self, from: tomlString)
+            print("CONFIG: Loaded config from \(tomlURL.path)")
         } catch {
-            print("Failed to load config: \(error)")
+            print("CONFIG_ERROR: Failed to load config: \(error)")
         }
     }
     
     private func getConfigURL() -> URL {
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
+        return homeURL.appendingPathComponent(".config/colonSend/config.toml")
+    }
+    
+    private func getLegacyConfigURL() -> URL {
+        let homeURL = FileManager.default.homeDirectoryForCurrentUser
         return homeURL.appendingPathComponent(".config/colonSend/config.json")
     }
     
+    private func migrateFromJSON(jsonURL: URL, tomlURL: URL) {
+        print("CONFIG: Migrating from JSON to TOML...")
+        do {
+            let jsonData = try Data(contentsOf: jsonURL)
+            let jsonConfig = try JSONDecoder().decode(AppConfig.self, from: jsonData)
+            
+            // Write as TOML
+            let tomlString = generateTOML(from: jsonConfig)
+            try tomlString.write(to: tomlURL, atomically: true, encoding: .utf8)
+            
+            // Backup old JSON file
+            let backupURL = jsonURL.deletingPathExtension().appendingPathExtension("json.bak")
+            try FileManager.default.moveItem(at: jsonURL, to: backupURL)
+            
+            print("CONFIG: Migration complete. JSON backup at \(backupURL.path)")
+        } catch {
+            print("CONFIG_ERROR: Migration failed: \(error)")
+        }
+    }
+    
+    private func generateTOML(from config: AppConfig) -> String {
+        var toml = "# colonSend Configuration\n"
+        toml += "# Documentation: https://github.com/julion2/colonSend\n\n"
+        
+        // Settings section
+        toml += "[settings]\n"
+        toml += "auto_fetch_enabled = \(config.settings.autoFetchEnabled)\n"
+        toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
+        toml += "max_emails_to_fetch = \(config.settings.maxEmailsToFetch)\n"
+        toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
+        toml += "theme = \"\(config.settings.theme)\"\n\n"
+        
+        // Signatures section
+        if !config.signatures.isEmpty {
+            toml += "[signatures]\n"
+            for (name, content) in config.signatures {
+                // Use TOML multi-line strings (triple quotes) for values with newlines
+                if content.contains("\n") {
+                    toml += "\(name) = \"\"\"\n\(content)\"\"\"\n"
+                } else {
+                    let escapedContent = content
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "\"", with: "\\\"")
+                    toml += "\(name) = \"\(escapedContent)\"\n"
+                }
+            }
+            toml += "\n"
+        }
+        
+        // Accounts array
+        for account in config.accounts {
+            toml += "[[accounts]]\n"
+            toml += "name = \"\(account.name)\"\n"
+            toml += "email = \"\(account.email)\"\n"
+            if let sig = account.defaultSignature {
+                toml += "default_signature = \"\(sig)\"\n"
+            }
+            toml += "\n"
+            
+            toml += "[accounts.imap]\n"
+            toml += "host = \"\(account.imap.host)\"\n"
+            toml += "port = \(account.imap.port)\n"
+            toml += "ssl = \(account.imap.ssl)\n\n"
+            
+            toml += "[accounts.smtp]\n"
+            toml += "host = \"\(account.smtp.host)\"\n"
+            toml += "port = \(account.smtp.port)\n"
+            toml += "ssl = \(account.smtp.ssl)\n\n"
+            
+            toml += "[accounts.auth]\n"
+            toml += "username = \"\(account.auth.username)\"\n"
+            if let keychain = account.auth.passwordKeychain {
+                toml += "password_keychain = \"\(keychain)\"\n"
+            }
+            toml += "\n"
+        }
+        
+        return toml
+    }
+    
     private func createDefaultConfig(at url: URL) {
-        let defaultConfig = AppConfig(
-            accounts: [
-                MailAccount(
-                    name: "Ethereal Test",
-                    email: "test@ethereal.email",
-                    imap: ServerConfig(host: "imap.ethereal.email", port: 143, ssl: false),
-                    smtp: ServerConfig(host: "smtp.ethereal.email", port: 587, ssl: false),
-                    auth: AuthConfig(username: "test", passwordKeychain: "ethereal-test"),
-                    defaultSignature: nil
-                )
-            ],
-            settings: AppSettings(),
-            signatures: [:]
-        )
+        let defaultTOML = """
+        # colonSend Configuration
+        # Documentation: https://github.com/julion2/colonSend
+
+        [settings]
+        auto_fetch_enabled = true
+        auto_fetch_interval = 60.0
+        max_emails_to_fetch = 10
+        notifications_enabled = true
+        theme = "auto"
+
+        [signatures]
+        # Add your signatures here:
+        # work = "Best regards,\\nYour Name"
+
+        [[accounts]]
+        name = "Ethereal Test"
+        email = "test@ethereal.email"
+
+        [accounts.imap]
+        host = "imap.ethereal.email"
+        port = 143
+        ssl = false
+
+        [accounts.smtp]
+        host = "smtp.ethereal.email"
+        port = 587
+        ssl = false
+
+        [accounts.auth]
+        username = "test"
+        password_keychain = "ethereal-test"
+
+        """
         
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(defaultConfig)
-            try data.write(to: url)
-            print("Created default config at: \(url.path)")
+            try defaultTOML.write(to: url, atomically: true, encoding: .utf8)
+            print("CONFIG: Created default config at \(url.path)")
+            
+            // Load the config after creating it
+            let tomlString = try String(contentsOf: url, encoding: .utf8)
+            config = try TOMLDecoder().decode(AppConfig.self, from: tomlString)
         } catch {
-            print("Failed to create default config: \(error)")
+            print("CONFIG_ERROR: Failed to create default config: \(error)")
         }
     }
     
@@ -738,9 +852,9 @@ class ConfigManager {
     }
     
     func updateSettings(_ newSettings: AppSettings) {
-        guard let config = self.config else { return }
+        guard var currentConfig = self.config else { return }
         
-        let updatedConfig = AppConfig(accounts: config.accounts, settings: newSettings)
+        let updatedConfig = AppConfig(accounts: currentConfig.accounts, settings: newSettings, signatures: currentConfig.signatures)
         self.config = updatedConfig
         
         saveConfigToFile()
@@ -751,13 +865,11 @@ class ConfigManager {
         
         let configURL = getConfigURL()
         do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
-            try data.write(to: configURL)
-            print("✅ Config saved to \(configURL.path)")
+            let tomlString = generateTOML(from: config)
+            try tomlString.write(to: configURL, atomically: true, encoding: .utf8)
+            print("CONFIG: Saved config to \(configURL.path)")
         } catch {
-            print("❌ Failed to save config: \(error)")
+            print("CONFIG_ERROR: Failed to save config: \(error)")
         }
     }
 }

@@ -32,7 +32,7 @@ struct colonSendApp: App {
     
     private func openConfig() {
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        let configURL = homeURL.appendingPathComponent(".config/colonSend/config.json")
+        let configURL = homeURL.appendingPathComponent(".config/colonSend/config.toml")
         
         NSWorkspace.shared.open(configURL)
     }
