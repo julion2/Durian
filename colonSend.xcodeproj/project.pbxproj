@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		F907D6B22EB8B8CC00037BBE /* ColonMime in Frameworks */ = {isa = PBXBuildFile; productRef = F907D6B12EB8B8CC00037BBE /* ColonMime */; };
 		F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86A82ED8912E00C2F5CF /* GRDB */; };
+		F90F86AC2ED89A0000C2F5CF /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */; };
 		F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4502EA3F44300214258 /* SwiftSMTP */; };
 		F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4522EA3F44300214258 /* SwiftSMTPVapor */; };
 		F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */ = {isa = PBXBuildFile; productRef = F9BED1162E784F2400A0A48D /* NIOIMAP */; };
@@ -86,6 +87,7 @@
 				F926D4522EA3F44300214258 /* SwiftSMTPVapor */,
 				F907D6B12EB8B8CC00037BBE /* ColonMime */,
 				F90F86A82ED8912E00C2F5CF /* GRDB */,
+				F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */,
 			);
 			productName = colonSend;
 			productReference = F9BED1042E78416900A0A48D /* colonSend.app */;
@@ -121,6 +123,7 @@
 				F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */,
 				F907D6B02EB8B8CC00037BBE /* XCLocalSwiftPackageReference "../colonMime" */,
 				F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */,
+				F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F9BED1052E78416900A0A48D /* Products */;
@@ -394,6 +397,14 @@
 				minimumVersion = 6.0.0;
 			};
 		};
+		F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/dduan/TOMLDecoder";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.2.2;
+			};
+		};
 		F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/sersoft-gmbh/swift-smtp.git";
@@ -429,6 +440,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */;
 			productName = GRDB;
+		};
+		F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */;
+			productName = TOMLDecoder;
 		};
 		F926D4502EA3F44300214258 /* SwiftSMTP */ = {
 			isa = XCSwiftPackageProductDependency;
