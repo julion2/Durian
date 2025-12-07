@@ -479,13 +479,24 @@ struct ContentView: View {
             }
         }
         
-        // MARK: - Delete (dd) - Bulk action in Visual Mode
+        // MARK: - Delete (dd) - Works in both normal and visual mode
         keymapHandler.registerHandler(for: .deleteEmail) { [self] _ in
             await MainActor.run {
-                let emailsToDelete = selectedEmailsBinding.wrappedValue
-                guard !emailsToDelete.isEmpty else { return }
+                var emailsToDelete = selectedEmailsBinding.wrappedValue
                 
-                // Exit visual mode
+                // In normal mode with no selection, use currentEmail
+                if emailsToDelete.isEmpty {
+                    if let current = self.currentEmail {
+                        emailsToDelete = [current]
+                    }
+                }
+                
+                guard !emailsToDelete.isEmpty else {
+                    print("DELETE: No emails to delete")
+                    return
+                }
+                
+                // Exit visual mode if active
                 if keymapHandler.engine.isVisualMode {
                     self.exitVisualMode()
                 }
@@ -495,7 +506,7 @@ struct ContentView: View {
                     accountManager.allEmails.first(where: { $0.id == emailID })?.uid
                 }
                 
-                print("VISUAL: Deleting \(uidsToDelete.count) emails")
+                print("DELETE: Deleting \(uidsToDelete.count) emails: \(uidsToDelete)")
                 
                 // Delete via IMAPClient
                 if let accountId = accountManager.selectedAccount,
@@ -504,9 +515,9 @@ struct ContentView: View {
                         for uid in uidsToDelete {
                             do {
                                 try await client.deleteMessage(uid: uid)
-                                print("VISUAL: Deleted email UID \(uid)")
+                                print("DELETE: Deleted email UID \(uid)")
                             } catch {
-                                print("VISUAL: Failed to delete UID \(uid): \(error)")
+                                print("DELETE: Failed to delete UID \(uid): \(error)")
                             }
                         }
                         // Refresh email list
