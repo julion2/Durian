@@ -1471,7 +1471,13 @@ class IMAPClient: ObservableObject {
         }
         
         print("🔄 Manual reload requested for \(folderName)")
-        await refreshCurrentFolder()
+        
+        // BUGFIX: Re-SELECT the folder to get fresh EXISTS count from server.
+        // After deleting an email, the message count changes and indices shift.
+        // Without re-selecting, we'd use stale totalMessages and fetch wrong emails.
+        // SELECT triggers an EXISTS response which updates paginationState.totalMessages.
+        paginationState.totalMessages = 0  // Reset to force re-fetch after EXISTS
+        await selectFolder(folderName)
     }
     
     func markAsRead(uid: UInt32) async {
@@ -1589,7 +1595,7 @@ class IMAPClient: ObservableObject {
     }
     
     func deleteMessage(uid: UInt32) async throws {
-        print("IMAP_DELETE: Starting delete for UID: \(uid)")
+        print("XDELETE_IMAP: Starting delete for UID: \(uid)")
         
         guard isConnected else {
             print("IMAP_DELETE: Error - Not connected")
@@ -1598,11 +1604,11 @@ class IMAPClient: ObservableObject {
         
         // Find trash folder
         let trashFolder = findTrashFolder()
-        print("IMAP_DELETE: Using trash folder: \(trashFolder)")
+        print("XDELETE_IMAP: Using trash folder: \(trashFolder)")
         
         // Copy to trash, then mark deleted and expunge
         try await copyMessage(uid: uid, toFolder: trashFolder)
-        print("IMAP_DELETE: Copied to trash")
+        print("XDELETE_IMAP: Copied to trash")
         
         // Try to mark as deleted (some servers support it)
         let deleteCommand = "UID STORE \(uid) +FLAGS (\\\\Deleted)"
@@ -1616,10 +1622,10 @@ class IMAPClient: ObservableObject {
             try await expunge()
         } catch {
             // If \Deleted flag fails, the message is still in trash
-            print("IMAP_DELETE: Flag failed but message copied to trash: \(error)")
+            print("XDELETE_IMAP: Flag failed but message copied to trash: \(error)")
         }
         
-        print("IMAP_DELETE: Message deleted")
+        print("XDELETE_IMAP: Message deleted successfully")
     }
     
     /// Find the trash folder name (varies by server)

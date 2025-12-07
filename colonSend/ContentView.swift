@@ -481,51 +481,52 @@ struct ContentView: View {
         
         // MARK: - Delete (dd) - Works in both normal and visual mode
         keymapHandler.registerHandler(for: .deleteEmail) { [self] _ in
+            var emailsToDelete = selectedEmailsBinding.wrappedValue
+            
+            // In normal mode with no selection, use currentEmail
+            if emailsToDelete.isEmpty {
+                if let current = await MainActor.run(body: { self.currentEmail }) {
+                    emailsToDelete = [current]
+                }
+            }
+            
+            guard !emailsToDelete.isEmpty else {
+                print("XDELETE_ACTION: No emails to delete")
+                return
+            }
+            
+            // Exit visual mode if active
             await MainActor.run {
-                var emailsToDelete = selectedEmailsBinding.wrappedValue
-                
-                // In normal mode with no selection, use currentEmail
-                if emailsToDelete.isEmpty {
-                    if let current = self.currentEmail {
-                        emailsToDelete = [current]
-                    }
-                }
-                
-                guard !emailsToDelete.isEmpty else {
-                    print("DELETE: No emails to delete")
-                    return
-                }
-                
-                // Exit visual mode if active
                 if keymapHandler.engine.isVisualMode {
                     self.exitVisualMode()
                 }
-                
-                // Get the UIDs to delete
-                let uidsToDelete = emailsToDelete.compactMap { emailID in
-                    accountManager.allEmails.first(where: { $0.id == emailID })?.uid
-                }
-                
-                print("DELETE: Deleting \(uidsToDelete.count) emails: \(uidsToDelete)")
-                
-                // Delete via IMAPClient
-                if let accountId = accountManager.selectedAccount,
-                   let client = accountManager.getClient(for: accountId) {
-                    Task {
-                        for uid in uidsToDelete {
-                            do {
-                                try await client.deleteMessage(uid: uid)
-                                print("DELETE: Deleted email UID \(uid)")
-                            } catch {
-                                print("DELETE: Failed to delete UID \(uid): \(error)")
-                            }
-                        }
-                        // Refresh email list
-                        await accountManager.reloadCurrentFolder()
+            }
+            
+            // Get the UIDs to delete
+            let uidsToDelete = emailsToDelete.compactMap { emailID in
+                accountManager.allEmails.first(where: { $0.id == emailID })?.uid
+            }
+            
+            print("XDELETE_ACTION: Deleting \(uidsToDelete.count) emails: \(uidsToDelete)")
+            
+            // Clear selection immediately
+            await MainActor.run {
+                selectedEmailsBinding.wrappedValue = []
+            }
+            
+            // Delete via IMAPClient
+            if let accountId = accountManager.selectedAccount,
+               let client = accountManager.getClient(for: accountId) {
+                for uid in uidsToDelete {
+                    do {
+                        try await client.deleteMessage(uid: uid)
+                        print("XDELETE_ACTION: Deleted email UID \(uid)")
+                    } catch {
+                        print("XDELETE_ACTION: Failed to delete UID \(uid): \(error)")
                     }
                 }
-                
-                selectedEmailsBinding.wrappedValue = []
+                // Refresh email list
+                await accountManager.reloadCurrentFolder()
             }
         }
         
