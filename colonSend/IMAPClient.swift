@@ -1596,13 +1596,45 @@ class IMAPClient: ObservableObject {
             throw IMAPError.noConnection
         }
         
+        // Find trash folder
+        let trashFolder = findTrashFolder()
+        print("IMAP_DELETE: Using trash folder: \(trashFolder)")
+        
+        // Copy to trash, then mark deleted and expunge
+        try await copyMessage(uid: uid, toFolder: trashFolder)
+        print("IMAP_DELETE: Copied to trash")
+        
+        // Try to mark as deleted (some servers support it)
         let deleteCommand = "UID STORE \(uid) +FLAGS (\\\\Deleted)"
         print("IMAP_DELETE: Executing command: \(deleteCommand)")
         
-        let response = try await executeCommand(deleteCommand)
-        print("IMAP_DELETE: Response: \(String(response.prefix(100)))")
+        do {
+            let response = try await executeCommand(deleteCommand)
+            print("IMAP_DELETE: Response: \(String(response.prefix(100)))")
+            
+            // Expunge to actually remove
+            try await expunge()
+        } catch {
+            // If \Deleted flag fails, the message is still in trash
+            print("IMAP_DELETE: Flag failed but message copied to trash: \(error)")
+        }
         
-        print("IMAP_DELETE: Message marked as deleted")
+        print("IMAP_DELETE: Message deleted")
+    }
+    
+    /// Find the trash folder name (varies by server)
+    private func findTrashFolder() -> String {
+        // Check existing folders for common trash names
+        let trashNames = ["Trash", "[Gmail]/Trash", "Deleted Items", "Deleted", "Papierkorb", "[Gmail]/Papierkorb"]
+        
+        for folder in folders {
+            if trashNames.contains(where: { folder.name.lowercased() == $0.lowercased() }) {
+                return folder.name
+            }
+        }
+        
+        // Default fallback
+        return "Trash"
     }
     
     func expunge() async throws {
