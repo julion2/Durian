@@ -490,8 +490,29 @@ struct ContentView: View {
                     self.exitVisualMode()
                 }
                 
-                // TODO: Implement bulk delete when AccountManager.deleteEmail is available
-                print("VISUAL: Would delete \(emailsToDelete.count) emails")
+                // Get the UIDs to delete
+                let uidsToDelete = emailsToDelete.compactMap { emailID in
+                    accountManager.allEmails.first(where: { $0.id == emailID })?.uid
+                }
+                
+                print("VISUAL: Deleting \(uidsToDelete.count) emails")
+                
+                // Delete via IMAPClient
+                if let accountId = accountManager.selectedAccount,
+                   let client = accountManager.getClient(for: accountId) {
+                    Task {
+                        for uid in uidsToDelete {
+                            do {
+                                try await client.deleteMessage(uid: uid)
+                                print("VISUAL: Deleted email UID \(uid)")
+                            } catch {
+                                print("VISUAL: Failed to delete UID \(uid): \(error)")
+                            }
+                        }
+                        // Refresh email list
+                        await accountManager.reloadCurrentFolder()
+                    }
+                }
                 
                 selectedEmailsBinding.wrappedValue = []
             }
@@ -1073,7 +1094,6 @@ struct KeySequenceIndicator: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.orange.opacity(0.15))
                     )
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             
             // Key Sequence Indicator
@@ -1096,11 +1116,8 @@ struct KeySequenceIndicator: View {
                     RoundedRectangle(cornerRadius: 6)
                         .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
-        .animation(.easeInOut(duration: 0.15), value: keymapHandler.engine.isVisualMode)
-        .animation(.easeInOut(duration: 0.15), value: keymapHandler.currentSequence)
     }
 }
 
