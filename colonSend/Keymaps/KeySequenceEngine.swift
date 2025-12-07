@@ -34,6 +34,9 @@ class KeySequenceEngine: ObservableObject {
     /// Whether engine is waiting for more keys
     @Published private(set) var isWaitingForMore: Bool = false
     
+    /// Whether visual mode is active (for multi-selection)
+    @Published private(set) var isVisualMode: Bool = false
+    
     // MARK: - Init
     
     private init() {
@@ -75,16 +78,24 @@ class KeySequenceEngine: ObservableObject {
             return false
         }
         
-        // Escape always clears buffer
+        // Escape always clears buffer and exits visual mode
         if event.keyCode == 53 { // Escape
+            var consumed = false
+            
             if !buffer.isEmpty {
                 buffer.clear()
                 currentSequence = ""
                 isWaitingForMore = false
                 print("KEYSEQ: Escape - buffer cleared")
-                return true
+                consumed = true
             }
-            return false
+            
+            if isVisualMode {
+                exitVisualMode()
+                consumed = true
+            }
+            
+            return consumed
         }
         
         // Commands with Cmd/Ctrl go through different path (non-sequence)
@@ -105,6 +116,19 @@ class KeySequenceEngine: ObservableObject {
         buffer.clear()
         currentSequence = ""
         isWaitingForMore = false
+    }
+    
+    /// Enter visual mode for multi-selection
+    func enterVisualMode() {
+        guard !isVisualMode else { return }  // Ignore if already in visual mode
+        isVisualMode = true
+        print("KEYSEQ: Entered visual mode")
+    }
+    
+    /// Exit visual mode
+    func exitVisualMode() {
+        isVisualMode = false
+        print("KEYSEQ: Exited visual mode")
     }
     
     // MARK: - Private

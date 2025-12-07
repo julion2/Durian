@@ -20,7 +20,7 @@ struct ContentView: View {
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
     @State private var selectedFolderID: UUID? = nil
-    @State private var selectedEmail: Email.ID? = nil
+    @State private var selectedEmails: Set<Email.ID> = []  // Multi-selection for visual mode
     @State private var cancellables = Set<AnyCancellable>()
     @State private var detailMode: DetailViewMode = .empty
     @State private var lastViewedEmail: IMAPEmail? = nil
@@ -28,6 +28,15 @@ struct ContentView: View {
     @State private var composeDraft: EmailDraft?
     @State private var draftLoadingTask: Task<Void, Never>?
     @State private var centerViewTrigger = false  // Trigger for zz (center current email)
+    
+    // Visual Mode State
+    @State private var visualModeAnchor: Email.ID? = nil   // Start point of visual selection
+    @State private var visualModeCursor: Email.ID? = nil   // Current cursor position in visual mode
+    
+    /// Current single email for detail view (cursor in visual mode, or single selection)
+    private var currentEmail: Email.ID? {
+        visualModeCursor ?? selectedEmails.first
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -68,7 +77,7 @@ struct ContentView: View {
                 
                 if !accountManager.allEmails.isEmpty {
                     ScrollViewReader { scrollProxy in
-                        List(accountManager.allEmails.sorted { $0.uid > $1.uid }, selection: $selectedEmail) { email in
+                        List(accountManager.allEmails.sorted { $0.uid > $1.uid }, selection: $selectedEmails) { email in
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack {
                                     // Unread indicator
@@ -108,15 +117,22 @@ struct ContentView: View {
                             }
                             .id(email.id)  // Important: ID for scroll targeting
                         }
-                        .onChange(of: selectedEmail) { newSelection in
+                        .onChange(of: visualModeCursor) { newCursor in
+                            // Auto-scroll to cursor in visual mode
+                            if let emailID = newCursor {
+                                scrollProxy.scrollTo(emailID, anchor: nil)
+                            }
+                        }
+                        .onChange(of: selectedEmails) { newSelection in
                             // Auto-scroll only if item is outside visible area (anchor: nil = minimum scroll)
-                            if let emailID = newSelection {
+                            // In non-visual mode, scroll to the single selected email
+                            if !keymapHandler.engine.isVisualMode, let emailID = newSelection.first {
                                 scrollProxy.scrollTo(emailID, anchor: nil)
                             }
                         }
                         .onChange(of: centerViewTrigger) { _ in
                             // zz - center current email in view
-                            if let emailID = selectedEmail {
+                            if let emailID = currentEmail {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     scrollProxy.scrollTo(emailID, anchor: .center)
                                 }
@@ -227,6 +243,13 @@ struct ContentView: View {
             }
         }
         .onChange(of: selectedFolderID) { folderID in
+            // Exit visual mode when folder changes
+            if keymapHandler.engine.isVisualMode {
+                keymapHandler.engine.exitVisualMode()
+                visualModeAnchor = nil
+                visualModeCursor = nil
+            }
+            
             if let folderID = folderID,
                let folder = accountManager.allFolders.first(where: { $0.id == folderID }) {
                 Task {
@@ -234,8 +257,11 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: selectedEmail) { emailID in
-            handleEmailSelection(emailID)
+        .onChange(of: selectedEmails) { newSelection in
+            // Handle single email selection (open detail view in non-visual mode)
+            if !keymapHandler.engine.isVisualMode, newSelection.count == 1 {
+                handleEmailSelection(newSelection.first)
+            }
         }
     }
     
@@ -266,85 +292,125 @@ struct ContentView: View {
     }
     
     private func registerAllHandlers(accountManager: AccountManager, keymapsManager: KeymapsManager) {
-        // Capture the binding values we need
-        let selectedEmailBinding = $selectedEmail
+        // Capture bindings we need
+        let selectedEmailsBinding = $selectedEmails
         let detailModeBinding = $detailMode
         let lastViewedEmailBinding = $lastViewedEmail
-        
-        // Navigation with count support (5j, 12k)
-        keymapHandler.registerHandler(for: .nextEmail) { count in
-            await MainActor.run {
-                Self.selectNextEmailWithCount(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails,
-                    count: count
-                )
-            }
-        }
-        
-        keymapHandler.registerHandler(for: .prevEmail) { count in
-            await MainActor.run {
-                Self.selectPreviousEmailWithCount(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails,
-                    count: count
-                )
-            }
-        }
-        
-        // Navigation - First/Last Email (gg, G)
-        keymapHandler.registerSimpleHandler(for: .firstEmail) {
-            await MainActor.run {
-                Self.selectFirstEmail(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails
-                )
-            }
-        }
-        
-        keymapHandler.registerSimpleHandler(for: .lastEmail) {
-            await MainActor.run {
-                Self.selectLastEmail(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails
-                )
-            }
-        }
-        
-        // Half-page navigation (Ctrl+d, Ctrl+u)
-        keymapHandler.registerHandler(for: .pageDown) { count in
-            await MainActor.run {
-                Self.selectNextEmailWithCount(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails,
-                    count: 10 * count  // Half-page = ~10 emails
-                )
-            }
-        }
-        
-        keymapHandler.registerHandler(for: .pageUp) { count in
-            await MainActor.run {
-                Self.selectPreviousEmailWithCount(
-                    selectedEmail: selectedEmailBinding,
-                    allEmails: accountManager.allEmails,
-                    count: 10 * count  // Half-page = ~10 emails
-                )
-            }
-        }
-        
-        // Center view (zz)
         let centerViewBinding = $centerViewTrigger
+        let visualAnchorBinding = $visualModeAnchor
+        let visualCursorBinding = $visualModeCursor
+        
+        // MARK: - Enter Visual Mode (v)
+        keymapHandler.registerSimpleHandler(for: .enterVisualMode) { [self] in
+            await MainActor.run {
+                self.enterVisualModeAtCurrent()
+            }
+        }
+        
+        // MARK: - Navigation with Visual Mode support (j, k)
+        keymapHandler.registerHandler(for: .nextEmail) { [self] count in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    // Visual mode: move cursor, recalculate selection
+                    self.moveCursorDown(count: count)
+                } else {
+                    // Normal mode: single selection
+                    Self.selectNextEmailWithCount(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails,
+                        count: count
+                    )
+                }
+            }
+        }
+        
+        keymapHandler.registerHandler(for: .prevEmail) { [self] count in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.moveCursorUp(count: count)
+                } else {
+                    Self.selectPreviousEmailWithCount(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails,
+                        count: count
+                    )
+                }
+            }
+        }
+        
+        // MARK: - First/Last Email (gg, G)
+        keymapHandler.registerSimpleHandler(for: .firstEmail) { [self] in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.moveCursorToFirst()
+                } else {
+                    Self.selectFirstEmail(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails
+                    )
+                }
+            }
+        }
+        
+        keymapHandler.registerSimpleHandler(for: .lastEmail) { [self] in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.moveCursorToLast()
+                } else {
+                    Self.selectLastEmail(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails
+                    )
+                }
+            }
+        }
+        
+        // MARK: - Half-page navigation (Ctrl+d, Ctrl+u)
+        keymapHandler.registerHandler(for: .pageDown) { [self] count in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.moveCursorDown(count: 10 * count)
+                } else {
+                    Self.selectNextEmailWithCount(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails,
+                        count: 10 * count
+                    )
+                }
+            }
+        }
+        
+        keymapHandler.registerHandler(for: .pageUp) { [self] count in
+            await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.moveCursorUp(count: 10 * count)
+                } else {
+                    Self.selectPreviousEmailWithCount(
+                        selectedEmails: selectedEmailsBinding,
+                        allEmails: accountManager.allEmails,
+                        count: 10 * count
+                    )
+                }
+            }
+        }
+        
+        // MARK: - Center view (zz)
         keymapHandler.registerSimpleHandler(for: .centerView) {
             await MainActor.run {
                 centerViewBinding.wrappedValue.toggle()
             }
         }
         
-        // Open Email (o)
-        keymapHandler.registerSimpleHandler(for: .openEmail) {
+        // MARK: - Open Email (o)
+        keymapHandler.registerSimpleHandler(for: .openEmail) { [self] in
             await MainActor.run {
-                if let emailID = selectedEmailBinding.wrappedValue,
+                let emailID = self.currentEmail
+                if let emailID = emailID,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    // Exit visual mode if active
+                    if keymapHandler.engine.isVisualMode {
+                        self.exitVisualMode()
+                    }
                     lastViewedEmailBinding.wrappedValue = email
                     let accountId = accountManager.selectedAccount ?? ""
                     detailModeBinding.wrappedValue = .emailDetail(emailUID: email.uid, accountId: accountId)
@@ -358,54 +424,130 @@ struct ContentView: View {
             }
         }
         
-        // Compose (c)
-        keymapHandler.registerSimpleHandler(for: .compose) {
+        // MARK: - Compose (c)
+        keymapHandler.registerSimpleHandler(for: .compose) { [self] in
             await MainActor.run {
+                if keymapHandler.engine.isVisualMode {
+                    self.exitVisualMode()
+                }
                 detailModeBinding.wrappedValue = .compose(replyTo: nil, forward: nil)
             }
         }
         
-        // Reply (r)
-        keymapHandler.registerSimpleHandler(for: .reply) {
+        // MARK: - Reply (r)
+        keymapHandler.registerSimpleHandler(for: .reply) { [self] in
             await MainActor.run {
-                if let emailID = selectedEmailBinding.wrappedValue,
+                let emailID = self.currentEmail
+                if let emailID = emailID,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    if keymapHandler.engine.isVisualMode {
+                        self.exitVisualMode()
+                    }
                     lastViewedEmailBinding.wrappedValue = email
                     detailModeBinding.wrappedValue = .compose(replyTo: email, forward: nil)
                 }
             }
         }
         
-        // Reply All (R)
-        keymapHandler.registerSimpleHandler(for: .replyAll) {
+        // MARK: - Reply All (R)
+        keymapHandler.registerSimpleHandler(for: .replyAll) { [self] in
             await MainActor.run {
-                if let emailID = selectedEmailBinding.wrappedValue,
+                let emailID = self.currentEmail
+                if let emailID = emailID,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    if keymapHandler.engine.isVisualMode {
+                        self.exitVisualMode()
+                    }
                     lastViewedEmailBinding.wrappedValue = email
-                    // TODO: Implement reply all properly
                     detailModeBinding.wrappedValue = .compose(replyTo: email, forward: nil)
                 }
             }
         }
         
-        // Forward (f)
-        keymapHandler.registerSimpleHandler(for: .forward) {
+        // MARK: - Forward (f)
+        keymapHandler.registerSimpleHandler(for: .forward) { [self] in
             await MainActor.run {
-                if let emailID = selectedEmailBinding.wrappedValue,
+                let emailID = self.currentEmail
+                if let emailID = emailID,
                    let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                    if keymapHandler.engine.isVisualMode {
+                        self.exitVisualMode()
+                    }
                     lastViewedEmailBinding.wrappedValue = email
                     detailModeBinding.wrappedValue = .compose(replyTo: nil, forward: email)
                 }
             }
         }
         
-        // Close detail view (Escape / q)
-        keymapHandler.registerSimpleHandler(for: .closeDetail) {
+        // MARK: - Delete (dd) - Bulk action in Visual Mode
+        keymapHandler.registerHandler(for: .deleteEmail) { [self] _ in
             await MainActor.run {
+                let emailsToDelete = selectedEmailsBinding.wrappedValue
+                guard !emailsToDelete.isEmpty else { return }
+                
+                // Exit visual mode
+                if keymapHandler.engine.isVisualMode {
+                    self.exitVisualMode()
+                }
+                
+                // TODO: Implement bulk delete when AccountManager.deleteEmail is available
+                print("VISUAL: Would delete \(emailsToDelete.count) emails")
+                
+                selectedEmailsBinding.wrappedValue = []
+            }
+        }
+        
+        // MARK: - Toggle Read (u) - Bulk action in Visual Mode
+        keymapHandler.registerSimpleHandler(for: .toggleRead) { [self] in
+            await MainActor.run {
+                let emailsToToggle = selectedEmailsBinding.wrappedValue
+                guard !emailsToToggle.isEmpty else { return }
+                
+                // Exit visual mode
+                if keymapHandler.engine.isVisualMode {
+                    self.exitVisualMode()
+                }
+                
+                // Toggle read status for all selected
+                for emailID in emailsToToggle {
+                    if let email = accountManager.allEmails.first(where: { $0.id == emailID }) {
+                        Task {
+                            await accountManager.toggleReadStatus(uid: email.uid)
+                        }
+                    }
+                }
+            }
+        }
+        
+        // MARK: - Toggle Star (s) - Bulk action in Visual Mode
+        keymapHandler.registerSimpleHandler(for: .toggleStar) { [self] in
+            await MainActor.run {
+                let emailsToToggle = selectedEmailsBinding.wrappedValue
+                guard !emailsToToggle.isEmpty else { return }
+                
+                // Exit visual mode
+                if keymapHandler.engine.isVisualMode {
+                    self.exitVisualMode()
+                }
+                
+                // TODO: Implement bulk star toggle when AccountManager.toggleStar is available
+                print("VISUAL: Would toggle star for \(emailsToToggle.count) emails")
+            }
+        }
+        
+        // MARK: - Close detail view (q)
+        keymapHandler.registerSimpleHandler(for: .closeDetail) { [self] in
+            await MainActor.run {
+                // If in visual mode, exit it first
+                if keymapHandler.engine.isVisualMode {
+                    self.exitVisualMode()
+                    return
+                }
+                
                 let currentMode = detailModeBinding.wrappedValue
                 if case .emailDetail = currentMode {
                     detailModeBinding.wrappedValue = .empty
-                    selectedEmailBinding.wrappedValue = nil
+                    selectedEmailsBinding.wrappedValue = []
                 } else if case .compose = currentMode {
                     if let lastEmail = lastViewedEmailBinding.wrappedValue {
                         detailModeBinding.wrappedValue = .emailDetail(emailUID: lastEmail.uid, accountId: lastEmail.from)
@@ -416,16 +558,7 @@ struct ContentView: View {
             }
         }
         
-        // Toggle read status (u)
-        keymapHandler.registerSimpleHandler(for: .toggleRead) {
-            await Self.handleToggleReadAction(
-                selectedEmail: selectedEmailBinding.wrappedValue,
-                accountManager: accountManager,
-                keymapsManager: keymapsManager
-            )
-        }
-        
-        // Reload inbox (legacy: Cmd+r)
+        // MARK: - Reload inbox (legacy: Cmd+r)
         keymapHandler.registerLegacyHandler(for: "reload_inbox") {
             await Self.handleReloadAction(
                 accountManager: accountManager, 
@@ -434,80 +567,60 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Navigation Helper Methods
+    // MARK: - Navigation Helper Methods (for non-visual mode)
     
-    private static func selectNextEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
-        guard !allEmails.isEmpty else { return }
-        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
-        
-        if let currentID = selectedEmail.wrappedValue,
-           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }),
-           currentIndex < sortedEmails.count - 1 {
-            selectedEmail.wrappedValue = sortedEmails[currentIndex + 1].id
-        } else if selectedEmail.wrappedValue == nil {
-            selectedEmail.wrappedValue = sortedEmails.first?.id
-        }
-    }
-    
-    private static func selectPreviousEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
-        guard !allEmails.isEmpty else { return }
-        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
-        
-        if let currentID = selectedEmail.wrappedValue,
-           let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }),
-           currentIndex > 0 {
-            selectedEmail.wrappedValue = sortedEmails[currentIndex - 1].id
-        } else if selectedEmail.wrappedValue == nil {
-            selectedEmail.wrappedValue = sortedEmails.first?.id
-        }
-    }
-    
-    private static func selectFirstEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
-        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
-        selectedEmail.wrappedValue = sortedEmails.first?.id
-    }
-    
-    private static func selectLastEmail(selectedEmail: Binding<Email.ID?>, allEmails: [IMAPEmail]) {
-        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
-        selectedEmail.wrappedValue = sortedEmails.last?.id
-    }
-    
-    // Count-aware navigation methods for 5j, 12k etc.
     private static func selectNextEmailWithCount(
-        selectedEmail: Binding<Email.ID?>,
+        selectedEmails: Binding<Set<Email.ID>>,
         allEmails: [IMAPEmail],
         count: Int
     ) {
         guard !allEmails.isEmpty else { return }
         let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
         
-        if let currentID = selectedEmail.wrappedValue,
+        if let currentID = selectedEmails.wrappedValue.first,
            let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }) {
-            // Calculate target index: current + count, clamped to valid range
             let targetIndex = min(currentIndex + count, sortedEmails.count - 1)
-            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
-        } else if selectedEmail.wrappedValue == nil {
-            // No selection: jump to the count-th email (or last if count too large)
+            selectedEmails.wrappedValue = [sortedEmails[targetIndex].id]
+        } else if selectedEmails.wrappedValue.isEmpty {
             let targetIndex = min(count - 1, sortedEmails.count - 1)
-            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
+            selectedEmails.wrappedValue = [sortedEmails[targetIndex].id]
         }
     }
     
     private static func selectPreviousEmailWithCount(
-        selectedEmail: Binding<Email.ID?>,
+        selectedEmails: Binding<Set<Email.ID>>,
         allEmails: [IMAPEmail],
         count: Int
     ) {
         guard !allEmails.isEmpty else { return }
         let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
         
-        if let currentID = selectedEmail.wrappedValue,
+        if let currentID = selectedEmails.wrappedValue.first,
            let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentID }) {
-            // Calculate target index: current - count, clamped to 0
             let targetIndex = max(currentIndex - count, 0)
-            selectedEmail.wrappedValue = sortedEmails[targetIndex].id
-        } else if selectedEmail.wrappedValue == nil {
-            selectedEmail.wrappedValue = sortedEmails.first?.id
+            selectedEmails.wrappedValue = [sortedEmails[targetIndex].id]
+        } else if selectedEmails.wrappedValue.isEmpty {
+            selectedEmails.wrappedValue = [sortedEmails.first?.id].compactMap { $0 }.reduce(into: Set<Email.ID>()) { $0.insert($1) }
+        }
+    }
+    
+    private static func selectFirstEmail(
+        selectedEmails: Binding<Set<Email.ID>>,
+        allEmails: [IMAPEmail]
+    ) {
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        if let firstID = sortedEmails.first?.id {
+            selectedEmails.wrappedValue = [firstID]
+        }
+    }
+    
+    private static func selectLastEmail(
+        selectedEmails: Binding<Set<Email.ID>>,
+        allEmails: [IMAPEmail]
+    ) {
+        let sortedEmails = allEmails.sorted { $0.uid > $1.uid }
+        if let lastID = sortedEmails.last?.id {
+            selectedEmails.wrappedValue = [lastID]
         }
     }
     
@@ -540,6 +653,103 @@ struct ContentView: View {
             return
         }
         await accountManager.toggleReadStatus(uid: email.uid)
+    }
+    
+    // MARK: - Visual Mode Helper Methods
+    
+    /// Calculate visual selection between anchor and cursor
+    private func recalculateVisualSelection() {
+        guard let anchor = visualModeAnchor,
+              let cursor = visualModeCursor else {
+            return
+        }
+        
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        
+        guard let anchorIdx = sortedEmails.firstIndex(where: { $0.id == anchor }),
+              let cursorIdx = sortedEmails.firstIndex(where: { $0.id == cursor }) else {
+            return
+        }
+        
+        // Range between anchor and cursor (either direction)
+        let start = min(anchorIdx, cursorIdx)
+        let end = max(anchorIdx, cursorIdx)
+        
+        selectedEmails = Set(sortedEmails[start...end].map { $0.id })
+    }
+    
+    /// Move cursor in visual mode by count, recalculate selection
+    private func moveCursorDown(count: Int) {
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        guard !sortedEmails.isEmpty else { return }
+        
+        let currentCursor = visualModeCursor ?? selectedEmails.first ?? sortedEmails.first?.id
+        guard let currentCursor = currentCursor,
+              let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentCursor }) else {
+            return
+        }
+        
+        let targetIndex = min(currentIndex + count, sortedEmails.count - 1)
+        visualModeCursor = sortedEmails[targetIndex].id
+        recalculateVisualSelection()
+    }
+    
+    /// Move cursor in visual mode by count (up), recalculate selection
+    private func moveCursorUp(count: Int) {
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        guard !sortedEmails.isEmpty else { return }
+        
+        let currentCursor = visualModeCursor ?? selectedEmails.first ?? sortedEmails.first?.id
+        guard let currentCursor = currentCursor,
+              let currentIndex = sortedEmails.firstIndex(where: { $0.id == currentCursor }) else {
+            return
+        }
+        
+        let targetIndex = max(currentIndex - count, 0)
+        visualModeCursor = sortedEmails[targetIndex].id
+        recalculateVisualSelection()
+    }
+    
+    /// Move cursor to first email, recalculate selection
+    private func moveCursorToFirst() {
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        visualModeCursor = sortedEmails.first?.id
+        recalculateVisualSelection()
+    }
+    
+    /// Move cursor to last email, recalculate selection
+    private func moveCursorToLast() {
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        visualModeCursor = sortedEmails.last?.id
+        recalculateVisualSelection()
+    }
+    
+    /// Enter visual mode at current selection
+    private func enterVisualModeAtCurrent() {
+        let sortedEmails = accountManager.allEmails.sorted { $0.uid > $1.uid }
+        guard !sortedEmails.isEmpty else { return }
+        
+        // Use current selection or first email as anchor
+        let anchor = selectedEmails.first ?? sortedEmails.first?.id
+        guard let anchor = anchor else { return }
+        
+        visualModeAnchor = anchor
+        visualModeCursor = anchor
+        selectedEmails = [anchor]
+        keymapHandler.engine.enterVisualMode()
+    }
+    
+    /// Exit visual mode, keep cursor as single selection
+    private func exitVisualMode() {
+        let cursor = visualModeCursor
+        visualModeAnchor = nil
+        visualModeCursor = nil
+        keymapHandler.engine.exitVisualMode()
+        
+        // Keep cursor as single selection
+        if let cursor = cursor {
+            selectedEmails = [cursor]
+        }
     }
     
     private func formatSenderName(_ from: String) -> String {
@@ -845,33 +1055,52 @@ struct ContentView: View {
 
 // MARK: - Key Sequence Indicator
 
-/// Shows the current key sequence being typed (vim-style)
+/// Shows the current key sequence being typed (vim-style) and visual mode indicator
 struct KeySequenceIndicator: View {
     @ObservedObject private var keymapHandler = KeymapHandler.shared
     
     var body: some View {
-        if !keymapHandler.currentSequence.isEmpty {
-            HStack(spacing: 4) {
-                Image(systemName: "keyboard")
-                    .font(.caption)
-                Text(keymapHandler.currentSequence)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.medium)
+        HStack(spacing: 8) {
+            // Visual Mode Indicator
+            if keymapHandler.engine.isVisualMode {
+                Text("-- VISUAL --")
+                    .font(.system(.caption, design: .monospaced))
+                    .fontWeight(.bold)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.orange.opacity(0.15))
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color(NSColor.controlBackgroundColor))
-                    .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
-            )
-            .transition(.opacity.combined(with: .scale(scale: 0.9)))
-            .animation(.easeInOut(duration: 0.15), value: keymapHandler.currentSequence)
+            
+            // Key Sequence Indicator
+            if !keymapHandler.currentSequence.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "keyboard")
+                        .font(.caption)
+                    Text(keymapHandler.currentSequence)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.medium)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color(NSColor.controlBackgroundColor))
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.accentColor.opacity(0.5), lineWidth: 1)
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
+        .animation(.easeInOut(duration: 0.15), value: keymapHandler.engine.isVisualMode)
+        .animation(.easeInOut(duration: 0.15), value: keymapHandler.currentSequence)
     }
 }
 

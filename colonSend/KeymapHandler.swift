@@ -33,6 +33,9 @@ class KeymapHandler: ObservableObject {
     @Published private(set) var currentSequence: String = ""
     @Published private(set) var isWaitingForMore: Bool = false
     
+    /// Public access to the sequence engine (for visual mode state, etc.)
+    var engine: KeySequenceEngine { sequenceEngine }
+    
     // MARK: - Init
     
     private init() {

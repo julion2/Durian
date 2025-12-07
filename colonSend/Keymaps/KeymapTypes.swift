@@ -34,11 +34,14 @@ enum KeymapAction: String, CaseIterable {
     case reloadInbox = "reload_inbox"
     case centerView = "center_view"
     
-    // Folder Navigation (Future)
+    // Folder Navigation
     case goInbox = "go_inbox"
     case goSent = "go_sent"
     case goDrafts = "go_drafts"
     case goArchive = "go_archive"
+    
+    // Visual Mode
+    case enterVisualMode = "enter_visual_mode"
     
     /// Whether this action supports count prefix (5j, 10k, etc.)
     var supportsCount: Bool {

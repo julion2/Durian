@@ -45,6 +45,9 @@ class SequenceMatcher {
         SequenceDefinition("gs", .goSent, "Go to sent"),
         SequenceDefinition("gd", .goDrafts, "Go to drafts"),
         SequenceDefinition("ga", .goArchive, "Go to archive"),
+        
+        // Visual Mode
+        SequenceDefinition("v", .enterVisualMode, "Enter visual mode"),
     ]
     
     /// Prefixes that indicate more keys might follow
