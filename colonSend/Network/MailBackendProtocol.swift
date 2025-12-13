@@ -130,6 +130,7 @@ struct MailMessage: Identifiable, Hashable {
     let date: String
     let tags: String?  // Only for notmuch
     var body: String?
+    var htmlBody: String?  // HTML version of body (for WebView rendering)
     var attributedBody: NSAttributedString?
     var isRead: Bool
     var hasAttachment: Bool
@@ -147,6 +148,7 @@ struct MailMessage: Identifiable, Hashable {
         self.date = email.date
         self.tags = nil
         self.body = email.body
+        self.htmlBody = nil
         self.attributedBody = email.attributedBody
         self.isRead = email.isRead
         self.hasAttachment = !email.incomingAttachments.isEmpty
@@ -165,6 +167,7 @@ struct MailMessage: Identifiable, Hashable {
         self.date = date
         self.tags = tags
         self.body = nil
+        self.htmlBody = nil
         self.attributedBody = nil
         self.isRead = !tags.contains("unread")
         self.hasAttachment = tags.contains("attachment")

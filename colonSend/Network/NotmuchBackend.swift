@@ -41,6 +41,7 @@ struct NotmuchMailContent: Decodable {
     let subject: String
     let date: String
     let body: String
+    let html: String?
     let attachments: [String]?
 }
 
@@ -163,6 +164,7 @@ class NotmuchBackend: ObservableObject {
         // Update email with body
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].body = mail.body
+            emails[index].htmlBody = mail.html
             emails[index].bodyState = .loaded(body: mail.body, attributedBody: nil)
             print("NOTMUCH Loaded body for \(id): \(mail.body.prefix(100))...")
         }
