@@ -55,6 +55,9 @@ class NotmuchBackend: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     
+    // IPC synchronization - only one request at a time to prevent response mixing
+    private let requestSemaphore = DispatchSemaphore(value: 1)
+    
     // MARK: - Published State (Protocol conformance)
     @Published var isConnected = false
     @Published var connectionStatus = "Disconnected"
@@ -202,6 +205,29 @@ class NotmuchBackend: ObservableObject {
         await search(currentQuery)
     }
     
+    // MARK: - Prefetching
+    
+    /// Prefetch bodies for first N emails (called after search)
+    func prefetchInitialBodies(count: Int = 5) async {
+        let emailsToFetch = emails.prefix(count).filter { email in
+            if case .notLoaded = email.bodyState { return true }
+            return false
+        }
+        
+        guard !emailsToFetch.isEmpty else { return }
+        
+        print("NOTMUCH Prefetching \(emailsToFetch.count) bodies...")
+        
+        // Parallel laden (alle gleichzeitig)
+        await withTaskGroup(of: Void.self) { group in
+            for email in emailsToFetch {
+                group.addTask {
+                    await self.fetchEmailBody(id: email.id)
+                }
+            }
+        }
+    }
+    
     // MARK: - Internal: Search
     
     private func search(_ query: String, limit: Int = 50) async {
@@ -244,6 +270,9 @@ class NotmuchBackend: ObservableObject {
         print("NOTMUCH Search returned \(emails.count) emails")
         isLoadingEmails = false
         loadingProgress = ""
+        
+        // Prefetch first 5 bodies
+        await prefetchInitialBodies(count: 5)
     }
     
     // MARK: - Internal: Tag
@@ -287,6 +316,10 @@ class NotmuchBackend: ObservableObject {
             
             return await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
+                    // Only one request at a time to prevent response mixing
+                    self.requestSemaphore.wait()
+                    defer { self.requestSemaphore.signal() }
+                    
                     stdin.write(data)
                     
                     // Buffered reading bis Newline (eine JSON-Zeile pro Response)

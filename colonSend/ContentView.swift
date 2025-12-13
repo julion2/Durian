@@ -128,6 +128,14 @@ struct ContentView: View {
                             }
                         }
                         .padding(.vertical, 2)
+                        .onAppear {
+                            // Prefetch body when email becomes visible
+                            if case .notLoaded = email.bodyState {
+                                Task {
+                                    await accountManager.fetchNotmuchEmailBody(id: email.id)
+                                }
+                            }
+                        }
                     }
                 } else if accountManager.isLoadingEmails {
                     VStack {
@@ -329,11 +337,19 @@ struct ContentView: View {
     private func handleNotmuchEmailSelection(_ emailId: String) {
         detailMode = .notmuchEmailDetail(emailId: emailId)
         
-        // Mark as read
-        if let email = accountManager.mailMessages.first(where: { $0.id == emailId }),
-           !email.isRead {
-            Task {
-                await accountManager.markNotmuchAsRead(id: emailId)
+        // Auto-load body if not loaded
+        if let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
+            if case .notLoaded = email.bodyState {
+                Task {
+                    await accountManager.fetchNotmuchEmailBody(id: emailId)
+                }
+            }
+            
+            // Mark as read
+            if !email.isRead {
+                Task {
+                    await accountManager.markNotmuchAsRead(id: emailId)
+                }
             }
         }
     }
