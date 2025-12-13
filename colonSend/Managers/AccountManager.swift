@@ -3,15 +3,25 @@
 //  colonSend
 //
 //  Manages multiple IMAP accounts and aggregates their data
+//  Also supports notmuch backend via compile-time flag
 //
 
 import Foundation
 import Combine
 
+// MARK: - Backend Selection
+// Set to true to use notmuch backend, false for IMAP
+#if DEBUG
+let USE_NOTMUCH_BACKEND = true  // Change to false to use IMAP
+#else
+let USE_NOTMUCH_BACKEND = false
+#endif
+
 @MainActor
 class AccountManager: ObservableObject {
     static let shared = AccountManager()
     
+    // MARK: - IMAP Properties (used when USE_NOTMUCH_BACKEND = false)
     @Published var accounts: [MailAccount] = []
     @Published var imapClients: [String: IMAPClient] = [:]
     @Published var allFolders: [IMAPFolder] = []
@@ -20,21 +30,127 @@ class AccountManager: ObservableObject {
     @Published var isLoadingEmails = false
     @Published var loadingProgress = ""
     
+    // MARK: - Notmuch Properties (used when USE_NOTMUCH_BACKEND = true)
+    @Published var notmuchBackend: NotmuchBackend?
+    @Published var mailFolders: [MailFolder] = []      // Unified folders/tags
+    @Published var mailMessages: [MailMessage] = []    // Unified messages
+    @Published var selectedFolder: String = "inbox"
+    
+    // MARK: - Backend Type
+    var isUsingNotmuch: Bool { USE_NOTMUCH_BACKEND }
+    
     private var cancellables = Set<AnyCancellable>()
     var suppressMerge = false
     private var updateDebounceTask: Task<Void, Never>?
     
     private init() {
-        loadAccounts()
+        if USE_NOTMUCH_BACKEND {
+            setupNotmuchBackend()
+        } else {
+            loadAccounts()
+        }
     }
+    
+    // MARK: - Notmuch Setup
+    
+    private func setupNotmuchBackend() {
+        print("NOTMUCH AccountManager: Setting up notmuch backend")
+        notmuchBackend = NotmuchBackend()
+        
+        // Subscribe to backend changes
+        notmuchBackend?.objectWillChange.sink { [weak self] in
+            self?.objectWillChange.send()
+            self?.syncFromNotmuch()
+        }.store(in: &cancellables)
+    }
+    
+    private func syncFromNotmuch() {
+        guard let backend = notmuchBackend else { return }
+        mailFolders = backend.folders
+        mailMessages = backend.emails
+        isLoadingEmails = backend.isLoadingEmails
+        loadingProgress = backend.loadingProgress
+    }
+    
+    // MARK: - IMAP Setup
     
     private func loadAccounts() {
         accounts = ConfigManager.shared.getAccounts()
-        print("🔧 Loaded \(accounts.count) accounts")
+        print("IMAP Loaded \(accounts.count) accounts")
     }
     
     func connectToAllAccounts() async {
-        print("🔧 Connecting to \(accounts.count) accounts...")
+        if USE_NOTMUCH_BACKEND {
+            await connectNotmuch()
+        } else {
+            await connectIMAP()
+        }
+    }
+    
+    // MARK: - Notmuch Connection
+    
+    private func connectNotmuch() async {
+        print("NOTMUCH AccountManager: Connecting to notmuch...")
+        guard let backend = notmuchBackend else {
+            print("NOTMUCH ERROR: Backend not initialized")
+            return
+        }
+        await backend.connect()
+        syncFromNotmuch()
+    }
+    
+    // MARK: - Notmuch Folder/Tag Selection
+    
+    func selectNotmuchTag(_ tag: String) async {
+        guard let backend = notmuchBackend else { return }
+        selectedFolder = tag
+        mailMessages.removeAll()
+        await backend.selectFolder(tag)
+        syncFromNotmuch()
+    }
+    
+    // MARK: - Notmuch Email Operations
+    
+    func fetchNotmuchEmailBody(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.fetchEmailBody(id: id)
+        syncFromNotmuch()
+    }
+    
+    func markNotmuchAsRead(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.markAsRead(id: id)
+        syncFromNotmuch()
+    }
+    
+    func toggleNotmuchReadStatus(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        if let email = mailMessages.first(where: { $0.id == id }) {
+            if email.isRead {
+                await backend.markAsUnread(id: id)
+            } else {
+                await backend.markAsRead(id: id)
+            }
+        }
+        syncFromNotmuch()
+    }
+    
+    func deleteNotmuchMessage(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        try? await backend.deleteMessage(id: id)
+        syncFromNotmuch()
+    }
+    
+    func reloadNotmuch() async {
+        guard let backend = notmuchBackend else { return }
+        await backend.reload()
+        syncFromNotmuch()
+    }
+    
+    // MARK: - IMAP Connection
+    
+    private func connectIMAP() async {
+        print("IMAP Connecting to \(accounts.count) accounts...")
         
         for account in accounts {
             let client = IMAPClient()

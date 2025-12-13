@@ -11,6 +11,7 @@ import TOMLDecoder
 
 enum DetailViewMode: Equatable {
     case emailDetail(emailUID: UInt32, accountId: String)
+    case notmuchEmailDetail(emailId: String)  // NEW: for notmuch
     case compose(replyTo: IMAPEmail?, forward: IMAPEmail?)
     case empty
 }
@@ -20,7 +21,9 @@ struct ContentView: View {
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
     @State private var selectedFolderID: UUID? = nil
+    @State private var selectedTagID: String? = "inbox"  // NEW: for notmuch
     @State private var selectedEmails: Set<Email.ID> = []  // Multi-selection for visual mode
+    @State private var selectedNotmuchEmails: Set<String> = []  // NEW: for notmuch
     @State private var cancellables = Set<AnyCancellable>()
     @State private var detailMode: DetailViewMode = .empty
     @State private var lastViewedEmail: IMAPEmail? = nil
@@ -39,6 +42,252 @@ struct ContentView: View {
     }
 
     var body: some View {
+        // Switch between notmuch and IMAP mode
+        if accountManager.isUsingNotmuch {
+            notmuchView
+        } else {
+            imapView
+        }
+    }
+    
+    // MARK: - Notmuch View
+    
+    @ViewBuilder
+    private var notmuchView: some View {
+        NavigationSplitView {
+            // Sidebar: Tags
+            List(selection: $selectedTagID) {
+                Section("Tags") {
+                    ForEach(accountManager.mailFolders) { folder in
+                        Label(folder.displayName, systemImage: folder.icon)
+                            .tag(folder.name)
+                    }
+                }
+                
+                Section("Status") {
+                    if let backend = accountManager.notmuchBackend {
+                        Text(backend.connectionStatus)
+                            .font(.caption)
+                            .foregroundStyle(backend.isConnected ? .green : .red)
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("colonSend")
+        } content: {
+            // Email List
+            VStack {
+                if accountManager.isLoadingEmails && !accountManager.loadingProgress.isEmpty {
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text(accountManager.loadingProgress)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                
+                if !accountManager.mailMessages.isEmpty {
+                    List(accountManager.mailMessages, selection: $selectedNotmuchEmails) { email in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                if !email.isRead {
+                                    Circle()
+                                        .fill(.blue)
+                                        .frame(width: 8, height: 8)
+                                }
+                                
+                                Text(formatSenderName(email.from))
+                                    .font(.headline)
+                                    .fontWeight(email.isRead ? .regular : .bold)
+                                
+                                Spacer()
+                                
+                                Text(email.date)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
+                            
+                            HStack(spacing: 4) {
+                                Text(email.subject)
+                                    .font(.callout)
+                                    .fontWeight(email.isRead ? .regular : .semibold)
+                                
+                                if email.hasAttachment {
+                                    Image(systemName: "paperclip")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            
+                            if let tags = email.tags {
+                                Text(tags)
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } else if accountManager.isLoadingEmails {
+                    VStack {
+                        ProgressView()
+                        Text(accountManager.loadingProgress)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
+                } else {
+                    Text("No emails")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle("colonSend")
+            .navigationSubtitle(accountManager.selectedFolder)
+            .toolbar {
+                ToolbarItem {
+                    Button(action: {
+                        Task {
+                            await accountManager.reloadNotmuch()
+                        }
+                    }) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+            }
+        } detail: {
+            // Detail View
+            if case .notmuchEmailDetail(let emailId) = detailMode,
+               let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
+                notmuchEmailDetailView(email: email)
+            } else {
+                Text("Select an email")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onAppear {
+            Task {
+                await accountManager.connectToAllAccounts()
+            }
+        }
+        .onChange(of: selectedTagID) { tagId in
+            if let tagId = tagId {
+                Task {
+                    await accountManager.selectNotmuchTag(tagId)
+                }
+            }
+        }
+        .onChange(of: selectedNotmuchEmails) { newSelection in
+            if newSelection.count == 1, let emailId = newSelection.first {
+                handleNotmuchEmailSelection(emailId)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func notmuchEmailDetailView(email: MailMessage) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Header
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(email.subject)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .textSelection(.enabled)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("From:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(email.from)
+                                .textSelection(.enabled)
+                        }
+                        
+                        HStack {
+                            Text("Date:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(email.date)
+                                .textSelection(.enabled)
+                        }
+                        
+                        if let tags = email.tags {
+                            HStack {
+                                Text("Tags:")
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.secondary)
+                                Text(tags)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    .font(.callout)
+                }
+                
+                Divider()
+                
+                // Body
+                switch email.bodyState {
+                case .notLoaded:
+                    Text("Click to load")
+                        .foregroundStyle(.secondary)
+                        .onTapGesture {
+                            Task {
+                                await accountManager.fetchNotmuchEmailBody(id: email.id)
+                            }
+                        }
+                case .loading:
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Loading...")
+                            .foregroundStyle(.secondary)
+                    }
+                case .loaded(let body, _):
+                    Text(body)
+                        .textSelection(.enabled)
+                case .failed(let message):
+                    Text("Failed: \(message)")
+                        .foregroundStyle(.red)
+                }
+                
+                Spacer()
+            }
+            .padding(20)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .navigationTitle("Email")
+        .onAppear {
+            // Auto-load body
+            if case .notLoaded = email.bodyState {
+                Task {
+                    await accountManager.fetchNotmuchEmailBody(id: email.id)
+                }
+            }
+        }
+    }
+    
+    private func handleNotmuchEmailSelection(_ emailId: String) {
+        detailMode = .notmuchEmailDetail(emailId: emailId)
+        
+        // Mark as read
+        if let email = accountManager.mailMessages.first(where: { $0.id == emailId }),
+           !email.isRead {
+            Task {
+                await accountManager.markNotmuchAsRead(id: emailId)
+            }
+        }
+    }
+    
+    // MARK: - IMAP View (original)
+    
+    @ViewBuilder
+    private var imapView: some View {
         NavigationSplitView {
             List(selection: $selectedFolderID) {
                 ForEach(accountManager.accounts, id: \.email) { account in
@@ -204,6 +453,11 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+            
+            case .notmuchEmailDetail:
+                // Handled in notmuchView, should not appear here
+                Text("Use notmuch view")
+                    .foregroundStyle(.secondary)
                 
             case .compose(let replyTo, let forward):
                 EmailComposeView(
