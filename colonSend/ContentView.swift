@@ -190,75 +190,78 @@ struct ContentView: View {
     
     @ViewBuilder
     private func notmuchEmailDetailView(email: MailMessage) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(email.subject)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .textSelection(.enabled)
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("From:")
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-                            Text(email.from)
-                                .textSelection(.enabled)
-                        }
-                        
-                        HStack {
-                            Text("Date:")
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-                            Text(email.date)
-                                .textSelection(.enabled)
-                        }
-                        
-                        if let tags = email.tags {
-                            HStack {
-                                Text("Tags:")
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(.secondary)
-                                Text(tags)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                    .font(.callout)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            // Fixed Header
+            VStack(alignment: .leading, spacing: 8) {
+                Text(email.subject)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .textSelection(.enabled)
                 
-                Divider()
-                
-                // Body
-                switch email.bodyState {
-                case .notLoaded:
-                    Text("Click to load")
-                        .foregroundStyle(.secondary)
-                        .onTapGesture {
-                            Task {
-                                await accountManager.fetchNotmuchEmailBody(id: email.id)
-                            }
-                        }
-                case .loading:
+                VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                        Text("Loading...")
+                        Text("From:")
+                            .fontWeight(.medium)
                             .foregroundStyle(.secondary)
+                        Text(email.from)
+                            .textSelection(.enabled)
                     }
-                case .loaded(let body, _):
-                    Text(body)
-                        .textSelection(.enabled)
-                case .failed(let message):
-                    Text("Failed: \(message)")
-                        .foregroundStyle(.red)
+                    
+                    HStack {
+                        Text("Date:")
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                        Text(email.date)
+                            .textSelection(.enabled)
+                    }
+                    
+                    if let tags = email.tags {
+                        HStack {
+                            Text("Tags:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(tags)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
-                
-                Spacer()
+                .font(.callout)
             }
             .padding(20)
+            .padding(.bottom, 12)
+            
+            Divider()
+            
+            // Scrollable Body
+            ScrollView {
+                VStack(alignment: .leading) {
+                    switch email.bodyState {
+                    case .notLoaded:
+                        Text("Click to load")
+                            .foregroundStyle(.secondary)
+                            .onTapGesture {
+                                Task {
+                                    await accountManager.fetchNotmuchEmailBody(id: email.id)
+                                }
+                            }
+                    case .loading:
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Loading...")
+                                .foregroundStyle(.secondary)
+                        }
+                    case .loaded(let body, _):
+                        Text(body)
+                            .textSelection(.enabled)
+                    case .failed(let message):
+                        Text("Failed: \(message)")
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .background(Color(NSColor.controlBackgroundColor))
         .navigationTitle("Email")
