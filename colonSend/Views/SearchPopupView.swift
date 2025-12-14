@@ -17,38 +17,28 @@ struct SearchPopupView: View {
     @State private var selectedIndex: Int = 0
     @FocusState private var isTextFieldFocused: Bool
     
-    private let queryHelpers = [
-        ("from:", "Sender"),
-        ("to:", "Recipient"),
-        ("subject:", "Subject"),
-        ("tag:", "Tag"),
-        ("date:", "Date"),
-    ]
-    
     var body: some View {
         VStack(spacing: 0) {
             // Search Input
             searchInputView
             
-            Divider()
-            
-            // Content: Helpers or Results
-            if query.isEmpty {
-                queryHelpersView
-            } else if searchManager.isSearching {
-                loadingView
-            } else if searchManager.results.isEmpty {
-                noResultsView
-            } else {
-                resultsListView
+            // Only show content when query is not empty
+            if !query.isEmpty {
+                Divider()
+                    .opacity(0.3)
+                
+                if searchManager.isSearching {
+                    loadingView
+                } else if searchManager.results.isEmpty {
+                    noResultsView
+                } else {
+                    resultsListView
+                }
             }
         }
-        .frame(width: 600)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxHeight: 450)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        .frame(width: 680)
+        .glassEffect(.clear, in: .rect(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
         .onAppear {
             isTextFieldFocused = true
         }
@@ -81,14 +71,15 @@ struct SearchPopupView: View {
     // MARK: - Subviews
     
     private var searchInputView: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .font(.title2)
+                .fontWeight(.medium)
             
             TextField("Search emails...", text: $query)
                 .textFieldStyle(.plain)
-                .font(.title3)
+                .font(.title2)
                 .focused($isTextFieldFocused)
             
             if !query.isEmpty {
@@ -97,69 +88,44 @@ struct SearchPopupView: View {
                     searchManager.clear()
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
+                        .font(.title3)
                 }
                 .buttonStyle(.plain)
             }
             
             if searchManager.isSearching {
                 ProgressView()
-                    .scaleEffect(0.7)
+                    .scaleEffect(0.8)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-    }
-    
-    private var queryHelpersView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Query helpers")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            
-            HStack(spacing: 8) {
-                ForEach(queryHelpers, id: \.0) { prefix, description in
-                    Button {
-                        query = prefix
-                        isTextFieldFocused = true
-                    } label: {
-                        Text(prefix)
-                            .font(.system(.caption, design: .monospaced))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.accentColor.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                    }
-                    .buttonStyle(.plain)
-                    .help(description)
-                }
-            }
-            
-            Text("Use notmuch query syntax for advanced searches")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(16)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 18)
     }
     
     private var loadingView: some View {
-        HStack {
+        HStack(spacing: 10) {
             ProgressView()
+                .scaleEffect(0.8)
             Text("Searching...")
                 .foregroundStyle(.secondary)
+                .font(.subheadline)
         }
-        .frame(maxWidth: .infinity, minHeight: 100)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
     
     private var noResultsView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
-                .font(.largeTitle)
+                .font(.title)
                 .foregroundStyle(.tertiary)
-            Text("No results for \"\(query)\"")
+            Text("No results")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 100)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
     
     private var resultsListView: some View {
@@ -180,6 +146,7 @@ struct SearchPopupView: View {
                     }
                 }
             }
+            .frame(maxHeight: 350)
             .onChange(of: selectedIndex) { _, newIndex in
                 withAnimation(.easeInOut(duration: 0.1)) {
                     proxy.scrollTo(newIndex, anchor: .center)
@@ -239,13 +206,6 @@ struct SearchResultRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                
-                if let tags = email.tags, !tags.isEmpty {
-                    Text(tags)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
             }
         }
         .padding(.horizontal, 16)
