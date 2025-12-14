@@ -36,29 +36,31 @@ struct ContentView: View {
     
     @ViewBuilder
     private var searchPopupOverlay: some View {
-        // Dimmed background
-        Color.black.opacity(0.4)
-            .ignoresSafeArea()
-            .onTapGesture {
-                showSearchPopup = false
-            }
-        
-        // Centered popup
-        SearchPopupView(
-            isPresented: $showSearchPopup,
-            selectedEmailId: Binding(
-                get: { selectedNotmuchEmails.first },
-                set: { newId in
-                    if let id = newId {
-                        selectedNotmuchEmails = [id]
-                    }
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showSearchPopup = false
                 }
-            ),
-            onEmailSelected: { emailId in
-                // Open email in detail view
-                detailMode = .notmuchEmailDetail(emailId: emailId)
-            }
-        )
+            
+            // Centered popup
+            SearchPopupView(
+                isPresented: $showSearchPopup,
+                selectedEmailId: Binding(
+                    get: { selectedNotmuchEmails.first },
+                    set: { newId in
+                        if let id = newId {
+                            selectedNotmuchEmails = [id]
+                        }
+                    }
+                ),
+                onEmailSelected: { emailId in
+                    // Open email in detail view
+                    detailMode = .notmuchEmailDetail(emailId: emailId)
+                }
+            )
+        }
     }
     
     // MARK: - Notmuch View
@@ -182,12 +184,8 @@ struct ContentView: View {
             Task {
                 await accountManager.connectToAllAccounts()
             }
-            // Register search handler
-            keymapHandler.registerSimpleHandler(for: .search) {
-                await MainActor.run {
-                    showSearchPopup = true
-                }
-            }
+            // Register all keymap handlers
+            registerKeymapHandlers()
         }
         .onChange(of: selectedTagID) { tagId in
             if let tagId = tagId {
@@ -367,6 +365,107 @@ struct ContentView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Navigation Helpers
+    
+    /// Get sorted email IDs (by timestamp, newest first)
+    private var sortedEmailIds: [String] {
+        accountManager.mailMessages
+            .sorted { $0.timestamp > $1.timestamp }
+            .map { $0.id }
+    }
+    
+    /// Get current email index in sorted list
+    private func currentEmailIndex() -> Int? {
+        guard let currentId = selectedNotmuchEmails.first else { return nil }
+        return sortedEmailIds.firstIndex(of: currentId)
+    }
+    
+    /// Navigate to email at specific index (clamped to valid range)
+    private func navigateToEmail(at index: Int) {
+        guard !sortedEmailIds.isEmpty else { return }
+        let clampedIndex = max(0, min(index, sortedEmailIds.count - 1))
+        selectedNotmuchEmails = [sortedEmailIds[clampedIndex]]
+    }
+    
+    /// Register all keymap handlers
+    private func registerKeymapHandlers() {
+        // Navigation: j/k with count support (5j, 3k)
+        keymapHandler.registerHandler(for: .nextEmail) { [self] count in
+            await MainActor.run {
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current + count)
+                } else if !sortedEmailIds.isEmpty {
+                    navigateToEmail(at: 0)
+                }
+            }
+        }
+        
+        keymapHandler.registerHandler(for: .prevEmail) { [self] count in
+            await MainActor.run {
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current - count)
+                } else if !sortedEmailIds.isEmpty {
+                    navigateToEmail(at: sortedEmailIds.count - 1)
+                }
+            }
+        }
+        
+        // First/Last: gg, G
+        keymapHandler.registerSimpleHandler(for: .firstEmail) { [self] in
+            await MainActor.run {
+                navigateToEmail(at: 0)
+            }
+        }
+        
+        keymapHandler.registerSimpleHandler(for: .lastEmail) { [self] in
+            await MainActor.run {
+                navigateToEmail(at: sortedEmailIds.count - 1)
+            }
+        }
+        
+        // Page navigation: Ctrl+d, Ctrl+u (10 emails per page)
+        let pageSize = 10
+        keymapHandler.registerHandler(for: .pageDown) { [self] count in
+            await MainActor.run {
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current + (pageSize * count))
+                } else {
+                    navigateToEmail(at: 0)
+                }
+            }
+        }
+        
+        keymapHandler.registerHandler(for: .pageUp) { [self] count in
+            await MainActor.run {
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current - (pageSize * count))
+                } else {
+                    navigateToEmail(at: sortedEmailIds.count - 1)
+                }
+            }
+        }
+        
+        // Search: /
+        keymapHandler.registerSimpleHandler(for: .search) { [self] in
+            await MainActor.run {
+                showSearchPopup = true
+            }
+        }
+        
+        // View control: q, Escape - close detail or search popup
+        keymapHandler.registerSimpleHandler(for: .closeDetail) { [self] in
+            await MainActor.run {
+                if showSearchPopup {
+                    showSearchPopup = false
+                } else {
+                    detailMode = .empty
+                }
+            }
+        }
+        
+        print("KEYMAPS: All handlers registered")
     }
     
 }

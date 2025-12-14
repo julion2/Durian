@@ -45,9 +45,9 @@ struct SearchPopupView: View {
         }
         .frame(width: 600)
         .frame(maxHeight: 450)
-        .background(.ultraThinMaterial)
+        .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
+        .shadow(color: .black.opacity(0.4), radius: 30, y: 10)
         .onAppear {
             isTextFieldFocused = true
         }
