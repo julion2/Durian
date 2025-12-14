@@ -149,6 +149,16 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem {
                     Button(action: {
+                        showSearchPopup = true
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .keyboardShortcut("/", modifiers: .command)
+                    .help("Search emails (⌘/)")
+                }
+                
+                ToolbarItem {
+                    Button(action: {
                         Task {
                             await accountManager.reloadNotmuch()
                         }
