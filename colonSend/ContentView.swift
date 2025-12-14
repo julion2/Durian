@@ -36,30 +36,33 @@ struct ContentView: View {
     
     @ViewBuilder
     private var searchPopupOverlay: some View {
-        ZStack {
-            // Dimmed background
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    showSearchPopup = false
-                }
-            
-            // Centered popup
-            SearchPopupView(
-                isPresented: $showSearchPopup,
-                selectedEmailId: Binding(
-                    get: { selectedNotmuchEmails.first },
-                    set: { newId in
-                        if let id = newId {
-                            selectedNotmuchEmails = [id]
-                        }
+        GeometryReader { geometry in
+            ZStack {
+                // Dimmed background
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showSearchPopup = false
                     }
-                ),
-                onEmailSelected: { emailId in
-                    // Open email in detail view
-                    detailMode = .notmuchEmailDetail(emailId: emailId)
-                }
-            )
+                
+                // Centered popup
+                SearchPopupView(
+                    isPresented: $showSearchPopup,
+                    selectedEmailId: Binding(
+                        get: { selectedNotmuchEmails.first },
+                        set: { newId in
+                            if let id = newId {
+                                selectedNotmuchEmails = [id]
+                            }
+                        }
+                    ),
+                    onEmailSelected: { emailId in
+                        // Open email in detail view
+                        detailMode = .notmuchEmailDetail(emailId: emailId)
+                    }
+                )
+                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            }
         }
     }
     
