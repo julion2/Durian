@@ -49,29 +49,39 @@ struct EmailListView: View {
     var body: some View {
         let grouped = groupEmails(emails)
 
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(grouped, id: \.0) { group, groupEmails in
-                    // Header
-                    Text(group.displayName)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 12)
-                        .padding(.bottom, 4)
-                        .padding(.horizontal, 12)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(grouped, id: \.0) { group, groupEmails in
+                        // Header
+                        Text(group.displayName)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 12)
+                            .padding(.bottom, 4)
+                            .padding(.horizontal, 12)
 
-                    // Emails
-                    ForEach(groupEmails) { email in
-                        EmailRowView(email: email, isSelected: selection.contains(email.id))
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selection = [email.id]
-                            }
-                            .onAppear {
-                                onEmailAppear(email)
-                            }
+                        // Emails
+                        ForEach(groupEmails) { email in
+                            EmailRowView(email: email, isSelected: selection.contains(email.id))
+                                .id(email.id)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selection = [email.id]
+                                }
+                                .onAppear {
+                                    onEmailAppear(email)
+                                }
+                        }
+                    }
+                }
+            }
+            .onChange(of: selection) { _, newSelection in
+                if let selectedId = newSelection.first {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        proxy.scrollTo(selectedId, anchor: .center)
                     }
                 }
             }

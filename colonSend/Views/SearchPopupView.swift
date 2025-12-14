@@ -44,10 +44,11 @@ struct SearchPopupView: View {
             }
         }
         .frame(width: 600)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxHeight: 450)
-        .background(Color(NSColor.windowBackgroundColor).opacity(0.95))
+        .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.4), radius: 30, y: 10)
+        .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
         .onAppear {
             isTextFieldFocused = true
         }
@@ -139,7 +140,6 @@ struct SearchPopupView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
     
     private var loadingView: some View {

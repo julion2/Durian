@@ -199,6 +199,30 @@ struct ContentView: View {
                 handleNotmuchEmailSelection(emailId)
             }
         }
+        // Intercept Ctrl+d/u before the sidebar List captures them
+        .onKeyPress { press in
+            // Ctrl+d for page down
+            if press.key == KeyEquivalent("d") && press.modifiers.contains(.control) {
+                let pageSize = 10
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current + pageSize)
+                } else {
+                    navigateToEmail(at: 0)
+                }
+                return .handled
+            }
+            // Ctrl+u for page up
+            if press.key == KeyEquivalent("u") && press.modifiers.contains(.control) {
+                let pageSize = 10
+                if let current = currentEmailIndex() {
+                    navigateToEmail(at: current - pageSize)
+                } else {
+                    navigateToEmail(at: sortedEmailIds.count - 1)
+                }
+                return .handled
+            }
+            return .ignored
+        }
     }
     
     // MARK: - Email Detail View

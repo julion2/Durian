@@ -59,7 +59,10 @@ class SearchManager: ObservableObject {
     /// Clear search results
     func clear() {
         searchTask?.cancel()
-        results = []
-        isSearching = false
+        // Wrap in Task to avoid "Publishing changes from within view updates"
+        Task { @MainActor in
+            results = []
+            isSearching = false
+        }
     }
 }
