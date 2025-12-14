@@ -61,6 +61,7 @@ struct AppSettings: Codable {
     var maxEmailsToFetch: Int = 10
     var notificationsEnabled: Bool = true
     var theme: String = "system"
+    var loadRemoteImages: Bool = false  // Security: block tracking pixels by default
     
     enum CodingKeys: String, CodingKey {
         case autoFetchEnabled = "auto_fetch_enabled"
@@ -68,5 +69,6 @@ struct AppSettings: Codable {
         case maxEmailsToFetch = "max_emails_to_fetch"
         case notificationsEnabled = "notifications_enabled"
         case theme
+        case loadRemoteImages = "load_remote_images"
     }
 }

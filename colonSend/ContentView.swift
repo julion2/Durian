@@ -223,7 +223,11 @@ struct ContentView: View {
             case .loaded(let body, _):
                 if let html = email.htmlBody, !html.isEmpty {
                     // WebView hat eigenes Scrolling - keine ScrollView nötig
-                    EmailWebView(html: html, theme: SettingsManager.shared.settings.theme)
+                    EmailWebView(
+                                        html: html,
+                                        theme: SettingsManager.shared.settings.theme,
+                                        loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages
+                                    )
                 } else {
                     // Text braucht ScrollView
                     ScrollView {

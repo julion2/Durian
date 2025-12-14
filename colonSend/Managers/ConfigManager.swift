@@ -137,7 +137,8 @@ class ConfigManager {
         toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
         toml += "max_emails_to_fetch = \(config.settings.maxEmailsToFetch)\n"
         toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
-        toml += "theme = \"\(config.settings.theme)\"\n\n"
+        toml += "theme = \"\(config.settings.theme)\"\n"
+        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n\n"
         
         // Signatures section
         if !config.signatures.isEmpty {
@@ -198,6 +199,7 @@ class ConfigManager {
         max_emails_to_fetch = 10
         notifications_enabled = true
         theme = "system"
+        load_remote_images = false
 
         [signatures]
         # Add your signatures here:
