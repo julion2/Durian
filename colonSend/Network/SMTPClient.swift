@@ -66,7 +66,8 @@ class SMTPClient {
         
         let recipients = draft.to.map { "--mail-rcpt '\($0)'" }.joined(separator: " ")
         
-        let command = """
+        // Command built for debugging reference (not executed directly)
+        _ = """
         curl --url '\(smtpURL)' \
              --ssl-reqd \
              --mail-from '\(draft.from)' \

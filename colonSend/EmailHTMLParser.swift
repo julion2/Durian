@@ -62,7 +62,7 @@ class EmailHTMLParser {
             // Scan for HTML tag
             if scanner.scanString("<") != nil {
                 if let tagContent = scanner.scanUpToString(">") {
-                    scanner.scanString(">") // consume the closing >
+                    _ = scanner.scanString(">") // consume the closing >
                     processHTMLTag(tagContent)
                 }
             }

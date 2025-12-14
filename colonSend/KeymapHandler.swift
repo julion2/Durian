@@ -125,7 +125,7 @@ class KeymapHandler: ObservableObject {
     
     private func setupKeymapObserver() {
         keymapsManager.$keymaps
-            .sink { [weak self] _ in
+            .sink { _ in
                 print("KEYMAPS: Config updated")
             }
             .store(in: &cancellables)

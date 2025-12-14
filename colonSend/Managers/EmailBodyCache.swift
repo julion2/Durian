@@ -218,7 +218,7 @@ class EmailBodyCache: ObservableObject {
                     try existing.update(db)
                 } else {
                     // Insert new
-                    var record = CachedBodyRecord(
+                    let record = CachedBodyRecord(
                         id: nil,
                         uid: Int64(uid),
                         accountId: accountId,
@@ -250,7 +250,7 @@ class EmailBodyCache: ObservableObject {
         guard let dbQueue else { return }
         
         do {
-            try dbQueue.write { db in
+            _ = try dbQueue.write { db in
                 if let accountId = accountId {
                     try CachedBodyRecord
                         .filter(Column("uid") == Int64(uid) && Column("accountId") == accountId)
@@ -413,7 +413,7 @@ class EmailBodyCache: ObservableObject {
                         attributedBodyData = try? NSKeyedArchiver.archivedData(withRootObject: attributed, requiringSecureCoding: false)
                     }
                     
-                    var record = CachedBodyRecord(
+                    let record = CachedBodyRecord(
                         id: nil,
                         uid: Int64(uid),
                         accountId: meta.accountId,

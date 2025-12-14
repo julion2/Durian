@@ -604,9 +604,9 @@ class ConfigManager {
     }
     
     func updateSettings(_ newSettings: AppSettings) {
-        guard let currentConfig = self.config else { return }
+        guard let config = self.config else { return }
         
-        let updatedConfig = AppConfig(accounts: currentConfig.accounts, settings: newSettings, signatures: currentConfig.signatures)
+        let updatedConfig = AppConfig(accounts: config.accounts, settings: newSettings, signatures: config.signatures)
         self.config = updatedConfig
         
         saveConfigToFile()
