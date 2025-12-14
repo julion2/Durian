@@ -6,20 +6,16 @@ struct EmailRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            // Avatar with unread indicator overlay
-            ZStack(alignment: .topLeading) {
-                AvatarView(name: email.from, size: 32)
-                
-                if !email.isRead {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 10, height: 10)
-                        .offset(x: -4, y: -2)
-                }
-            }
+            AvatarView(name: email.from, size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
-                HStack {
+                HStack(spacing: 6) {
+                    if !email.isRead {
+                        Circle()
+                            .fill(Color.blue)
+                            .frame(width: 8, height: 8)
+                    }
+                    
                     Text(senderName)
                         .font(.headline)
                         .fontWeight(email.isRead ? .regular : .bold)
