@@ -82,46 +82,10 @@ struct ContentView: View {
                 }
                 
                 if !accountManager.mailMessages.isEmpty {
-                    List(accountManager.mailMessages, selection: $selectedNotmuchEmails) { email in
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack {
-                                if !email.isRead {
-                                    Circle()
-                                        .fill(.blue)
-                                        .frame(width: 8, height: 8)
-                                }
-                                
-                                Text(formatSenderName(email.from))
-                                    .font(.headline)
-                                    .fontWeight(email.isRead ? .regular : .bold)
-                                
-                                Spacer()
-                                
-                                Text(email.date)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
-                            
-                            HStack(spacing: 4) {
-                                Text(email.subject)
-                                    .font(.callout)
-                                    .fontWeight(email.isRead ? .regular : .semibold)
-                                
-                                if email.hasAttachment {
-                                    Image(systemName: "paperclip")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            
-                            if let tags = email.tags {
-                                Text(tags)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .padding(.vertical, 2)
-                        .onAppear {
+                    EmailListView(
+                        emails: accountManager.mailMessages,
+                        selection: $selectedNotmuchEmails,
+                        onEmailAppear: { email in
                             // Prefetch body when email becomes visible
                             if case .notLoaded = email.bodyState {
                                 Task {
@@ -129,7 +93,7 @@ struct ContentView: View {
                                 }
                             }
                         }
-                    }
+                    )
                 } else if accountManager.isLoadingEmails {
                     VStack {
                         ProgressView()
@@ -351,14 +315,6 @@ struct ContentView: View {
         }
     }
     
-    private func formatSenderName(_ from: String) -> String {
-        // Extract name from "Name <email@domain.com>" format
-        if let nameRange = from.range(of: "^(.+?)\\s*<.*>$", options: .regularExpression) {
-            let name = String(from[nameRange]).replacingOccurrences(of: " <.*>$", with: "", options: .regularExpression)
-            return name.trimmingCharacters(in: .whitespaces)
-        }
-        return from
-    }
 }
 
 // MARK: - Key Sequence Indicator

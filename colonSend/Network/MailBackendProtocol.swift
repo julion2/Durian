@@ -156,6 +156,7 @@ struct MailMessage: Identifiable, Hashable {
     let from: String
     let to: String?
     let date: String
+    let timestamp: Int  // Unix timestamp for grouping
     let tags: String?
     var body: String?
     var htmlBody: String?  // HTML version of body (for WebView rendering)
@@ -166,12 +167,13 @@ struct MailMessage: Identifiable, Hashable {
     var incomingAttachments: [IncomingAttachmentMetadata]
     
     /// Create from notmuch mail
-    init(threadId: String, subject: String, from: String, date: String, tags: String) {
+    init(threadId: String, subject: String, from: String, date: String, timestamp: Int, tags: String) {
         self.id = threadId
         self.subject = subject
         self.from = from
         self.to = nil
         self.date = date
+        self.timestamp = timestamp
         self.tags = tags
         self.body = nil
         self.htmlBody = nil
@@ -180,6 +182,22 @@ struct MailMessage: Identifiable, Hashable {
         self.hasAttachment = tags.contains("attachment")
         self.bodyState = .notLoaded
         self.incomingAttachments = []
+    }
+    
+    /// Body preview for list view (first ~100 chars, stripped of HTML)
+    var bodyPreview: String? {
+        switch bodyState {
+        case .loaded(let body, _):
+            guard !body.isEmpty else { return nil }
+            // Strip HTML tags and get first 150 chars
+            let stripped = body
+                .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(stripped.prefix(150))
+        default:
+            return nil
+        }
     }
     
     // Hashable

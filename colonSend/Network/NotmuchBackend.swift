@@ -31,6 +31,7 @@ struct NotmuchMailResult: Decodable {
     let subject: String
     let from: String
     let date: String
+    let timestamp: Int
     let tags: String
 }
 
@@ -275,6 +276,7 @@ class NotmuchBackend: ObservableObject {
                 subject: mail.subject,
                 from: mail.from,
                 date: mail.date,
+                timestamp: mail.timestamp,
                 tags: mail.tags
             )
         }
