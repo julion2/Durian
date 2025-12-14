@@ -33,6 +33,7 @@ enum KeymapAction: String, CaseIterable {
     case closeDetail = "close_detail"
     case reloadInbox = "reload_inbox"
     case centerView = "center_view"
+    case search = "search"
     
     // Folder Navigation
     case goInbox = "go_inbox"

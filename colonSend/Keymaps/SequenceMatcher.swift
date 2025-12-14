@@ -39,6 +39,7 @@ class SequenceMatcher {
         
         // View control
         SequenceDefinition("q", .closeDetail, "Close/back"),
+        SequenceDefinition("/", .search, "Search emails"),
         
         // Folder navigation (go-commands)
         SequenceDefinition("gi", .goInbox, "Go to inbox"),

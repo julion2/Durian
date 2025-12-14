@@ -21,9 +21,44 @@ struct ContentView: View {
     @State private var selectedTagID: String? = "inbox"
     @State private var selectedNotmuchEmails: Set<String> = []
     @State private var detailMode: DetailViewMode = .empty
+    @State private var showSearchPopup: Bool = false
 
     var body: some View {
         notmuchView
+            .overlay {
+                if showSearchPopup {
+                    searchPopupOverlay
+                }
+            }
+    }
+    
+    // MARK: - Search Popup Overlay
+    
+    @ViewBuilder
+    private var searchPopupOverlay: some View {
+        // Dimmed background
+        Color.black.opacity(0.4)
+            .ignoresSafeArea()
+            .onTapGesture {
+                showSearchPopup = false
+            }
+        
+        // Centered popup
+        SearchPopupView(
+            isPresented: $showSearchPopup,
+            selectedEmailId: Binding(
+                get: { selectedNotmuchEmails.first },
+                set: { newId in
+                    if let id = newId {
+                        selectedNotmuchEmails = [id]
+                    }
+                }
+            ),
+            onEmailSelected: { emailId in
+                // Open email in detail view
+                detailMode = .notmuchEmailDetail(emailId: emailId)
+            }
+        )
     }
     
     // MARK: - Notmuch View
@@ -136,6 +171,12 @@ struct ContentView: View {
         .onAppear {
             Task {
                 await accountManager.connectToAllAccounts()
+            }
+            // Register search handler
+            keymapHandler.registerSimpleHandler(for: .search) {
+                await MainActor.run {
+                    showSearchPopup = true
+                }
             }
         }
         .onChange(of: selectedTagID) { tagId in

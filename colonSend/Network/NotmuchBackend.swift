@@ -291,6 +291,36 @@ class NotmuchBackend: ObservableObject {
         }
     }
     
+    // MARK: - Public: Global Search (for SearchPopup)
+    
+    /// Search all emails without affecting the main emails array
+    /// Used by SearchPopupView for global search
+    func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
+        await restartProcessIfNeeded()
+        
+        let request = MailctlRequest(cmd: "search", query: query, limit: limit)
+        
+        guard let response = await sendCommand(request) else {
+            return []
+        }
+        
+        guard response.ok, let results = response.results else {
+            return []
+        }
+        
+        // Convert to MailMessage without modifying self.emails
+        return results.map { mail in
+            MailMessage(
+                threadId: mail.thread_id,
+                subject: mail.subject,
+                from: mail.from,
+                date: mail.date,
+                timestamp: mail.timestamp,
+                tags: mail.tags
+            )
+        }
+    }
+    
     // MARK: - Internal: Tag
     
     private func tag(query: String, tags: String) async -> Bool {
