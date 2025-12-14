@@ -24,12 +24,13 @@ struct ContentView: View {
     @State private var showSearchPopup: Bool = false
 
     var body: some View {
-        notmuchView
-            .overlay {
-                if showSearchPopup {
-                    searchPopupOverlay
-                }
+        ZStack {
+            notmuchView
+            
+            if showSearchPopup {
+                searchPopupOverlay
             }
+        }
     }
     
     // MARK: - Search Popup Overlay
@@ -44,29 +45,24 @@ struct ContentView: View {
                     showSearchPopup = false
                 }
             
-            // Centered popup - using frame + alignment
-            VStack {
-                Spacer()
-                SearchPopupView(
-                    isPresented: $showSearchPopup,
-                    selectedEmailId: Binding(
-                        get: { selectedNotmuchEmails.first },
-                        set: { newId in
-                            if let id = newId {
-                                selectedNotmuchEmails = [id]
-                            }
+            // Centered popup
+            SearchPopupView(
+                isPresented: $showSearchPopup,
+                selectedEmailId: Binding(
+                    get: { selectedNotmuchEmails.first },
+                    set: { newId in
+                        if let id = newId {
+                            selectedNotmuchEmails = [id]
                         }
-                    ),
-                    onEmailSelected: { emailId in
-                        // Open email in detail view
-                        detailMode = .notmuchEmailDetail(emailId: emailId)
                     }
-                )
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .ignoresSafeArea()
+                ),
+                onEmailSelected: { emailId in
+                    // Open email in detail view
+                    detailMode = .notmuchEmailDetail(emailId: emailId)
+                }
+            )
         }
+        .ignoresSafeArea()
     }
     
     // MARK: - Notmuch View
