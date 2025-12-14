@@ -147,6 +147,36 @@ struct MailFolder: Identifiable, Hashable {
             self.specialType = nil
         }
     }
+    
+    /// Create from profile folder config (name, displayName, icon)
+    init(name: String, displayName: String, icon: String) {
+        self.id = "folder:\(name)"
+        self.name = name
+        self.displayName = displayName
+        self.icon = icon
+        self.accountId = "notmuch"
+        
+        switch name.lowercased() {
+        case "inbox":
+            self.isSpecial = true
+            self.specialType = .inbox
+        case "sent":
+            self.isSpecial = true
+            self.specialType = .sent
+        case "draft", "drafts":
+            self.isSpecial = true
+            self.specialType = .drafts
+        case "deleted", "trash":
+            self.isSpecial = true
+            self.specialType = .trash
+        case "archive":
+            self.isSpecial = true
+            self.specialType = .archive
+        default:
+            self.isSpecial = false
+            self.specialType = nil
+        }
+    }
 }
 
 /// Unified email model for notmuch

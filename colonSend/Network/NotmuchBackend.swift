@@ -145,9 +145,8 @@ class NotmuchBackend: ObservableObject {
         prefetchTask?.cancel()
         prefetchTask = nil
         
-        // For notmuch, "folder" is actually a tag
-        // Use ProfileManager to build query with account filter
-        currentQuery = ProfileManager.shared.buildQuery(tag: name)
+        // Use ProfileManager to build query from folder config with account filter
+        currentQuery = ProfileManager.shared.buildQuery(folderName: name)
         print("NOTMUCH selectFolder: \(currentQuery)")
         await search(currentQuery)
     }

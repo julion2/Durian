@@ -30,7 +30,9 @@ enum DateGrouping: Hashable, Comparable {
         case .yesterday: return 1
         case .thisWeek: return 2
         case .lastWeek: return 3
-        case .month(let year, let month): return 100 - (year * 12 + month)
+        case .month(let year, let month): 
+            // Muss > 3 sein (nach lastWeek), neuere Monate = kleinerer Wert
+            return 100 + (2100 - year) * 12 + (12 - month)
         }
     }
 
@@ -91,7 +93,9 @@ struct EmailListView: View {
             if groups[group] == nil { groups[group] = [] }
             groups[group]?.append(email)
         }
-        return groups.map { ($0.key, $0.value) }.sorted { $0.0 < $1.0 }
+        // Innerhalb jeder Gruppe nach timestamp sortieren (neueste zuerst)
+        return groups.map { ($0.key, $0.value.sorted { $0.timestamp > $1.timestamp }) }
+            .sorted { $0.0 < $1.0 }
     }
 
     private func categorizeDate(_ date: Date, todayStart: Date, yesterdayStart: Date, thisWeekStart: Date, lastWeekStart: Date, calendar: Calendar) -> DateGrouping {

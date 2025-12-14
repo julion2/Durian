@@ -14,13 +14,22 @@ class AccountManager: ObservableObject {
     
     // MARK: - Notmuch Properties
     @Published var notmuchBackend: NotmuchBackend?
-    @Published var mailFolders: [MailFolder] = []      // Tags
     @Published var mailMessages: [MailMessage] = []    // Messages
     @Published var selectedFolder: String = "inbox"
     @Published var isLoadingEmails = false
     @Published var loadingProgress = ""
     
     private var cancellables = Set<AnyCancellable>()
+    
+    /// Folders from current profile config
+    var mailFolders: [MailFolder] {
+        let profile = ProfileManager.shared.currentProfile
+        let folders = profile?.folders ?? ProfileManager.defaultFolders
+        
+        return folders.map { folder in
+            MailFolder(name: folder.name.lowercased(), displayName: folder.name, icon: folder.icon)
+        }
+    }
     
     private init() {
         setupNotmuchBackend()
@@ -41,7 +50,7 @@ class AccountManager: ObservableObject {
     
     private func syncFromNotmuch() {
         guard let backend = notmuchBackend else { return }
-        mailFolders = backend.folders
+        // mailFolders is now a computed property from ProfileManager
         mailMessages = backend.emails
         isLoadingEmails = backend.isLoadingEmails
         loadingProgress = backend.loadingProgress
