@@ -60,7 +60,7 @@ struct AppSettings: Codable {
     var autoFetchInterval: TimeInterval = 60.0 // 60 seconds
     var maxEmailsToFetch: Int = 10
     var notificationsEnabled: Bool = true
-    var theme: String = "auto"
+    var theme: String = "system"
     
     enum CodingKeys: String, CodingKey {
         case autoFetchEnabled = "auto_fetch_enabled"
