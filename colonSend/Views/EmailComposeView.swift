@@ -91,7 +91,7 @@ struct EmailComposeView: View {
                     .pickerStyle(.menu)
                     .labelsHidden()
                     .tint(.accentColor)
-                    .onChange(of: draft.from) { newAccount in
+                    .onChange(of: draft.from) { oldValue, newAccount in
                         if let account = accounts.first(where: { $0.email == newAccount }) {
                             selectedSignature = account.defaultSignature
                         }
@@ -165,12 +165,12 @@ struct EmailComposeView: View {
                         .pickerStyle(.menu)
                         .labelsHidden()
                         .tint(.accentColor)
-                        .onChange(of: selectedSignature) { _ in
+                        .onChange(of: selectedSignature) {
                             updateBodyWithSignature()
                         }
                     }
                 }
-                .onChange(of: draft.subject) { _ in
+                .onChange(of: draft.subject) {
                     scheduleAutoSave()
                 }
                 .padding(.horizontal, 16)
@@ -188,7 +188,7 @@ struct EmailComposeView: View {
                     .font(.body)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(12)
-                    .onChange(of: draft.body) { _ in
+                    .onChange(of: draft.body) {
                         scheduleAutoSave()
                     }
             }
@@ -235,13 +235,13 @@ struct EmailComposeView: View {
         } message: {
             Text(errorMessage)
         }
-        .onChange(of: triggerSend) { newValue in
+        .onChange(of: triggerSend) { oldValue, newValue in
             if newValue {
                 sendEmail()
                 triggerSend = false
             }
         }
-        .onChange(of: draft) { newDraft in
+        .onChange(of: draft) { oldValue, newDraft in
             currentDraft = newDraft
         }
         .onAppear {
