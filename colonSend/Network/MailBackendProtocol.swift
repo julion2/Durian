@@ -2,12 +2,71 @@
 //  MailBackendProtocol.swift
 //  colonSend
 //
-//  Abstract protocol for mail backends (IMAP, notmuch, etc.)
+//  Abstract protocol for mail backends (notmuch)
 //
 
 import Foundation
 import Combine
 import AppKit
+
+// MARK: - Email Body State
+
+enum EmailBodyState: Equatable, Hashable {
+    case notLoaded
+    case loading
+    case loaded(body: String, attributedBody: NSAttributedString?)
+    case failed(message: String)
+    
+    var displayBody: String {
+        switch self {
+        case .notLoaded:
+            return "Tap to load email content"
+        case .loading:
+            return "Loading..."
+        case .loaded(let body, _):
+            return body.isEmpty ? "No content available" : body
+        case .failed(let message):
+            return "Failed to load: \(message)"
+        }
+    }
+    
+    var attributedBody: NSAttributedString? {
+        switch self {
+        case .loaded(_, let attributed):
+            return attributed
+        default:
+            return nil
+        }
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        switch self {
+        case .notLoaded:
+            hasher.combine(0)
+        case .loading:
+            hasher.combine(1)
+        case .loaded(let body, _):
+            hasher.combine(2)
+            hasher.combine(body)
+        case .failed(let message):
+            hasher.combine(3)
+            hasher.combine(message)
+        }
+    }
+    
+    static func == (lhs: EmailBodyState, rhs: EmailBodyState) -> Bool {
+        switch (lhs, rhs) {
+        case (.notLoaded, .notLoaded), (.loading, .loading):
+            return true
+        case (.loaded(let lBody, _), .loaded(let rBody, _)):
+            return lBody == rBody
+        case (.failed(let lMsg), .failed(let rMsg)):
+            return lMsg == rMsg
+        default:
+            return false
+        }
+    }
+}
 
 // MARK: - Mail Backend Protocol
 
@@ -59,35 +118,6 @@ struct MailFolder: Identifiable, Hashable {
         case inbox, sent, drafts, trash, archive, junk
     }
     
-    /// Create from IMAP folder
-    init(from imapFolder: IMAPFolder) {
-        self.id = imapFolder.id.uuidString
-        self.name = imapFolder.name
-        self.displayName = imapFolder.name
-        self.icon = imapFolder.icon
-        self.accountId = imapFolder.accountId
-        
-        if imapFolder.name.uppercased() == "INBOX" || imapFolder.attributes.contains("\\Inbox") {
-            self.isSpecial = true
-            self.specialType = .inbox
-        } else if imapFolder.isDraftsFolder {
-            self.isSpecial = true
-            self.specialType = .drafts
-        } else if imapFolder.isSentFolder {
-            self.isSpecial = true
-            self.specialType = .sent
-        } else if imapFolder.attributes.contains("\\Trash") {
-            self.isSpecial = true
-            self.specialType = .trash
-        } else if imapFolder.attributes.contains("\\Junk") {
-            self.isSpecial = true
-            self.specialType = .junk
-        } else {
-            self.isSpecial = false
-            self.specialType = nil
-        }
-    }
-    
     /// Create for notmuch tag
     init(tag: String, icon: String) {
         self.id = "tag:\(tag)"
@@ -119,16 +149,14 @@ struct MailFolder: Identifiable, Hashable {
     }
 }
 
-/// Unified email model that works for both IMAP and notmuch
+/// Unified email model for notmuch
 struct MailMessage: Identifiable, Hashable {
-    let id: String  // thread_id for notmuch, UUID string for IMAP
-    let uid: UInt32?  // Only for IMAP
-    let file: String?  // Only for notmuch (path to mail file)
+    let id: String  // thread_id for notmuch
     let subject: String
     let from: String
     let to: String?
     let date: String
-    let tags: String?  // Only for notmuch
+    let tags: String?
     var body: String?
     var htmlBody: String?  // HTML version of body (for WebView rendering)
     var attributedBody: NSAttributedString?
@@ -137,30 +165,9 @@ struct MailMessage: Identifiable, Hashable {
     var bodyState: EmailBodyState
     var incomingAttachments: [IncomingAttachmentMetadata]
     
-    /// Create from IMAP email
-    init(from email: IMAPEmail) {
-        self.id = email.id.uuidString
-        self.uid = email.uid
-        self.file = nil
-        self.subject = email.subject
-        self.from = email.from
-        self.to = nil
-        self.date = email.date
-        self.tags = nil
-        self.body = email.body
-        self.htmlBody = nil
-        self.attributedBody = email.attributedBody
-        self.isRead = email.isRead
-        self.hasAttachment = !email.incomingAttachments.isEmpty
-        self.bodyState = email.bodyState
-        self.incomingAttachments = email.incomingAttachments
-    }
-    
     /// Create from notmuch mail
     init(threadId: String, subject: String, from: String, date: String, tags: String) {
         self.id = threadId
-        self.uid = nil
-        self.file = nil  // No longer needed - mailctl resolves file from thread_id
         self.subject = subject
         self.from = from
         self.to = nil
@@ -197,12 +204,7 @@ struct MailMessage: Identifiable, Hashable {
     }
 }
 
-// MARK: - Backend Type Enum
 
-enum MailBackendType {
-    case imap
-    case notmuch
-}
 
 // MARK: - Default Tags for Notmuch
 

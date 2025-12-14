@@ -13,8 +13,6 @@ struct EmailComposeView: View {
     @StateObject private var sendingManager = EmailSendingManager.shared
     
     let accounts: [MailAccount]
-    let replyTo: IMAPEmail?
-    let forward: IMAPEmail?
     let existingDraft: EmailDraft?
     @Binding var triggerSend: Bool
     @Binding var currentDraft: EmailDraft?
@@ -34,10 +32,8 @@ struct EmailComposeView: View {
     private let maxTotalSize: Int64 = 50_000_000
     private let maxAttachments: Int = 10
     
-    init(accounts: [MailAccount], replyTo: IMAPEmail? = nil, forward: IMAPEmail? = nil, existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
+    init(accounts: [MailAccount], existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
-        self.replyTo = replyTo
-        self.forward = forward
         self.existingDraft = existingDraft
         self._triggerSend = triggerSend
         self._currentDraft = currentDraft
@@ -49,34 +45,6 @@ struct EmailComposeView: View {
         if let existing = existingDraft {
             _draft = State(initialValue: existing)
             _selectedSignature = State(initialValue: nil)
-        } else if let email = replyTo {
-            let toAddress = Self.extractEmailAddress(from: email.from)
-            let replySubject = email.subject.hasPrefix("Re:") ? email.subject : "Re: \(email.subject)"
-            let quotedBody = "---\nOn \(email.date), \(email.from) wrote:\n> \(email.body ?? "")"
-            
-            _draft = State(initialValue: EmailDraft(
-                from: defaultAccount,
-                to: [toAddress],
-                subject: replySubject,
-                body: "\n\n" + quotedBody,
-                inReplyTo: String(email.uid)
-            ))
-            
-            let account = accounts.first { $0.email == defaultAccount }
-            _selectedSignature = State(initialValue: account?.defaultSignature)
-        } else if let email = forward {
-            let forwardSubject = email.subject.hasPrefix("Fwd:") ? email.subject : "Fwd: \(email.subject)"
-            let forwardedBody = "---------- Forwarded message ----------\nFrom: \(email.from)\nDate: \(email.date)\nSubject: \(email.subject)\n\n\(email.body ?? "")"
-            
-            _draft = State(initialValue: EmailDraft(
-                from: defaultAccount,
-                to: [],
-                subject: forwardSubject,
-                body: "\n\n" + forwardedBody
-            ))
-            
-            let account = accounts.first { $0.email == defaultAccount }
-            _selectedSignature = State(initialValue: account?.defaultSignature)
         } else {
             _draft = State(initialValue: EmailDraft(from: defaultAccount))
             
@@ -244,7 +212,7 @@ struct EmailComposeView: View {
             .padding()
             .frame(height: 40)
         }
-        .navigationTitle(replyTo != nil ? "Reply" : (forward != nil ? "Forward" : "New Message"))
+        .navigationTitle(existingDraft != nil ? "Edit Draft" : "New Message")
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button(action: {
@@ -403,25 +371,6 @@ struct EmailComposeView: View {
         
         print("DRAFTING: Saving draft to local storage")
         DraftManager.shared.saveDraft(updatedDraft)
-        
-        print("DRAFTING: Saving draft to IMAP server for account: \(updatedDraft.from)")
-        
-        do {
-            if let oldUID = draft.uid, let accountId = draft.accountId {
-                print("DRAFTING: Deleting old server draft UID: \(oldUID)")
-                try? await AccountManager.shared.deleteDraftFromIMAP(uid: oldUID, accountId: accountId)
-            }
-            
-            let uid = try await AccountManager.shared.saveDraftToIMAP(draft: updatedDraft, accountId: updatedDraft.from)
-            
-            if let uid = uid {
-                print("DRAFTING: Server save successful - UID: \(uid)")
-                draft.uid = uid
-                draft.accountId = updatedDraft.from
-            }
-        } catch {
-            print("DRAFTING: Server save failed (local copy preserved) - \(error)")
-        }
     }
     
     private func sendEmail() {
@@ -609,8 +558,6 @@ struct AttachmentChip: View {
                         defaultSignature: nil
                     )
                 ],
-                replyTo: nil,
-                forward: nil,
                 existingDraft: nil,
                 triggerSend: $triggerSend,
                 currentDraft: $draft,

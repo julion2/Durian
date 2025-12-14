@@ -55,13 +55,12 @@ class EmailSendingManager: ObservableObject {
             sendingProgress = "Sending email..."
             try await client.send(draft: draft)
             
-            sendingProgress = "Saving to Sent folder..."
-            try await saveSentEmail(draft: draft, accountEmail: accountEmail)
-            
             sendingProgress = "Email sent successfully"
             await client.disconnect()
             
             DraftManager.shared.deleteDraft(id: draft.id)
+            
+            // Note: Sent emails are synced to local maildir via mbsync
             
         } catch let error as EmailSendingError {
             lastError = error
@@ -71,28 +70,5 @@ class EmailSendingManager: ObservableObject {
             lastError = sendError
             throw sendError
         }
-    }
-    
-    private func saveSentEmail(draft: EmailDraft, accountEmail: String) async throws {
-        guard let sentFolder = AccountManager.shared.allFolders.first(where: { 
-            $0.accountId == accountEmail && $0.isSentFolder 
-        }) else {
-            print("⚠️ No Sent folder found for account: \(accountEmail)")
-            return
-        }
-        
-        guard let client = AccountManager.shared.getClient(for: accountEmail) else {
-            print("⚠️ No IMAP client found for account: \(accountEmail)")
-            return
-        }
-        
-        let message = formatEmailMessage(draft)
-        let _ = try await client.appendMessage(to: sentFolder.name, message: message, flags: ["\\Seen"])
-        
-        print("✅ Email saved to Sent folder")
-    }
-    
-    private func formatEmailMessage(_ draft: EmailDraft) -> String {
-        return MIMEBuilder.buildMessage(from: draft)
     }
 }
