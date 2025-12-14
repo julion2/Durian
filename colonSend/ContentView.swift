@@ -20,6 +20,7 @@ struct ContentView: View {
     @StateObject private var accountManager = AccountManager.shared
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
+    @StateObject private var profileManager = ProfileManager.shared
     @State private var selectedFolderID: UUID? = nil
     @State private var selectedTagID: String? = "inbox"  // NEW: for notmuch
     @State private var selectedEmails: Set<Email.ID> = []  // Multi-selection for visual mode
@@ -55,8 +56,30 @@ struct ContentView: View {
     @ViewBuilder
     private var notmuchView: some View {
         NavigationSplitView {
-            // Sidebar: Tags
+            // Sidebar: Profile Picker + Tags
             List(selection: $selectedTagID) {
+                // Profile Picker
+                if profileManager.profiles.count > 1 {
+                    Section("Profile") {
+                        Picker("Profile", selection: Binding(
+                            get: { profileManager.currentProfile },
+                            set: { newProfile in
+                                if let profile = newProfile {
+                                    Task {
+                                        await accountManager.switchProfile(profile)
+                                    }
+                                }
+                            }
+                        )) {
+                            ForEach(profileManager.profiles) { profile in
+                                Text(profile.name).tag(profile as Profile?)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                    }
+                }
+                
                 Section("Tags") {
                     ForEach(accountManager.mailFolders) { folder in
                         Label(folder.displayName, systemImage: folder.icon)

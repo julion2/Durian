@@ -109,6 +109,20 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
+    // MARK: - Profile Switching (Notmuch)
+    
+    /// Switch to a different profile and reload the current tag/folder
+    func switchProfile(_ profile: Profile) async {
+        guard USE_NOTMUCH_BACKEND else { return }
+        
+        // Update ProfileManager
+        ProfileManager.shared.currentProfile = profile
+        print("NOTMUCH AccountManager: Switched to profile '\(profile.name)'")
+        
+        // Reload current folder with new profile filter
+        await selectNotmuchTag(selectedFolder)
+    }
+    
     // MARK: - Notmuch Email Operations
     
     func fetchNotmuchEmailBody(id: String) async {

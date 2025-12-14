@@ -157,10 +157,10 @@ struct MailMessage: Identifiable, Hashable {
     }
     
     /// Create from notmuch mail
-    init(threadId: String, file: String, subject: String, from: String, date: String, tags: String) {
+    init(threadId: String, subject: String, from: String, date: String, tags: String) {
         self.id = threadId
         self.uid = nil
-        self.file = file
+        self.file = nil  // No longer needed - mailctl resolves file from thread_id
         self.subject = subject
         self.from = from
         self.to = nil

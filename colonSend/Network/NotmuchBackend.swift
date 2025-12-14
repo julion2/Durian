@@ -15,7 +15,7 @@ struct MailctlRequest: Encodable {
     let cmd: String
     var query: String?
     var limit: Int?
-    var file: String?
+    var thread: String?  // thread_id for show command
     var tags: String?
 }
 
@@ -28,7 +28,6 @@ struct MailctlResponse: Decodable {
 
 struct NotmuchMailResult: Decodable {
     let thread_id: String
-    let file: String
     let subject: String
     let from: String
     let date: String
@@ -68,7 +67,12 @@ class NotmuchBackend: ObservableObject {
     
     // Internal state
     private var currentQuery = "tag:inbox"
-    private var emailFiles: [String: String] = [:]  // id -> file path
+    
+    // Cancellation support for prefetch
+    private var prefetchTask: Task<Void, Never>?
+    // Use nonisolated(unsafe) to allow access from background thread
+    // This is safe because we only set it from MainActor and read from background
+    nonisolated(unsafe) private var shouldCancelPrefetch = false
     
     init() {
         // Set default tags as folders
@@ -135,25 +139,28 @@ class NotmuchBackend: ObservableObject {
     // MARK: - Protocol: Folder/Tag Selection
     
     func selectFolder(_ name: String) async {
+        // Cancel any running prefetch to free the semaphore
+        shouldCancelPrefetch = true
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        
         // For notmuch, "folder" is actually a tag
-        currentQuery = "tag:\(name)"
+        // Use ProfileManager to build query with account filter
+        currentQuery = ProfileManager.shared.buildQuery(tag: name)
+        print("NOTMUCH selectFolder: \(currentQuery)")
         await search(currentQuery)
     }
     
     // MARK: - Protocol: Email Operations
     
     func fetchEmailBody(id: String) async {
-        guard let file = emailFiles[id] else {
-            print("NOTMUCH ERROR: No file for email id \(id)")
-            return
-        }
-        
         // Find and update email state to loading
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].bodyState = .loading
         }
         
-        let request = MailctlRequest(cmd: "show", file: file)
+        // Use thread_id directly - mailctl will resolve the file path
+        let request = MailctlRequest(cmd: "show", thread: id)
         
         guard let response = await sendCommand(request),
               response.ok,
@@ -195,7 +202,6 @@ class NotmuchBackend: ObservableObject {
         let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
         if success {
             emails.removeAll { $0.id == id }
-            emailFiles.removeValue(forKey: id)
         }
     }
     
@@ -208,7 +214,8 @@ class NotmuchBackend: ObservableObject {
     // MARK: - Prefetching
     
     /// Prefetch bodies for first N emails (called after search)
-    func prefetchInitialBodies(count: Int = 5) async {
+    /// Now runs sequentially to avoid semaphore blocking, with cancellation support
+    private func prefetchInitialBodiesInternal(count: Int = 5) async {
         let emailsToFetch = emails.prefix(count).filter { email in
             if case .notLoaded = email.bodyState { return true }
             return false
@@ -218,13 +225,22 @@ class NotmuchBackend: ObservableObject {
         
         print("NOTMUCH Prefetching \(emailsToFetch.count) bodies...")
         
-        // Parallel laden (alle gleichzeitig)
-        await withTaskGroup(of: Void.self) { group in
-            for email in emailsToFetch {
-                group.addTask {
-                    await self.fetchEmailBody(id: email.id)
-                }
+        // Sequential fetching with cancellation check
+        for email in emailsToFetch {
+            // Check if we should cancel (new search started)
+            if shouldCancelPrefetch || Task.isCancelled {
+                print("NOTMUCH Prefetch cancelled")
+                return
             }
+            await fetchEmailBody(id: email.id)
+        }
+    }
+    
+    /// Start prefetch as a cancellable task
+    func startPrefetch(count: Int = 5) {
+        shouldCancelPrefetch = false
+        prefetchTask = Task {
+            await prefetchInitialBodiesInternal(count: count)
         }
     }
     
@@ -256,7 +272,6 @@ class NotmuchBackend: ObservableObject {
         emails = results.map { mail in
             MailMessage(
                 threadId: mail.thread_id,
-                file: mail.file,
                 subject: mail.subject,
                 from: mail.from,
                 date: mail.date,
@@ -264,15 +279,15 @@ class NotmuchBackend: ObservableObject {
             )
         }
         
-        // Store file paths for later show() calls
-        emailFiles = Dictionary(uniqueKeysWithValues: results.map { ($0.thread_id, $0.file) })
-        
         print("NOTMUCH Search returned \(emails.count) emails")
         isLoadingEmails = false
         loadingProgress = ""
         
-        // Prefetch first 5 bodies
-        await prefetchInitialBodies(count: 5)
+        // Start prefetch after short delay to let UI update first
+        Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            startPrefetch(count: 5)
+        }
     }
     
     // MARK: - Internal: Tag
@@ -317,7 +332,17 @@ class NotmuchBackend: ObservableObject {
             return await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     // Only one request at a time to prevent response mixing
-                    self.requestSemaphore.wait()
+                    // Use timeout-based wait so we can check for cancellation
+                    var waitResult = self.requestSemaphore.wait(timeout: .now() + 0.1)
+                    while waitResult == .timedOut {
+                        // Check if prefetch should be cancelled
+                        if self.shouldCancelPrefetch {
+                            print("NOTMUCH sendCommand: Cancelled while waiting for semaphore")
+                            continuation.resume(returning: nil)
+                            return
+                        }
+                        waitResult = self.requestSemaphore.wait(timeout: .now() + 0.1)
+                    }
                     defer { self.requestSemaphore.signal() }
                     
                     stdin.write(data)
