@@ -13,8 +13,10 @@ class KeyBuffer: ObservableObject {
     
     // MARK: - Configuration
     
-    /// Timeout in seconds before buffer is cleared
-    private let timeout: TimeInterval
+    /// Timeout in seconds before buffer is cleared (from config)
+    private var timeout: TimeInterval {
+        KeymapsManager.shared.keymaps.globalSettings.sequenceTimeout
+    }
     
     // MARK: - State
     
@@ -34,8 +36,8 @@ class KeyBuffer: ObservableObject {
     
     // MARK: - Init
     
-    init(timeout: TimeInterval = 1.0) {  // 1 second for comfortable typing of sequences
-        self.timeout = timeout
+    init() {
+        // Timeout is now read from KeymapsManager.shared.keymaps.globalSettings.sequenceTimeout
     }
     
     // MARK: - Public API

@@ -2,7 +2,7 @@
 //  SequenceMatcher.swift
 //  colonSend
 //
-//  Pattern matching for key sequences
+//  Pattern matching for key sequences - dynamically loaded from keymaps.toml
 //
 
 import Foundation
@@ -10,75 +10,95 @@ import Foundation
 /// Matches key buffer contents against defined sequences
 class SequenceMatcher {
     
-    // MARK: - Sequence Definitions
+    // MARK: - Singleton
     
-    /// All defined key sequences
-    private let sequences: [SequenceDefinition] = [
-        // Single-key navigation
-        SequenceDefinition("j", .nextEmail, "Next email"),
-        SequenceDefinition("k", .prevEmail, "Previous email"),
-        SequenceDefinition("G", .lastEmail, "Last email (Shift+G)"),
-        
-        // Half-page navigation (Ctrl+d/u)
-        SequenceDefinition("ctrl+d", .pageDown, "Half-page down"),
-        SequenceDefinition("ctrl+u", .pageUp, "Half-page up"),
-        
-        // Double-tap sequences
-        SequenceDefinition("gg", .firstEmail, "First email"),
-        SequenceDefinition("dd", .deleteEmail, "Delete email"),
-        SequenceDefinition("zz", .centerView, "Center current email in view"),
-        
-        // Email actions
-        SequenceDefinition("o", .openEmail, "Open email"),
-        SequenceDefinition("c", .compose, "Compose new email"),
-        SequenceDefinition("r", .reply, "Reply to email"),
-        SequenceDefinition("R", .replyAll, "Reply to all"),
-        SequenceDefinition("f", .forward, "Forward email"),
-        SequenceDefinition("u", .toggleRead, "Toggle read/unread"),
-        SequenceDefinition("s", .toggleStar, "Toggle star"),
-        
-        // View control
-        SequenceDefinition("q", .closeDetail, "Close/back"),
-        SequenceDefinition("/", .search, "Search emails"),
-        
-        // Folder navigation (go-commands)
-        SequenceDefinition("gi", .goInbox, "Go to inbox"),
-        SequenceDefinition("gs", .goSent, "Go to sent"),
-        SequenceDefinition("gd", .goDrafts, "Go to drafts"),
-        SequenceDefinition("ga", .goArchive, "Go to archive"),
-        
-        // Visual Mode
-        SequenceDefinition("v", .enterVisualMode, "Enter visual mode"),
-    ]
+    static let shared = SequenceMatcher()
     
-    /// Prefixes that indicate more keys might follow
-    /// These cause partial match when alone
-    private let partialPrefixes: Set<String> = ["g", "d", "y", "z"]
+    // MARK: - Dynamic Sequence Storage
     
-    // MARK: - Lookup Cache
+    /// All defined key sequences (loaded from config)
+    private var sequences: [SequenceDefinition] = []
     
     /// Quick lookup by sequence string
-    private lazy var sequenceLookup: [String: KeymapAction] = {
-        var lookup: [String: KeymapAction] = [:]
-        for seq in sequences {
-            lookup[seq.sequence] = seq.action
-        }
-        return lookup
-    }()
+    private var sequenceLookup: [String: KeymapAction] = [:]
     
     /// All possible sequence prefixes for partial matching
-    private lazy var allPrefixes: Set<String> = {
-        var prefixes = partialPrefixes
-        // Add all multi-char sequence prefixes
+    private var allPrefixes: Set<String> = []
+    
+    /// Actions that support count prefix (from config)
+    private var countSupportedActions: Set<KeymapAction> = []
+    
+    // MARK: - Init
+    
+    private init() {
+        reloadFromConfig()
+        
+        // Observe config changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(configDidChange),
+            name: .keymapsDidChange,
+            object: nil
+        )
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - Config Loading
+    
+    @objc private func configDidChange() {
+        reloadFromConfig()
+    }
+    
+    /// Reload sequences from KeymapsManager config
+    func reloadFromConfig() {
+        let keymapEntries = KeymapsManager.shared.keymaps.keymaps
+        
+        // Build sequences from config - entries without modifiers (vim-style keys)
+        // Note: Entries WITH modifiers are handled by KeymapHandler.handleLegacyKeymap()
+        sequences = keymapEntries
+            .filter { $0.enabled && $0.modifiers.isEmpty }
+            .compactMap { entry -> SequenceDefinition? in
+                guard let action = KeymapAction(rawValue: entry.action) else {
+                    print("SEQMATCH: Unknown action '\(entry.action)' - skipping")
+                    return nil
+                }
+                return SequenceDefinition(entry.key, action, entry.description)
+            }
+        
+        // Build count-supported actions set from config
+        countSupportedActions = Set(
+            keymapEntries
+                .filter { $0.supportsCount && $0.enabled }
+                .compactMap { KeymapAction(rawValue: $0.action) }
+        )
+        
+        rebuildLookups()
+        
+        print("SEQMATCH: Loaded \(sequences.count) sequences, \(countSupportedActions.count) with count support")
+    }
+    
+    private func rebuildLookups() {
+        // Quick lookup by sequence string
+        sequenceLookup = [:]
+        for seq in sequences {
+            sequenceLookup[seq.sequence] = seq.action
+        }
+        
+        // Build prefixes for partial matching (automatically from multi-char sequences)
+        allPrefixes = []
         for seq in sequences where seq.sequence.count > 1 {
-            // Add each prefix of the sequence
+            // Add each prefix of the sequence (e.g., "gg" -> "g", "gi" -> "g")
             for i in 1..<seq.sequence.count {
                 let prefix = String(seq.sequence.prefix(i))
-                prefixes.insert(prefix)
+                allPrefixes.insert(prefix)
             }
         }
-        return prefixes
-    }()
+        
+        print("SEQMATCH: Prefixes for partial matching: \(allPrefixes.sorted())")
+    }
     
     // MARK: - Public API
     
@@ -91,7 +111,7 @@ class SequenceMatcher {
             return .noMatch
         }
         
-        // Parse count prefix if present
+        // Parse count prefix if present (e.g., "5j" -> count=5, sequence="j")
         let (count, sequence) = parseCountAndSequence(buffer)
         
         // If only digits, waiting for action
@@ -102,8 +122,8 @@ class SequenceMatcher {
         // Check for exact match
         if let action = sequenceLookup[sequence] {
             let finalCount = count ?? 1
-            // Validate count support
-            if finalCount > 1 && !action.supportsCount {
+            // Validate count support from config
+            if finalCount > 1 && !countSupportedActions.contains(action) {
                 return .match(action: action, count: 1)
             }
             return .match(action: action, count: finalCount)
@@ -137,6 +157,11 @@ class SequenceMatcher {
         sequences
     }
     
+    /// Check if an action supports count prefix
+    func supportsCount(_ action: KeymapAction) -> Bool {
+        countSupportedActions.contains(action)
+    }
+    
     // MARK: - Private
     
     /// Parse count prefix from buffer
@@ -158,10 +183,4 @@ class SequenceMatcher {
         let count = digits.isEmpty ? nil : Int(digits)
         return (count, rest)
     }
-}
-
-// MARK: - Singleton
-
-extension SequenceMatcher {
-    static let shared = SequenceMatcher()
 }

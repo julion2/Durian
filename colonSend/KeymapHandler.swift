@@ -143,6 +143,11 @@ class KeymapHandler: ObservableObject {
     }
     
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
+        // Skip if a text input field is focused (search, compose, etc.)
+        if isTextInputFocused() {
+            return false
+        }
+        
         guard isAppInForeground,
               keymapsManager.keymaps.globalSettings.keymapsEnabled else {
             print("KEYMAPS: Event ignored - app not in foreground or keymaps disabled")
@@ -209,5 +214,26 @@ class KeymapHandler: ObservableObject {
         }
         
         return modifiers
+    }
+    
+    /// Check if a text input field is currently focused
+    /// This prevents vim keymaps from interfering with typing in search, compose, etc.
+    private func isTextInputFocused() -> Bool {
+        guard let firstResponder = NSApp.keyWindow?.firstResponder else {
+            return false
+        }
+        
+        // NSTextView is the editor for TextField, TextEditor, WebView input, etc.
+        if firstResponder is NSTextView {
+            return true
+        }
+        
+        // Directly editable NSTextField
+        if let textField = firstResponder as? NSTextField,
+           textField.isEditable {
+            return true
+        }
+        
+        return false
     }
 }

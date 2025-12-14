@@ -3,6 +3,12 @@ import SwiftUI
 import Combine
 import TOMLDecoder
 
+// MARK: - Notifications
+
+extension Notification.Name {
+    static let keymapsDidChange = Notification.Name("keymapsDidChange")
+}
+
 class KeymapsManager: ObservableObject {
     static let shared = KeymapsManager()
     
@@ -37,6 +43,9 @@ class KeymapsManager: ObservableObject {
             print("KEYMAPS_ERROR: Failed to load: \(error)")
             keymaps = KeymapConfig()
         }
+        
+        // Notify observers (SequenceMatcher, etc.)
+        NotificationCenter.default.post(name: .keymapsDidChange, object: nil)
     }
     
     private func migrateFromJSON(jsonURL: URL, tomlURL: URL) {
@@ -69,12 +78,15 @@ class KeymapsManager: ObservableObject {
     
     private func generateTOML(from config: KeymapConfig) -> String {
         var toml = "# colonSend Keymaps Configuration\n"
-        toml += "# Vim-style keybindings for email navigation\n\n"
+        toml += "# All vim-style keybindings are configurable here\n"
+        toml += "# sequence = true: Multi-key sequence like 'gg', 'dd', 'gi'\n"
+        toml += "# supports_count = true: Accepts count prefix like '5j', '3dd'\n\n"
         
         // Global settings
         toml += "[global_settings]\n"
         toml += "keymaps_enabled = \(config.globalSettings.keymapsEnabled)\n"
-        toml += "show_keymap_hints = \(config.globalSettings.showKeymapHints)\n\n"
+        toml += "show_keymap_hints = \(config.globalSettings.showKeymapHints)\n"
+        toml += "sequence_timeout = \(config.globalSettings.sequenceTimeout)\n\n"
         
         // Keymaps array
         for entry in config.keymaps {
@@ -83,7 +95,9 @@ class KeymapsManager: ObservableObject {
             toml += "key = \"\(entry.key)\"\n"
             toml += "modifiers = [\(entry.modifiers.map { "\"\($0)\"" }.joined(separator: ", "))]\n"
             toml += "description = \"\(entry.description)\"\n"
-            toml += "enabled = \(entry.enabled)\n\n"
+            toml += "enabled = \(entry.enabled)\n"
+            toml += "sequence = \(entry.sequence)\n"
+            toml += "supports_count = \(entry.supportsCount)\n\n"
         }
         
         return toml
@@ -100,8 +114,131 @@ class KeymapsManager: ObservableObject {
     }
     
     private func createDefaultKeymaps() {
-        let defaultKeymaps = KeymapConfig()
-        keymaps = defaultKeymaps
+        var config = KeymapConfig()
+        config.globalSettings = KeymapGlobalSettings(
+            keymapsEnabled: true,
+            showKeymapHints: true,
+            sequenceTimeout: 1.0
+        )
+        config.keymaps = [
+            // ═══════════════════════════════════════════════════════════
+            // NAVIGATION - Single keys
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "next_email", key: "j", modifiers: [],
+                       description: "Next email (vim j)", enabled: true,
+                       sequence: false, supportsCount: true),
+            KeymapEntry(action: "prev_email", key: "k", modifiers: [],
+                       description: "Previous email (vim k)", enabled: true,
+                       sequence: false, supportsCount: true),
+            KeymapEntry(action: "next_email", key: "Down", modifiers: [],
+                       description: "Next email (arrow)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "prev_email", key: "Up", modifiers: [],
+                       description: "Previous email (arrow)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "last_email", key: "G", modifiers: [],
+                       description: "Last email (Shift+G)", enabled: true,
+                       sequence: false, supportsCount: false),
+            
+            // ═══════════════════════════════════════════════════════════
+            // NAVIGATION - Sequences
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "first_email", key: "gg", modifiers: [],
+                       description: "First email (vim gg)", enabled: true,
+                       sequence: true, supportsCount: false),
+            KeymapEntry(action: "center_view", key: "zz", modifiers: [],
+                       description: "Center current email in view", enabled: true,
+                       sequence: true, supportsCount: false),
+            
+            // ═══════════════════════════════════════════════════════════
+            // PAGE NAVIGATION
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"],
+                       description: "Half-page down (Ctrl+d)", enabled: true,
+                       sequence: false, supportsCount: true),
+            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"],
+                       description: "Half-page up (Ctrl+u)", enabled: true,
+                       sequence: false, supportsCount: true),
+            
+            // ═══════════════════════════════════════════════════════════
+            // EMAIL ACTIONS
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "open_email", key: "o", modifiers: [],
+                       description: "Open email", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "open_email", key: "Return", modifiers: [],
+                       description: "Open email (Enter)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "compose", key: "c", modifiers: [],
+                       description: "Compose new email", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply", key: "r", modifiers: [],
+                       description: "Reply to email", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply_all", key: "R", modifiers: [],
+                       description: "Reply to all (Shift+R)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "forward", key: "f", modifiers: [],
+                       description: "Forward email", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_read", key: "u", modifiers: [],
+                       description: "Toggle read/unread", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_star", key: "s", modifiers: [],
+                       description: "Toggle star", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "delete", key: "dd", modifiers: [],
+                       description: "Delete email (vim dd)", enabled: true,
+                       sequence: true, supportsCount: true),
+            
+            // ═══════════════════════════════════════════════════════════
+            // FOLDER NAVIGATION (go-commands)
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "go_inbox", key: "gi", modifiers: [],
+                       description: "Go to inbox", enabled: true,
+                       sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_sent", key: "gs", modifiers: [],
+                       description: "Go to sent", enabled: true,
+                       sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_drafts", key: "gd", modifiers: [],
+                       description: "Go to drafts", enabled: true,
+                       sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_archive", key: "ga", modifiers: [],
+                       description: "Go to archive", enabled: true,
+                       sequence: true, supportsCount: false),
+            
+            // ═══════════════════════════════════════════════════════════
+            // SEARCH
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "search", key: "/", modifiers: [],
+                       description: "Search emails (vim /)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "search", key: "/", modifiers: ["cmd"],
+                       description: "Search emails (Cmd+/)", enabled: true,
+                       sequence: false, supportsCount: false),
+            
+            // ═══════════════════════════════════════════════════════════
+            // VIEW CONTROL
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "close_detail", key: "q", modifiers: [],
+                       description: "Close/back (vim q)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
+                       description: "Close/back (Escape)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"],
+                       description: "Reload inbox (Cmd+r)", enabled: true,
+                       sequence: false, supportsCount: false),
+            
+            // ═══════════════════════════════════════════════════════════
+            // VISUAL MODE
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [],
+                       description: "Enter visual mode for multi-select", enabled: true,
+                       sequence: false, supportsCount: false),
+        ]
+        
+        keymaps = config
         saveKeymaps()
     }
     
@@ -179,14 +316,68 @@ struct KeymapEntry: Codable {
     var modifiers: [String]
     var description: String
     var enabled: Bool
+    var sequence: Bool
+    var supportsCount: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case action
+        case key
+        case modifiers
+        case description
+        case enabled
+        case sequence
+        case supportsCount = "supports_count"
+    }
+    
+    // Custom init for backwards compatibility with old configs
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        action = try container.decode(String.self, forKey: .action)
+        key = try container.decode(String.self, forKey: .key)
+        modifiers = try container.decode([String].self, forKey: .modifiers)
+        description = try container.decode(String.self, forKey: .description)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        // Defaults for old configs without these fields
+        sequence = try container.decodeIfPresent(Bool.self, forKey: .sequence) ?? false
+        supportsCount = try container.decodeIfPresent(Bool.self, forKey: .supportsCount) ?? false
+    }
+    
+    // Memberwise init for creating entries programmatically
+    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false) {
+        self.action = action
+        self.key = key
+        self.modifiers = modifiers
+        self.description = description
+        self.enabled = enabled
+        self.sequence = sequence
+        self.supportsCount = supportsCount
+    }
 }
 
 struct KeymapGlobalSettings: Codable {
     var keymapsEnabled: Bool = true
     var showKeymapHints: Bool = true
+    var sequenceTimeout: Double = 1.0
     
     enum CodingKeys: String, CodingKey {
         case keymapsEnabled = "keymaps_enabled"
         case showKeymapHints = "show_keymap_hints"
+        case sequenceTimeout = "sequence_timeout"
+    }
+    
+    init() {}
+    
+    init(keymapsEnabled: Bool = true, showKeymapHints: Bool = true, sequenceTimeout: Double = 1.0) {
+        self.keymapsEnabled = keymapsEnabled
+        self.showKeymapHints = showKeymapHints
+        self.sequenceTimeout = sequenceTimeout
+    }
+    
+    // Custom init for backwards compatibility
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keymapsEnabled = try container.decodeIfPresent(Bool.self, forKey: .keymapsEnabled) ?? true
+        showKeymapHints = try container.decodeIfPresent(Bool.self, forKey: .showKeymapHints) ?? true
+        sequenceTimeout = try container.decodeIfPresent(Double.self, forKey: .sequenceTimeout) ?? 1.0
     }
 }

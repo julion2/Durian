@@ -44,15 +44,8 @@ enum KeymapAction: String, CaseIterable {
     // Visual Mode
     case enterVisualMode = "enter_visual_mode"
     
-    /// Whether this action supports count prefix (5j, 10k, etc.)
-    var supportsCount: Bool {
-        switch self {
-        case .nextEmail, .prevEmail, .pageDown, .pageUp, .deleteEmail:
-            return true
-        default:
-            return false
-        }
-    }
+    // Note: supportsCount is now defined in keymaps.toml per-action
+    // Use SequenceMatcher.shared.supportsCount(action) to check
 }
 
 // MARK: - KeyEvent
