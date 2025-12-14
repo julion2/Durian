@@ -36,16 +36,17 @@ struct ContentView: View {
     
     @ViewBuilder
     private var searchPopupOverlay: some View {
-        GeometryReader { geometry in
-            ZStack {
-                // Dimmed background
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        showSearchPopup = false
-                    }
-                
-                // Centered popup
+        ZStack {
+            // Dimmed background
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showSearchPopup = false
+                }
+            
+            // Centered popup - using frame + alignment
+            VStack {
+                Spacer()
                 SearchPopupView(
                     isPresented: $showSearchPopup,
                     selectedEmailId: Binding(
@@ -61,8 +62,10 @@ struct ContentView: View {
                         detailMode = .notmuchEmailDetail(emailId: emailId)
                     }
                 )
-                .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+                Spacer()
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .ignoresSafeArea()
         }
     }
     
