@@ -37,7 +37,7 @@ struct SearchPopupView: View {
             }
         }
         .frame(width: 680)
-        .glassEffect(.regular.tint(Color(white: 0.15, opacity: 0.6)), in: .rect(cornerRadius: 16))
+        .glassEffect(.regular.tint(Color(white: 0.2, opacity: 0.3)), in: .rect(cornerRadius: 16))
         .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
         .onAppear {
             isTextFieldFocused = true
