@@ -18,10 +18,12 @@ struct ContentView: View {
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
     @StateObject private var profileManager = ProfileManager.shared
+    @StateObject private var syncManager = SyncManager.shared
     @State private var selectedTagID: String? = "inbox"
     @State private var selectedNotmuchEmails: Set<String> = []
     @State private var detailMode: DetailViewMode = .empty
     @State private var showSearchPopup: Bool = false
+    @State private var syncIconRotation: Double = 0
 
     var body: some View {
         ZStack {
@@ -168,6 +170,22 @@ struct ContentView: View {
                         }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
+                            .rotationEffect(.degrees(syncIconRotation))
+                            .foregroundColor(syncManager.syncState.color)
+                    }
+                    .disabled(syncManager.isSyncing)
+                    .onChange(of: syncManager.isSyncing) { isSyncing in
+                        if isSyncing {
+                            // Start continuous rotation
+                            withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                                syncIconRotation = 360
+                            }
+                        } else {
+                            // Stop rotation and reset
+                            withAnimation(.default) {
+                                syncIconRotation = 0
+                            }
+                        }
                     }
                 }
             }

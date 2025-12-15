@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UserNotifications
 
 @main
 struct colonSendApp: App {
@@ -13,6 +14,21 @@ struct colonSendApp: App {
     init() {
         // Setup sync manager (creates script + launchd agent if needed)
         SyncManager.shared.setup()
+        
+        // Request notification permission for sync warnings/errors
+        requestNotificationPermission()
+    }
+    
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if granted {
+                print("NOTIFICATIONS: Permission granted")
+            } else if let error = error {
+                print("NOTIFICATIONS: Permission error - \(error.localizedDescription)")
+            } else {
+                print("NOTIFICATIONS: Permission denied")
+            }
+        }
     }
     
     var body: some Scene {
@@ -32,6 +48,20 @@ struct colonSendApp: App {
                     KeymapsManager.shared.reloadKeymaps()
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+                
+                Button("Reload Config") {
+                    SettingsManager.shared.reloadSettings()
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                
+                Divider()
+                
+                Button("Full Sync") {
+                    Task {
+                        await SyncManager.shared.fullSync()
+                    }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
     }

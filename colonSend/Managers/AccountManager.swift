@@ -129,11 +129,11 @@ class AccountManager: ObservableObject {
         
         isLoadingEmails = true
         
-        // Sync via SyncManager (mbsync via launchd + notmuch new)
-        let success = await SyncManager.shared.sync()
+        // Quick sync via SyncManager (configured channels + notmuch new)
+        let success = await SyncManager.shared.quickSync()
         
         if !success {
-            loadingProgress = SyncManager.shared.syncStatus
+            loadingProgress = SyncManager.shared.syncState.statusText
             isLoadingEmails = false
             return
         }

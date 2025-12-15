@@ -135,10 +135,18 @@ class ConfigManager {
         toml += "[settings]\n"
         toml += "auto_fetch_enabled = \(config.settings.autoFetchEnabled)\n"
         toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
-        toml += "max_emails_to_fetch = \(config.settings.maxEmailsToFetch)\n"
         toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
         toml += "theme = \"\(config.settings.theme)\"\n"
-        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n\n"
+        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
+        
+        // Sync configuration
+        if !config.settings.mbsyncChannels.isEmpty {
+            let channelsStr = config.settings.mbsyncChannels.map { "\"\($0)\"" }.joined(separator: ", ")
+            toml += "mbsync_channels = [\(channelsStr)]\n"
+        } else {
+            toml += "mbsync_channels = []  # Empty = mbsync -a (all channels)\n"
+        }
+        toml += "full_sync_interval = \(config.settings.fullSyncInterval)  # Full sync every 2 hours\n\n"
         
         // Signatures section
         if !config.signatures.isEmpty {
@@ -196,10 +204,15 @@ class ConfigManager {
         [settings]
         auto_fetch_enabled = true
         auto_fetch_interval = 60.0
-        max_emails_to_fetch = 10
         notifications_enabled = true
         theme = "system"
         load_remote_images = false
+        
+        # Sync configuration
+        # Quick sync channels (empty array = mbsync -a for all channels)
+        mbsync_channels = []
+        # Full sync interval in seconds (7200 = 2 hours)
+        full_sync_interval = 7200
 
         [signatures]
         # Add your signatures here:
@@ -249,6 +262,13 @@ class ConfigManager {
     
     func getSignatures() -> [String: String] {
         return config?.signatures ?? [:]
+    }
+    
+    /// Reload config from disk (call after editing config.toml)
+    func reloadConfig() {
+        print("CONFIG: Reloading config...")
+        loadConfig()
+        print("CONFIG: Reload complete")
     }
     
     func updateSettings(_ newSettings: AppSettings) {
