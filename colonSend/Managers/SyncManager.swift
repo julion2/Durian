@@ -320,20 +320,54 @@ class SyncManager: ObservableObject {
             return false
         }
         
-        // 5. Check exit code from completion file
+        // 5. Check exit code and validate requested channels synced
         var isPartialSync = false
-        if let exitCodeStr = try? String(contentsOfFile: completionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-           let exitCode = Int(exitCodeStr) {
-            if exitCode != 0 {
-                print("SYNC: mbsync exited with code \(exitCode) - partial sync may have occurred")
-                isPartialSync = true
-                if isQuickSync {
-                    updateState(.partial(exitCode), notify: true, title: "Sync Warning", body: "Some email accounts failed to sync")
-                }
-                // Full sync: don't notify on partial (only on complete failure)
-            } else {
+        let stdoutLog = "/tmp/colonSend-mbsync.log"
+        
+        if let completionContent = try? String(contentsOfFile: completionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) {
+            // Parse completion file: "EXIT_CODE:CHANNEL_COUNT"
+            let parts = completionContent.split(separator: ":")
+            let exitCode = Int(parts.first ?? "1") ?? 1
+            let requestedChannelCount = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
+            
+            if exitCode == 0 {
+                // Exit 0 = everything succeeded
                 print("SYNC: mbsync completed successfully")
+            } else if requestedChannelCount > 0 {
+                // Quick Sync with exit code != 0
+                // Check if requested channels still synced successfully
+                var syncedChannelCount = 0
+                
+                if let logContent = try? String(contentsOfFile: stdoutLog, encoding: .utf8) {
+                    // Look for last "Channels: N" in log
+                    let pattern = "Channels:\\s*(\\d+)"
+                    if let regex = try? NSRegularExpression(pattern: pattern),
+                       let lastMatch = regex.matches(in: logContent, range: NSRange(logContent.startIndex..., in: logContent)).last,
+                       let range = Range(lastMatch.range(at: 1), in: logContent) {
+                        syncedChannelCount = Int(logContent[range]) ?? 0
+                    }
+                }
+                
+                if syncedChannelCount >= requestedChannelCount {
+                    // All requested channels synced - errors were from other accounts
+                    print("SYNC: All \(requestedChannelCount) requested channels synced (exit \(exitCode) from non-requested accounts)")
+                } else {
+                    // Some requested channels failed
+                    print("SYNC: Only \(syncedChannelCount)/\(requestedChannelCount) channels synced - partial failure")
+                    isPartialSync = true
+                    if isQuickSync {
+                        updateState(.partial(exitCode), notify: true, title: "Sync Warning", body: "Some requested channels failed to sync")
+                    }
+                }
+            } else {
+                // Full Sync (requestedChannelCount = 0) - use exit code directly
+                if exitCode != 0 {
+                    print("SYNC: Full sync exited with code \(exitCode) - partial sync")
+                    isPartialSync = true
+                }
             }
+        } else {
+            print("SYNC: Could not read completion file")
         }
         
         // 6. Run notmuch new (always, even after partial sync)
@@ -451,29 +485,42 @@ class SyncManager: ObservableObject {
         #
         # Reads channels from /tmp/colonSend-sync-channels
         # If file is empty or missing, runs mbsync -a (full sync)
+        # Writes EXIT_CODE:CHANNEL_COUNT to completion file
         
         CHANNELS_FILE="/tmp/colonSend-sync-channels"
         COMPLETION_FILE="/tmp/colonSend-sync-complete"
+        STDOUT_LOG="/tmp/colonSend-mbsync.log"
+        STDERR_LOG="/tmp/colonSend-mbsync-error.log"
         
         # Remove old completion file
         rm -f "$COMPLETION_FILE"
         
+        # Clear logs before each sync
+        > "$STDOUT_LOG"
+        > "$STDERR_LOG"
+        
         # Read channels from file, or use -a if empty/missing
         if [ -f "$CHANNELS_FILE" ] && [ -s "$CHANNELS_FILE" ]; then
             CHANNELS=$(cat "$CHANNELS_FILE")
-            echo "Running: mbsync $CHANNELS"
-            /opt/homebrew/bin/mbsync $CHANNELS
+            CHANNEL_COUNT=$(echo $CHANNELS | wc -w | tr -d ' ')
+            
+            echo "Running: mbsync $CHANNELS" >> "$STDOUT_LOG"
+            /opt/homebrew/bin/mbsync $CHANNELS >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
+            EXIT_CODE=$?
+            
+            # Format: EXIT_CODE:CHANNEL_COUNT (for quick sync validation)
+            echo "$EXIT_CODE:$CHANNEL_COUNT" > "$COMPLETION_FILE"
         else
-            echo "Running: mbsync -a"
-            /opt/homebrew/bin/mbsync -a
+            echo "Running: mbsync -a" >> "$STDOUT_LOG"
+            /opt/homebrew/bin/mbsync -a >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
+            EXIT_CODE=$?
+            
+            # Format: EXIT_CODE:0 (0 = full sync, use exit code directly)
+            echo "$EXIT_CODE:0" > "$COMPLETION_FILE"
         fi
-        EXIT_CODE=$?
         
         # Cleanup channels file
         rm -f "$CHANNELS_FILE"
-        
-        # Write exit code to completion file
-        echo $EXIT_CODE > "$COMPLETION_FILE"
         
         exit $EXIT_CODE
         """
