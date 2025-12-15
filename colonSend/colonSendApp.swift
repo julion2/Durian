@@ -9,6 +9,12 @@ import SwiftUI
 
 @main
 struct colonSendApp: App {
+    
+    init() {
+        // Setup sync manager (creates script + launchd agent if needed)
+        SyncManager.shared.setup()
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()

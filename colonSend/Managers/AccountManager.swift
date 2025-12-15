@@ -122,97 +122,26 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
-    // MARK: - Full Reload (mbsync + notmuch new)
+    // MARK: - Full Reload (mbsync via launchd + notmuch new)
     
     func reloadNotmuch() async {
         guard let backend = notmuchBackend else { return }
         
-        // Set PATH for Homebrew binaries
-        var environment = ProcessInfo.processInfo.environment
-        let homebrewPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
-        if let existingPath = environment["PATH"] {
-            environment["PATH"] = "\(homebrewPaths):\(existingPath)"
-        } else {
-            environment["PATH"] = "\(homebrewPaths):/usr/bin:/bin:/usr/sbin:/sbin"
-        }
-        
         isLoadingEmails = true
         
-        // 1. Sync from server via mbsync (60s timeout)
-        loadingProgress = "Syncing from server..."
-        print("NOTMUCH Reload: Running mbsync -a")
+        // Sync via SyncManager (mbsync via launchd + notmuch new)
+        let success = await SyncManager.shared.sync()
         
-        let mbsyncSuccess = await runProcess(
-            path: "/opt/homebrew/bin/mbsync",
-            arguments: ["-a"],
-            environment: environment,
-            timeout: 60
-        )
-        
-        if !mbsyncSuccess {
-            loadingProgress = "Sync failed - try again"
-            print("NOTMUCH Reload: mbsync failed or timed out")
-            // Still continue to reload local data
-        }
-        
-        // 2. Index new mail via notmuch new (30s timeout)
-        loadingProgress = "Indexing new mail..."
-        print("NOTMUCH Reload: Running notmuch new")
-        
-        let notmuchSuccess = await runProcess(
-            path: "/opt/homebrew/bin/notmuch",
-            arguments: ["new"],
-            environment: environment,
-            timeout: 30
-        )
-        
-        if !notmuchSuccess {
-            loadingProgress = "Indexing failed"
-            print("NOTMUCH Reload: notmuch new failed or timed out")
+        if !success {
+            loadingProgress = SyncManager.shared.syncStatus
             isLoadingEmails = false
             return
         }
         
-        // 3. Reload from notmuch
+        // Reload from notmuch
         loadingProgress = "Loading..."
         print("NOTMUCH Reload: Reloading from notmuch")
         await backend.reload()
         syncFromNotmuch()
-    }
-    
-    /// Run a process with timeout, returns true if successful
-    private func runProcess(path: String, arguments: [String], environment: [String: String], timeout: TimeInterval) async -> Bool {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: path)
-                process.arguments = arguments
-                process.environment = environment
-                
-                do {
-                    try process.run()
-                } catch {
-                    print("NOTMUCH Reload: Failed to start \(path): \(error)")
-                    continuation.resume(returning: false)
-                    return
-                }
-                
-                // Wait with timeout
-                let deadline = Date().addingTimeInterval(timeout)
-                while process.isRunning && Date() < deadline {
-                    Thread.sleep(forTimeInterval: 0.1)
-                }
-                
-                if process.isRunning {
-                    print("NOTMUCH Reload: \(path) timed out after \(timeout)s, terminating")
-                    process.terminate()
-                    continuation.resume(returning: false)
-                } else {
-                    let success = process.terminationStatus == 0
-                    print("NOTMUCH Reload: \(path) finished with status \(process.terminationStatus)")
-                    continuation.resume(returning: success)
-                }
-            }
-        }
     }
 }
