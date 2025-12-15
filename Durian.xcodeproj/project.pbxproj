@@ -20,9 +20,9 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F9BED1062E78416900A0A48D /* Durian */ = {
+		F9BED1062E78416900A0A48D /* durian */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Durian;
+			path = durian;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -47,7 +47,7 @@
 		F9BED0FB2E78416800A0A48D = {
 			isa = PBXGroup;
 			children = (
-				F9BED1062E78416900A0A48D /* Durian */,
+				F9BED1062E78416900A0A48D /* durian */,
 				F9BED1052E78416900A0A48D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -76,7 +76,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				F9BED1062E78416900A0A48D /* Durian */,
+				F9BED1062E78416900A0A48D /* durian */,
 			);
 			name = Durian;
 			packageProductDependencies = (
