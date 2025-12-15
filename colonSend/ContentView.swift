@@ -132,6 +132,26 @@ struct ContentView: View {
                                     await accountManager.fetchNotmuchEmailBody(id: email.id)
                                 }
                             }
+                        },
+                        onTogglePin: { emailId in
+                            Task {
+                                await accountManager.toggleNotmuchPin(id: emailId)
+                            }
+                        },
+                        onToggleRead: { emailId in
+                            Task {
+                                await accountManager.toggleNotmuchRead(id: emailId)
+                            }
+                        },
+                        onDelete: { emailId in
+                            Task {
+                                await accountManager.deleteNotmuchMessage(id: emailId)
+                                await MainActor.run {
+                                    // Clear selection after delete
+                                    selectedNotmuchEmails = []
+                                    detailMode = .empty
+                                }
+                            }
                         }
                     )
                 } else if accountManager.isLoadingEmails {
@@ -505,6 +525,26 @@ struct ContentView: View {
                     showSearchPopup = false
                 } else {
                     detailMode = .empty
+                }
+            }
+        }
+        
+        // Toggle Pin: s
+        keymapHandler.registerSimpleHandler(for: .toggleStar) { [self] in
+            await MainActor.run {
+                guard let emailId = selectedNotmuchEmails.first else { return }
+                Task {
+                    await accountManager.toggleNotmuchPin(id: emailId)
+                }
+            }
+        }
+        
+        // Toggle Read: u
+        keymapHandler.registerSimpleHandler(for: .toggleRead) { [self] in
+            await MainActor.run {
+                guard let emailId = selectedNotmuchEmails.first else { return }
+                Task {
+                    await accountManager.toggleNotmuchRead(id: emailId)
                 }
             }
         }

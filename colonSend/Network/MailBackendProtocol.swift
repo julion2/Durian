@@ -192,6 +192,7 @@ struct MailMessage: Identifiable, Hashable {
     var htmlBody: String?  // HTML version of body (for WebView rendering)
     var attributedBody: NSAttributedString?
     var isRead: Bool
+    var isPinned: Bool
     var hasAttachment: Bool
     var bodyState: EmailBodyState
     var incomingAttachments: [IncomingAttachmentMetadata]
@@ -209,6 +210,7 @@ struct MailMessage: Identifiable, Hashable {
         self.htmlBody = nil
         self.attributedBody = nil
         self.isRead = !tags.contains("unread")
+        self.isPinned = tags.contains("flagged")
         self.hasAttachment = tags.contains("attachment")
         self.bodyState = .notLoaded
         self.incomingAttachments = []
@@ -238,6 +240,7 @@ struct MailMessage: Identifiable, Hashable {
         hasher.combine(date)
         hasher.combine(body)
         hasher.combine(isRead)
+        hasher.combine(isPinned)
         hasher.combine(bodyState)
     }
     
@@ -248,6 +251,7 @@ struct MailMessage: Identifiable, Hashable {
         lhs.date == rhs.date &&
         lhs.body == rhs.body &&
         lhs.isRead == rhs.isRead &&
+        lhs.isPinned == rhs.isPinned &&
         lhs.bodyState == rhs.bodyState
     }
 }

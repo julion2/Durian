@@ -3,6 +3,11 @@ import SwiftUI
 struct EmailRowView: View {
     let email: MailMessage
     var isSelected: Bool = false
+    
+    // Context menu callbacks
+    var onTogglePin: (() -> Void)?
+    var onToggleRead: (() -> Void)?
+    var onDelete: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -14,6 +19,12 @@ struct EmailRowView: View {
                         Circle()
                             .fill(Color.blue)
                             .frame(width: 8, height: 8)
+                    }
+                    
+                    if email.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.caption)
+                            .foregroundColor(.yellow)
                     }
                     
                     Text(senderName)
@@ -62,6 +73,41 @@ struct EmailRowView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isSelected ? Color.accentColor : Color.clear)
         )
+        .contextMenu {
+            Button(action: { onTogglePin?() }) {
+                Label(email.isPinned ? "Unpin" : "Pin", systemImage: email.isPinned ? "pin.slash" : "pin")
+            }
+            
+            Button(action: { onToggleRead?() }) {
+                Label(email.isRead ? "Mark as Unread" : "Mark as Read", 
+                      systemImage: email.isRead ? "envelope.badge" : "envelope.open")
+            }
+            
+            Divider()
+            
+            Button(action: {}) {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+            .disabled(true)
+            
+            Button(action: {}) {
+                Label("Forward", systemImage: "arrowshape.turn.up.right")
+            }
+            .disabled(true)
+            
+            Divider()
+            
+            Button(action: {}) {
+                Label("Tags...", systemImage: "tag")
+            }
+            .disabled(true)
+            
+            Divider()
+            
+            Button(role: .destructive, action: { onDelete?() }) {
+                Label("Delete", systemImage: "trash")
+            }
+        }
     }
 
     private var senderName: String {

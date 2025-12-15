@@ -198,6 +198,28 @@ class NotmuchBackend: ObservableObject {
         }
     }
     
+    func toggleRead(id: String) async {
+        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
+        if emails[index].isRead {
+            await markAsUnread(id: id)
+        } else {
+            await markAsRead(id: id)
+        }
+    }
+    
+    func togglePin(id: String) async {
+        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
+        let isCurrentlyPinned = emails[index].isPinned
+        
+        let tags = isCurrentlyPinned ? "-flagged" : "+flagged"
+        let success = await tag(query: "thread:\(id)", tags: tags)
+        
+        if success {
+            emails[index].isPinned = !isCurrentlyPinned
+            print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
+        }
+    }
+    
     func deleteMessage(id: String) async throws {
         let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
         if success {

@@ -45,36 +45,20 @@ struct EmailListView: View {
     let emails: [MailMessage]
     @Binding var selection: Set<String>
     let onEmailAppear: (MailMessage) -> Void
+    
+    // Context menu callbacks
+    var onTogglePin: ((String) -> Void)?
+    var onToggleRead: ((String) -> Void)?
+    var onDelete: ((String) -> Void)?
 
     var body: some View {
-        let grouped = groupEmails(emails)
+        let items = buildEmailList()
 
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(grouped, id: \.0) { group, groupEmails in
-                        // Header
-                        Text(group.displayName)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 12)
-                            .padding(.bottom, 4)
-                            .padding(.horizontal, 12)
-
-                        // Emails
-                        ForEach(groupEmails) { email in
-                            EmailRowView(email: email, isSelected: selection.contains(email.id))
-                                .id(email.id)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selection = [email.id]
-                                }
-                                .onAppear {
-                                    onEmailAppear(email)
-                                }
-                        }
+                    ForEach(items) { item in
+                        listItemView(item)
                     }
                 }
             }
@@ -85,6 +69,96 @@ struct EmailListView: View {
                     }
                 }
             }
+        }
+    }
+    
+    @ViewBuilder
+    private func listItemView(_ item: ListItem) -> some View {
+        switch item {
+        case .header(let title, let style):
+            headerView(title: title, style: style)
+        case .email(let email):
+            emailRow(email: email)
+        }
+    }
+    
+    @ViewBuilder
+    private func headerView(title: String, style: HeaderStyle) -> some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(style == .pinned ? .semibold : .medium)
+            .foregroundStyle(style == .pinned ? Color.yellow : Color.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+            .padding(.horizontal, 12)
+    }
+    
+    // MARK: - List Building
+    
+    private enum HeaderStyle {
+        case pinned, date
+    }
+    
+    private enum ListItem: Identifiable {
+        case header(String, HeaderStyle)
+        case email(MailMessage)
+        
+        var id: String {
+            switch self {
+            case .header(let title, _): return "header-\(title)"
+            case .email(let email): return email.id
+            }
+        }
+    }
+    
+    private func buildEmailList() -> [ListItem] {
+        var items: [ListItem] = []
+        
+        // Pinned emails first
+        let pinnedEmails = emails.filter { $0.isPinned }.sorted { $0.timestamp > $1.timestamp }
+        if !pinnedEmails.isEmpty {
+            items.append(.header("Pinned", .pinned))
+            items.append(contentsOf: pinnedEmails.map { .email($0) })
+        }
+        
+        // Then unpinned emails grouped by date
+        let unpinnedEmails = emails.filter { !$0.isPinned }
+        let grouped = groupEmails(unpinnedEmails)
+        
+        for (group, groupEmails) in grouped {
+            items.append(.header(group.displayName, .date))
+            items.append(contentsOf: groupEmails.map { .email($0) })
+        }
+        
+        return items
+    }
+    
+    @ViewBuilder
+    private func emailRow(email: MailMessage) -> some View {
+        EmailRowView(
+            email: email,
+            isSelected: selection.contains(email.id),
+            onTogglePin: { 
+                selection = [email.id]
+                onTogglePin?(email.id) 
+            },
+            onToggleRead: { 
+                selection = [email.id]
+                onToggleRead?(email.id) 
+            },
+            onDelete: { 
+                selection = [email.id]
+                onDelete?(email.id) 
+            }
+        )
+        .id(email.id)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selection = [email.id]
+        }
+        .onAppear {
+            onEmailAppear(email)
         }
     }
 

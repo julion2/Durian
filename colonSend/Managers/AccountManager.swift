@@ -122,6 +122,18 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
+    func toggleNotmuchPin(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.togglePin(id: id)
+        syncFromNotmuch()
+    }
+    
+    func toggleNotmuchRead(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.toggleRead(id: id)
+        syncFromNotmuch()
+    }
+    
     // MARK: - Full Reload (mbsync via launchd + notmuch new)
     
     func reloadNotmuch() async {
