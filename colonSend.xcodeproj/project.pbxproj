@@ -106,7 +106,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F9BED0FF2E78416800A0A48D /* Build configuration list for PBXProject "colonSend" */;
+			buildConfigurationList = F9BED0FF2E78416800A0A48D /* Build configuration list for PBXProject "Durian" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -278,14 +278,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = colonSend/colonSend.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GX7NJJDXNK;
+				DEVELOPMENT_ASSET_PATHS = colonSend/Assets.xcassets;
+				DEVELOPMENT_TEAM = 576P42Q92U;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -315,7 +317,7 @@
 					"$(inherited)",
 					"-lvmime",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = jschenker.colonSend;
+				PRODUCT_BUNDLE_IDENTIFIER = "js-lab.colonSend";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -334,14 +336,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=macosx*]" = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				AUTOMATION_APPLE_EVENTS = NO;
 				CODE_SIGN_ENTITLEMENTS = colonSend/colonSend.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = GX7NJJDXNK;
+				DEVELOPMENT_ASSET_PATHS = colonSend/Assets.xcassets;
+				DEVELOPMENT_TEAM = 576P42Q92U;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
@@ -371,7 +375,7 @@
 					"$(inherited)",
 					"-lvmime",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = jschenker.colonSend;
+				PRODUCT_BUNDLE_IDENTIFIER = "js-lab.colonSend";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -389,7 +393,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F9BED0FF2E78416800A0A48D /* Build configuration list for PBXProject "colonSend" */ = {
+		F9BED0FF2E78416800A0A48D /* Build configuration list for PBXProject "Durian" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F9BED10E2E78416B00A0A48D /* Debug */,
