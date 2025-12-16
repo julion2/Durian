@@ -23,7 +23,6 @@ struct ContentView: View {
     @State private var selectedNotmuchEmails: Set<String> = []
     @State private var detailMode: DetailViewMode = .empty
     @State private var showSearchPopup: Bool = false
-    @State private var syncIconRotation: Double = 0
 
     var body: some View {
         ZStack {
@@ -173,40 +172,67 @@ struct ContentView: View {
             .navigationTitle("Durian")
             .navigationSubtitle(accountManager.selectedFolder)
             .toolbar {
-                ToolbarItem {
-                    Button(action: {
-                        showSearchPopup = true
-                    }) {
+                // Mitte: Compose + Email Aktionen
+                ToolbarItemGroup(placement: .principal) {
+                    Button(action: { /* TODO: Compose */ }) {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .help("New Message")
+                    .disabled(true)
+                    
+                    Button(action: { /* TODO: Reply */ }) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                    }
+                    .help("Reply")
+                    .disabled(true)
+                    
+                    Button(action: { /* TODO: Reply All */ }) {
+                        Image(systemName: "arrowshape.turn.up.left.2")
+                    }
+                    .help("Reply All")
+                    .disabled(true)
+                    
+                    Button(action: { /* TODO: Forward */ }) {
+                        Image(systemName: "arrowshape.turn.up.right")
+                    }
+                    .help("Forward")
+                    .disabled(true)
+                    
+                    Button(action: deleteSelectedEmail) {
+                        Image(systemName: "trash")
+                    }
+                    .help("Delete")
+                    .disabled(selectedNotmuchEmails.isEmpty)
+                    
+                    Button(action: togglePin) {
+                        Image(systemName: selectedEmailIsPinned ? "pin.fill" : "pin")
+                    }
+                    .help(selectedEmailIsPinned ? "Unpin (S)" : "Pin (S)")
+                    .disabled(selectedNotmuchEmails.isEmpty)
+                    
+                    Button(action: toggleRead) {
+                        Image(systemName: selectedEmailIsRead ? "envelope.open" : "envelope.badge")
+                    }
+                    .help(selectedEmailIsRead ? "Mark Unread (U)" : "Mark Read (U)")
+                    .disabled(selectedNotmuchEmails.isEmpty)
+                }
+                
+                // Rechts: Search & Sync
+                ToolbarItemGroup(placement: .automatic) {
+                    Button(action: { showSearchPopup = true }) {
                         Image(systemName: "magnifyingglass")
                     }
                     .keyboardShortcut("/", modifiers: .command)
-                    .help("Search emails (⌘/)")
-                }
-                
-                ToolbarItem {
+                    .help("Search (Cmd+/)")
+                    
                     Button(action: {
-                        Task {
-                            await accountManager.reloadNotmuch()
-                        }
+                        Task { await accountManager.reloadNotmuch() }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .rotationEffect(.degrees(syncIconRotation))
                             .foregroundColor(syncManager.syncState.color)
                     }
+                    .help("Sync")
                     .disabled(syncManager.isSyncing)
-                    .onChange(of: syncManager.isSyncing) { isSyncing in
-                        if isSyncing {
-                            // Start continuous rotation
-                            withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
-                                syncIconRotation = 360
-                            }
-                        } else {
-                            // Stop rotation and reset
-                            withAnimation(.default) {
-                                syncIconRotation = 0
-                            }
-                        }
-                    }
                 }
             }
         } detail: {
@@ -429,6 +455,45 @@ struct ContentView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Toolbar Helpers
+    
+    private var selectedEmailIsPinned: Bool {
+        guard let emailId = selectedNotmuchEmails.first,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+            return false
+        }
+        return email.isPinned
+    }
+    
+    private var selectedEmailIsRead: Bool {
+        guard let emailId = selectedNotmuchEmails.first,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+            return true
+        }
+        return email.isRead
+    }
+    
+    private func deleteSelectedEmail() {
+        guard let emailId = selectedNotmuchEmails.first else { return }
+        Task {
+            await accountManager.deleteNotmuchMessage(id: emailId)
+            await MainActor.run {
+                selectedNotmuchEmails = []
+                detailMode = .empty
+            }
+        }
+    }
+    
+    private func togglePin() {
+        guard let emailId = selectedNotmuchEmails.first else { return }
+        Task { await accountManager.toggleNotmuchPin(id: emailId) }
+    }
+    
+    private func toggleRead() {
+        guard let emailId = selectedNotmuchEmails.first else { return }
+        Task { await accountManager.toggleNotmuchRead(id: emailId) }
     }
     
     // MARK: - Navigation Helpers
