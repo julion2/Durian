@@ -1,0 +1,11 @@
+# Config with no accounts
+[settings]
+theme = "light"
+notifications_enabled = false
+
+[sync]
+auto_fetch_enabled = false
+mbsync_channels = []
+
+[signatures]
+default = "Regards"

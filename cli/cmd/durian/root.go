@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -14,6 +16,9 @@ var (
 	cfgFile    string
 	jsonOutput bool
 )
+
+// Global config (loaded at startup)
+var cfg *config.Config
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -38,4 +43,36 @@ func init() {
 	// Global flags available to all commands
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.config/durian/config.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
+
+	// Load config before command execution
+	cobra.OnInitialize(initConfig)
+}
+
+// initConfig loads configuration from file
+func initConfig() {
+	var err error
+
+	// Try to load config from specified path or default
+	if config.Exists(cfgFile) {
+		cfg, err = config.Load(cfgFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
+			cfg = config.Default()
+		}
+	} else {
+		// No config file found - use defaults
+		if cfgFile != "" {
+			// User specified a path but file doesn't exist
+			fmt.Fprintf(os.Stderr, "Warning: config file not found: %s\n", cfgFile)
+		}
+		// Silently use defaults if no custom path specified
+		// (most users won't have config initially)
+		cfg = config.Default()
+	}
+}
+
+// GetConfig returns the loaded configuration
+// This is useful for subcommands that need access to config
+func GetConfig() *config.Config {
+	return cfg
 }

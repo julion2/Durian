@@ -1,0 +1,4 @@
+# Invalid TOML syntax for error testing
+[settings
+theme = "dark"
+this is not valid toml

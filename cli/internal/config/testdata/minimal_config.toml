@@ -1,0 +1,4 @@
+# Minimal configuration - only required fields
+[[accounts]]
+name = "Primary"
+email = "user@example.com"

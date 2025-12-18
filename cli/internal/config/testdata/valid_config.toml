@@ -1,0 +1,49 @@
+# Full valid configuration for testing
+[settings]
+theme = "dark"
+notifications_enabled = true
+load_remote_images = false
+
+[sync]
+auto_fetch_enabled = true
+auto_fetch_interval = 120
+full_sync_interval = 7200
+mbsync_channels = ["work", "personal"]
+
+[notmuch]
+database_path = "~/.mail"
+
+[signatures]
+personal = "Cheers,\nTest User"
+work = "Best regards,\nTest User\nTest Company"
+
+[[accounts]]
+name = "Work"
+email = "test@work.com"
+default = true
+default_signature = "work"
+
+[accounts.smtp]
+host = "smtp.work.com"
+port = 587
+ssl = false
+auth = "password"
+
+[accounts.auth]
+username = "test@work.com"
+password_keychain = "work-account"
+
+[[accounts]]
+name = "Personal"
+email = "test@personal.com"
+default = false
+default_signature = "personal"
+
+[accounts.smtp]
+host = "smtp.personal.com"
+port = 465
+ssl = true
+auth = "oauth2"
+
+[accounts.oauth]
+provider = "google"
