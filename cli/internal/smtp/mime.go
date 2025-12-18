@@ -1,0 +1,255 @@
+package smtp
+
+import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"io"
+	"mime"
+	"net/mail"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Message represents an email message to be sent
+type Message struct {
+	From        string
+	To          []string
+	Subject     string
+	Body        string
+	Attachments []Attachment
+}
+
+// Attachment represents a file attachment
+type Attachment struct {
+	Filename string
+	Data     []byte
+	MIMEType string
+}
+
+// LoadAttachment loads a file as an attachment
+func LoadAttachment(path string) (*Attachment, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read attachment %s: %w", path, err)
+	}
+
+	filename := filepath.Base(path)
+	mimeType := mime.TypeByExtension(filepath.Ext(path))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	return &Attachment{
+		Filename: filename,
+		Data:     data,
+		MIMEType: mimeType,
+	}, nil
+}
+
+// Build constructs the RFC 5322 compliant email message
+func (m *Message) Build() ([]byte, error) {
+	var buf bytes.Buffer
+
+	// Generate Message-ID
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "localhost"
+	}
+	messageID := fmt.Sprintf("<%s@%s>", uuid.New().String(), hostname)
+
+	// Format date per RFC 5322
+	date := time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700")
+
+	// Write headers
+	fmt.Fprintf(&buf, "From: %s\r\n", m.From)
+	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(m.To, ", "))
+	fmt.Fprintf(&buf, "Subject: %s\r\n", encodeHeader(m.Subject))
+	fmt.Fprintf(&buf, "Date: %s\r\n", date)
+	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
+	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
+
+	if len(m.Attachments) == 0 {
+		// Simple plain text message
+		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=UTF-8\r\n")
+		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
+		fmt.Fprintf(&buf, "\r\n")
+		buf.WriteString(toQuotedPrintable(m.Body))
+	} else {
+		// Multipart message with attachments
+		boundary := generateBoundary()
+		fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary)
+		fmt.Fprintf(&buf, "\r\n")
+
+		// Body part
+		fmt.Fprintf(&buf, "--%s\r\n", boundary)
+		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=UTF-8\r\n")
+		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
+		fmt.Fprintf(&buf, "\r\n")
+		buf.WriteString(toQuotedPrintable(m.Body))
+		fmt.Fprintf(&buf, "\r\n")
+
+		// Attachment parts
+		for _, att := range m.Attachments {
+			fmt.Fprintf(&buf, "--%s\r\n", boundary)
+			fmt.Fprintf(&buf, "Content-Type: %s; name=\"%s\"\r\n", att.MIMEType, encodeFilename(att.Filename))
+			fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=\"%s\"\r\n", encodeFilename(att.Filename))
+			fmt.Fprintf(&buf, "Content-Transfer-Encoding: base64\r\n")
+			fmt.Fprintf(&buf, "\r\n")
+
+			// Base64 encode with line wrapping at 76 chars
+			encoded := base64.StdEncoding.EncodeToString(att.Data)
+			for i := 0; i < len(encoded); i += 76 {
+				end := i + 76
+				if end > len(encoded) {
+					end = len(encoded)
+				}
+				buf.WriteString(encoded[i:end])
+				buf.WriteString("\r\n")
+			}
+		}
+
+		fmt.Fprintf(&buf, "--%s--\r\n", boundary)
+	}
+
+	return buf.Bytes(), nil
+}
+
+// Recipients returns all recipient addresses (for SMTP RCPT TO)
+func (m *Message) Recipients() []string {
+	return m.To
+}
+
+// encodeHeader encodes a header value using RFC 2047 if it contains non-ASCII
+func encodeHeader(s string) string {
+	if isASCII(s) {
+		return s
+	}
+	return mime.QEncoding.Encode("UTF-8", s)
+}
+
+// encodeFilename encodes a filename for Content-Disposition
+func encodeFilename(s string) string {
+	if isASCII(s) {
+		return s
+	}
+	return mime.QEncoding.Encode("UTF-8", s)
+}
+
+// isASCII checks if a string contains only ASCII characters
+func isASCII(s string) bool {
+	for _, c := range s {
+		if c > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// generateBoundary generates a random MIME boundary
+func generateBoundary() string {
+	return fmt.Sprintf("----=_Part_%s", uuid.New().String())
+}
+
+// toQuotedPrintable converts a string to quoted-printable encoding
+func toQuotedPrintable(s string) string {
+	var buf bytes.Buffer
+	lineLen := 0
+
+	for _, b := range []byte(s) {
+		var encoded string
+
+		if b == '\r' || b == '\n' {
+			// Pass through newlines
+			buf.WriteByte(b)
+			lineLen = 0
+			continue
+		} else if (b >= 33 && b <= 60) || (b >= 62 && b <= 126) || b == ' ' || b == '\t' {
+			// Printable characters (except =) and whitespace
+			encoded = string(b)
+		} else {
+			// Encode as =XX
+			encoded = fmt.Sprintf("=%02X", b)
+		}
+
+		// Soft line break at 76 chars
+		if lineLen+len(encoded) > 75 {
+			buf.WriteString("=\r\n")
+			lineLen = 0
+		}
+
+		buf.WriteString(encoded)
+		lineLen += len(encoded)
+	}
+
+	return buf.String()
+}
+
+// ParseAddress parses an email address string
+// Supports formats: "email@example.com" and "Name <email@example.com>"
+func ParseAddress(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("empty email address")
+	}
+
+	addr, err := mail.ParseAddress(s)
+	if err != nil {
+		// Try as plain email
+		if strings.Contains(s, "@") {
+			return s, nil
+		}
+		return "", fmt.Errorf("invalid email address: %s", s)
+	}
+
+	return addr.Address, nil
+}
+
+// ParseAddressList parses a comma-separated list of email addresses
+func ParseAddressList(s string) ([]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(s, ",")
+	addresses := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		addr, err := ParseAddress(part)
+		if err != nil {
+			return nil, err
+		}
+		addresses = append(addresses, addr)
+	}
+
+	return addresses, nil
+}
+
+// ReadBody reads the message body, stripping comment lines
+func ReadBody(r io.Reader) (string, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var body []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		body = append(body, line)
+	}
+
+	// Trim leading/trailing empty lines but preserve internal formatting
+	result := strings.Join(body, "\n")
+	result = strings.TrimSpace(result)
+
+	return result, nil
+}
