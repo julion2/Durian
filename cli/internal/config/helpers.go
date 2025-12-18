@@ -1,6 +1,12 @@
 package config
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
 
 var (
 	// ErrNoAccounts is returned when no accounts are configured
@@ -89,4 +95,85 @@ func (c *Config) HasAccounts() bool {
 // AccountCount returns the number of configured accounts
 func (c *Config) AccountCount() int {
 	return len(c.Accounts)
+}
+
+// DefaultMaxAttachmentSize is the default maximum attachment size (25MB)
+const DefaultMaxAttachmentSize int64 = 25 * 1024 * 1024
+
+// ErrInvalidSize is returned when a size string cannot be parsed
+var ErrInvalidSize = errors.New("invalid size format")
+
+// ParseSize parses a human-readable size string (e.g. "25MB", "1GB", "500KB")
+// and returns the size in bytes. Supports B, KB, MB, GB (case-insensitive).
+func ParseSize(s string) (int64, error) {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	if s == "" {
+		return 0, ErrInvalidSize
+	}
+
+	// Match number followed by optional unit
+	re := regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*(B|KB|MB|GB)?$`)
+	matches := re.FindStringSubmatch(s)
+	if matches == nil {
+		return 0, fmt.Errorf("%w: %s", ErrInvalidSize, s)
+	}
+
+	value, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s", ErrInvalidSize, s)
+	}
+
+	unit := matches[2]
+	if unit == "" {
+		unit = "B"
+	}
+
+	var multiplier float64
+	switch unit {
+	case "B":
+		multiplier = 1
+	case "KB":
+		multiplier = 1024
+	case "MB":
+		multiplier = 1024 * 1024
+	case "GB":
+		multiplier = 1024 * 1024 * 1024
+	}
+
+	return int64(value * multiplier), nil
+}
+
+// FormatSize formats a size in bytes as a human-readable string
+func FormatSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1fGB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.1fMB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.1fKB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%dB", bytes)
+	}
+}
+
+// GetMaxAttachmentSize returns the max attachment size for the account in bytes.
+// Returns DefaultMaxAttachmentSize if not configured or invalid.
+func (a *AccountConfig) GetMaxAttachmentSize() int64 {
+	if a.SMTP.MaxAttachmentSize == "" {
+		return DefaultMaxAttachmentSize
+	}
+
+	size, err := ParseSize(a.SMTP.MaxAttachmentSize)
+	if err != nil {
+		return DefaultMaxAttachmentSize
+	}
+
+	return size
 }

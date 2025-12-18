@@ -42,10 +42,11 @@ type AccountConfig struct {
 
 // SMTPConfig contains SMTP server settings
 type SMTPConfig struct {
-	Host string `toml:"host"`
-	Port int    `toml:"port"`
-	SSL  bool   `toml:"ssl"`
-	Auth string `toml:"auth"` // "password" or "oauth2"
+	Host              string `toml:"host"`
+	Port              int    `toml:"port"`
+	SSL               bool   `toml:"ssl"`
+	Auth              string `toml:"auth"`                // "password" or "oauth2"
+	MaxAttachmentSize string `toml:"max_attachment_size"` // e.g. "25MB", default 25MB
 }
 
 // AuthConfig contains password-based authentication settings

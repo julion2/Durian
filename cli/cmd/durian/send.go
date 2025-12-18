@@ -15,11 +15,14 @@ import (
 )
 
 var (
-	sendTo      string
-	sendSubject string
-	sendBody    string
-	sendFrom    string
-	sendAttach  string
+	sendTo       string
+	sendSubject  string
+	sendBody     string
+	sendFrom     string
+	sendAttach   []string
+	sendBodyFile string
+	sendHTML     bool
+	sendForce    bool
 )
 
 var sendCmd = &cobra.Command{
@@ -34,6 +37,15 @@ Examples:
   # Send with attachment
   durian send --to "..." --subject "..." --body "..." --attach file.pdf
 
+  # Send with multiple attachments
+  durian send --to "..." --subject "..." --body "..." --attach file1.pdf --attach file2.jpg
+
+  # Read body from file
+  durian send --to "..." --subject "..." --body-file message.txt
+
+  # Send HTML email
+  durian send --to "..." --subject "Newsletter" --body-file newsletter.html --html
+
   # Interactive mode (prompts for missing fields, opens $EDITOR for body)
   durian send --to "recipient@example.com" --subject "Hello"
 
@@ -47,7 +59,10 @@ func init() {
 	sendCmd.Flags().StringVar(&sendSubject, "subject", "", "email subject")
 	sendCmd.Flags().StringVar(&sendBody, "body", "", "email body")
 	sendCmd.Flags().StringVar(&sendFrom, "from", "", "sender email (uses default account if not specified)")
-	sendCmd.Flags().StringVar(&sendAttach, "attach", "", "attach a file")
+	sendCmd.Flags().StringSliceVar(&sendAttach, "attach", nil, "attach file(s), can be specified multiple times")
+	sendCmd.Flags().StringVar(&sendBodyFile, "body-file", "", "read body from file (cannot use with --body)")
+	sendCmd.Flags().BoolVar(&sendHTML, "html", false, "send body as HTML")
+	sendCmd.Flags().BoolVar(&sendForce, "force", false, "send even if attachments exceed size limit")
 
 	rootCmd.AddCommand(sendCmd)
 }
@@ -106,9 +121,24 @@ func runSend(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Get Body (open editor if not provided)
-	body := sendBody
-	if body == "" {
+	// Validate body flags
+	if sendBody != "" && sendBodyFile != "" {
+		return errors.New("cannot use both --body and --body-file")
+	}
+
+	// Get Body
+	var body string
+	if sendBodyFile != "" {
+		// Read body from file
+		data, err := os.ReadFile(sendBodyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read body file: %w", err)
+		}
+		body = string(data)
+	} else if sendBody != "" {
+		body = sendBody
+	} else {
+		// Open editor for interactive mode
 		body, err = openEditor(to, subject)
 		if err != nil {
 			return err
@@ -124,16 +154,33 @@ func runSend(cmd *cobra.Command, args []string) error {
 		To:      recipients,
 		Subject: subject,
 		Body:    body,
+		IsHTML:  sendHTML,
 	}
 
-	// Load attachment if specified
-	if sendAttach != "" {
-		att, err := smtp.LoadAttachment(sendAttach)
+	// Load attachments if specified
+	var totalAttachmentSize int64
+	for _, attachPath := range sendAttach {
+		att, err := smtp.LoadAttachment(attachPath)
 		if err != nil {
 			return err
 		}
-		msg.Attachments = []smtp.Attachment{*att}
-		fmt.Fprintf(os.Stderr, "Attaching: %s (%s)\n", att.Filename, att.MIMEType)
+		msg.Attachments = append(msg.Attachments, *att)
+		totalAttachmentSize += int64(len(att.Data))
+		fmt.Fprintf(os.Stderr, "Attaching: %s (%s, %s)\n", att.Filename, att.MIMEType, config.FormatSize(int64(len(att.Data))))
+	}
+
+	// Check attachment size limit
+	if totalAttachmentSize > 0 {
+		maxSize := account.GetMaxAttachmentSize()
+		if totalAttachmentSize > maxSize {
+			if sendForce {
+				fmt.Fprintf(os.Stderr, "Warning: total attachment size (%s) exceeds limit (%s)\n",
+					config.FormatSize(totalAttachmentSize), config.FormatSize(maxSize))
+			} else {
+				return fmt.Errorf("total attachment size (%s) exceeds limit (%s)\nUse --force to send anyway",
+					config.FormatSize(totalAttachmentSize), config.FormatSize(maxSize))
+			}
+		}
 	}
 
 	// Get authentication

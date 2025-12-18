@@ -21,6 +21,7 @@ type Message struct {
 	To          []string
 	Subject     string
 	Body        string
+	IsHTML      bool
 	Attachments []Attachment
 }
 
@@ -73,9 +74,15 @@ func (m *Message) Build() ([]byte, error) {
 	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 
+	// Determine content type
+	contentType := "text/plain"
+	if m.IsHTML {
+		contentType = "text/html"
+	}
+
 	if len(m.Attachments) == 0 {
-		// Simple plain text message
-		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=UTF-8\r\n")
+		// Simple message (plain text or HTML)
+		fmt.Fprintf(&buf, "Content-Type: %s; charset=UTF-8\r\n", contentType)
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
 		fmt.Fprintf(&buf, "\r\n")
 		buf.WriteString(toQuotedPrintable(m.Body))
@@ -87,7 +94,7 @@ func (m *Message) Build() ([]byte, error) {
 
 		// Body part
 		fmt.Fprintf(&buf, "--%s\r\n", boundary)
-		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=UTF-8\r\n")
+		fmt.Fprintf(&buf, "Content-Type: %s; charset=UTF-8\r\n", contentType)
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
 		fmt.Fprintf(&buf, "\r\n")
 		buf.WriteString(toQuotedPrintable(m.Body))

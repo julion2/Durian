@@ -583,6 +583,122 @@ func TestAccountCount(t *testing.T) {
 	}
 }
 
+func TestParseSize(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    int64
+		wantErr bool
+	}{
+		// Valid cases
+		{"1B", 1, false},
+		{"100B", 100, false},
+		{"1KB", 1024, false},
+		{"10KB", 10 * 1024, false},
+		{"1MB", 1024 * 1024, false},
+		{"25MB", 25 * 1024 * 1024, false},
+		{"1GB", 1024 * 1024 * 1024, false},
+		// Case insensitive
+		{"25mb", 25 * 1024 * 1024, false},
+		{"25Mb", 25 * 1024 * 1024, false},
+		{"1kb", 1024, false},
+		// With whitespace
+		{"  25MB  ", 25 * 1024 * 1024, false},
+		{"25 MB", 25 * 1024 * 1024, false},
+		// Decimal values
+		{"1.5MB", int64(1.5 * 1024 * 1024), false},
+		{"2.5GB", int64(2.5 * 1024 * 1024 * 1024), false},
+		// Without unit (defaults to bytes)
+		{"1024", 1024, false},
+		// Invalid cases
+		{"", 0, true},
+		{"MB", 0, true},
+		{"abc", 0, true},
+		{"-1MB", 0, true},
+		{"25TB", 0, true}, // TB not supported
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := ParseSize(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseSize(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Errorf("ParseSize(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatSize(t *testing.T) {
+	tests := []struct {
+		input int64
+		want  string
+	}{
+		{0, "0B"},
+		{500, "500B"},
+		{1024, "1.0KB"},
+		{1536, "1.5KB"},
+		{1024 * 1024, "1.0MB"},
+		{25 * 1024 * 1024, "25.0MB"},
+		{1024 * 1024 * 1024, "1.0GB"},
+		{int64(2.5 * 1024 * 1024 * 1024), "2.5GB"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := FormatSize(tt.input)
+			if got != tt.want {
+				t.Errorf("FormatSize(%d) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetMaxAttachmentSize(t *testing.T) {
+	tests := []struct {
+		name    string
+		account AccountConfig
+		want    int64
+	}{
+		{
+			name:    "not configured - uses default",
+			account: AccountConfig{SMTP: SMTPConfig{}},
+			want:    DefaultMaxAttachmentSize,
+		},
+		{
+			name:    "empty string - uses default",
+			account: AccountConfig{SMTP: SMTPConfig{MaxAttachmentSize: ""}},
+			want:    DefaultMaxAttachmentSize,
+		},
+		{
+			name:    "invalid format - uses default",
+			account: AccountConfig{SMTP: SMTPConfig{MaxAttachmentSize: "invalid"}},
+			want:    DefaultMaxAttachmentSize,
+		},
+		{
+			name:    "configured 20MB",
+			account: AccountConfig{SMTP: SMTPConfig{MaxAttachmentSize: "20MB"}},
+			want:    20 * 1024 * 1024,
+		},
+		{
+			name:    "configured 1GB",
+			account: AccountConfig{SMTP: SMTPConfig{MaxAttachmentSize: "1GB"}},
+			want:    1024 * 1024 * 1024,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.account.GetMaxAttachmentSize()
+			if got != tt.want {
+				t.Errorf("GetMaxAttachmentSize() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 // Helper function
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))

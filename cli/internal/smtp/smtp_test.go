@@ -84,6 +84,77 @@ func TestMessageBuildWithAttachment(t *testing.T) {
 	}
 }
 
+func TestMessageBuildHTML(t *testing.T) {
+	msg := &Message{
+		From:    "sender@example.com",
+		To:      []string{"recipient@example.com"},
+		Subject: "HTML Newsletter",
+		Body:    "<html><body><h1>Hello!</h1><p>This is HTML content.</p></body></html>",
+		IsHTML:  true,
+	}
+
+	data, err := msg.Build()
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	content := string(data)
+
+	// Check for HTML content type
+	if !strings.Contains(content, "Content-Type: text/html; charset=UTF-8") {
+		t.Error("Missing text/html Content-Type")
+	}
+
+	// Should NOT have text/plain
+	if strings.Contains(content, "Content-Type: text/plain") {
+		t.Error("HTML message should not have text/plain Content-Type")
+	}
+
+	// Check body present
+	if !strings.Contains(content, "<h1>Hello!</h1>") || !strings.Contains(content, "<p>This is HTML content.</p>") {
+		t.Error("HTML body content not found in message")
+	}
+}
+
+func TestMessageBuildHTMLWithAttachment(t *testing.T) {
+	msg := &Message{
+		From:    "sender@example.com",
+		To:      []string{"recipient@example.com"},
+		Subject: "HTML with Attachment",
+		Body:    "<p>See attached file.</p>",
+		IsHTML:  true,
+		Attachments: []Attachment{
+			{
+				Filename: "doc.pdf",
+				Data:     []byte("fake pdf content"),
+				MIMEType: "application/pdf",
+			},
+		},
+	}
+
+	data, err := msg.Build()
+	if err != nil {
+		t.Fatalf("Build() error: %v", err)
+	}
+
+	content := string(data)
+
+	// Check multipart header
+	if !strings.Contains(content, "Content-Type: multipart/mixed; boundary=") {
+		t.Error("Missing multipart/mixed Content-Type")
+	}
+
+	// Check HTML content type for body part
+	if !strings.Contains(content, "Content-Type: text/html; charset=UTF-8") {
+		t.Error("Missing text/html Content-Type for body part")
+	}
+
+	// Check attachment
+	if !strings.Contains(content, "Content-Disposition: attachment; filename=\"doc.pdf\"") {
+		t.Error("Missing attachment Content-Disposition")
+	}
+}
+
 func TestMessageBuildUTF8Subject(t *testing.T) {
 	msg := &Message{
 		From:    "sender@example.com",
