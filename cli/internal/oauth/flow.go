@@ -207,7 +207,8 @@ func openBrowser(url string) error {
 
 // Authenticate performs the full OAuth authentication flow
 // Returns the token ready to be stored
-func Authenticate(provider *Provider, clientID, email string) (*Token, error) {
+// clientSecret is required for Google, optional for Microsoft
+func Authenticate(provider *Provider, clientID, clientSecret, email string) (*Token, error) {
 	// Generate PKCE
 	pkce, err := GeneratePKCE()
 	if err != nil {
@@ -229,7 +230,7 @@ func Authenticate(provider *Provider, clientID, email string) (*Token, error) {
 	fmt.Println("Exchanging authorization code for tokens...")
 
 	// Exchange code for tokens
-	token, err := ExchangeCode(provider, clientID, redirectURI, result.Code, pkce.Verifier)
+	token, err := ExchangeCode(provider, clientID, clientSecret, redirectURI, result.Code, pkce.Verifier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to exchange code: %w", err)
 	}

@@ -55,13 +55,19 @@ func (t *Token) ExpiresIn() time.Duration {
 }
 
 // ExchangeCode exchanges an authorization code for tokens
-func ExchangeCode(provider *Provider, clientID, redirectURI, code, codeVerifier string) (*Token, error) {
+// clientSecret is optional for Microsoft (PKCE only) but required for Google
+func ExchangeCode(provider *Provider, clientID, clientSecret, redirectURI, code, codeVerifier string) (*Token, error) {
 	data := url.Values{
 		"client_id":     {clientID},
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"redirect_uri":  {redirectURI},
 		"code_verifier": {codeVerifier},
+	}
+
+	// Google requires client_secret even with PKCE
+	if clientSecret != "" {
+		data.Set("client_secret", clientSecret)
 	}
 
 	resp, err := http.PostForm(provider.TokenEndpoint, data)
@@ -93,7 +99,8 @@ func ExchangeCode(provider *Provider, clientID, redirectURI, code, codeVerifier 
 }
 
 // RefreshAccessToken uses the refresh token to get a new access token
-func RefreshAccessToken(provider *Provider, clientID string, token *Token) (*Token, error) {
+// clientSecret is optional for Microsoft but required for Google
+func RefreshAccessToken(provider *Provider, clientID, clientSecret string, token *Token) (*Token, error) {
 	if token.RefreshToken == "" {
 		return nil, errors.New("no refresh token available")
 	}
@@ -103,6 +110,11 @@ func RefreshAccessToken(provider *Provider, clientID string, token *Token) (*Tok
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {token.RefreshToken},
 		"scope":         {strings.Join(provider.Scopes, " ")},
+	}
+
+	// Google requires client_secret for refresh
+	if clientSecret != "" {
+		data.Set("client_secret", clientSecret)
 	}
 
 	resp, err := http.PostForm(provider.TokenEndpoint, data)
@@ -162,7 +174,7 @@ func GetValidToken(email, clientID, tenant string) (*Token, error) {
 		return nil, err
 	}
 
-	newToken, err := RefreshAccessToken(provider, clientID, token)
+	newToken, err := RefreshAccessToken(provider, clientID, "", token)
 	if err != nil {
 		// If refresh failed, delete the invalid token
 		if errors.Is(err, ErrTokenExpired) {

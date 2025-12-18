@@ -99,10 +99,15 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Check if Google requires client_secret
+	if account.OAuth.Provider == "google" && account.OAuth.ClientSecret == "" {
+		return fmt.Errorf("Google OAuth requires client_secret\nAdd client_secret to [accounts.oauth] in your config.toml")
+	}
+
 	fmt.Printf("Starting OAuth authentication for %s (%s)...\n\n", email, account.OAuth.Provider)
 
 	// Run OAuth flow
-	token, err := oauth.Authenticate(provider, account.OAuth.ClientID, email)
+	token, err := oauth.Authenticate(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, email)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
@@ -201,7 +206,7 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Refreshing token for %s...\n", email)
 
 	// Refresh token
-	newToken, err := oauth.RefreshAccessToken(provider, account.OAuth.ClientID, token)
+	newToken, err := oauth.RefreshAccessToken(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, token)
 	if err != nil {
 		if errors.Is(err, oauth.ErrTokenExpired) {
 			// Delete invalid token
