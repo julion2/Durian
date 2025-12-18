@@ -30,7 +30,7 @@ The query follows notmuch search syntax. Common examples:
   durian search "tag:inbox AND tag:unread"
   durian search "from:alice@example.com" --limit 10
   durian search "tag:unread" --json`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.MinimumNArgs(1),
 	RunE: runSearch,
 }
 
@@ -40,7 +40,8 @@ func init() {
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
-	query := args[0]
+	// Join all arguments to allow unquoted queries like: durian search tag:inbox AND date:today
+	query := strings.Join(args, " ")
 
 	nmClient := notmuch.NewExecClient()
 	h := handler.New(nmClient)
