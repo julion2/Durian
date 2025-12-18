@@ -177,3 +177,69 @@ func (a *AccountConfig) GetMaxAttachmentSize() int64 {
 
 	return size
 }
+
+// IMAP defaults
+const (
+	DefaultIMAPMaxMessages = 5000
+	DefaultIMAPBatchSize   = 5000
+)
+
+// DefaultIMAPMailboxes are the mailboxes synced by default if not configured
+var DefaultIMAPMailboxes = []string{"INBOX", "Sent", "Sent Items", "Sent Messages", "Drafts", "Archive"}
+
+// ExcludedIMAPMailboxes are excluded from sync by default
+var ExcludedIMAPMailboxes = []string{"Junk", "Spam", "Trash", "Deleted", "Deleted Items", "Deleted Messages"}
+
+// GetIMAPMaxMessages returns the max messages per mailbox, defaulting to 5000
+func (a *AccountConfig) GetIMAPMaxMessages() int {
+	if a.IMAP.MaxMessages <= 0 {
+		return DefaultIMAPMaxMessages
+	}
+	return a.IMAP.MaxMessages
+}
+
+// GetIMAPBatchSize returns the batch size for fetching, defaulting to 5000
+func (a *AccountConfig) GetIMAPBatchSize() int {
+	if a.IMAP.BatchSize <= 0 {
+		return DefaultIMAPBatchSize
+	}
+	return a.IMAP.BatchSize
+}
+
+// GetIMAPMaildir returns the expanded Maildir path
+func (a *AccountConfig) GetIMAPMaildir() string {
+	if a.IMAP.Maildir == "" {
+		return ""
+	}
+	return ExpandPath(a.IMAP.Maildir)
+}
+
+// GetIMAPMailboxes returns the mailboxes to sync, using smart defaults if not configured
+func (a *AccountConfig) GetIMAPMailboxes() []string {
+	if len(a.IMAP.Mailboxes) > 0 {
+		return a.IMAP.Mailboxes
+	}
+	return DefaultIMAPMailboxes
+}
+
+// IsIMAPMailboxExcluded checks if a mailbox should be excluded from sync
+func IsIMAPMailboxExcluded(name string) bool {
+	nameLower := strings.ToLower(name)
+	for _, excluded := range ExcludedIMAPMailboxes {
+		if strings.ToLower(excluded) == nameLower || strings.HasPrefix(nameLower, strings.ToLower(excluded)) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetAccountsWithIMAP returns all accounts that have IMAP configured
+func (c *Config) GetAccountsWithIMAP() []*AccountConfig {
+	var accounts []*AccountConfig
+	for i := range c.Accounts {
+		if c.Accounts[i].IMAP.Host != "" {
+			accounts = append(accounts, &c.Accounts[i])
+		}
+	}
+	return accounts
+}

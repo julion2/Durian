@@ -36,6 +36,7 @@ type AccountConfig struct {
 	Default          bool        `toml:"default"`
 	DefaultSignature string      `toml:"default_signature"`
 	SMTP             SMTPConfig  `toml:"smtp"`
+	IMAP             IMAPConfig  `toml:"imap"`
 	Auth             AuthConfig  `toml:"auth"`
 	OAuth            OAuthConfig `toml:"oauth"`
 }
@@ -47,6 +48,17 @@ type SMTPConfig struct {
 	SSL               bool   `toml:"ssl"`
 	Auth              string `toml:"auth"`                // "password" or "oauth2"
 	MaxAttachmentSize string `toml:"max_attachment_size"` // e.g. "25MB", default 25MB
+}
+
+// IMAPConfig contains IMAP server settings
+type IMAPConfig struct {
+	Host        string   `toml:"host"`
+	Port        int      `toml:"port"`
+	Auth        string   `toml:"auth"`         // "password" or "oauth2"
+	Maildir     string   `toml:"maildir"`      // e.g. "~/.mail/account"
+	MaxMessages int      `toml:"max_messages"` // Default: 5000, 0 = unlimited
+	BatchSize   int      `toml:"batch_size"`   // Default: 5000
+	Mailboxes   []string `toml:"mailboxes"`    // Optional: specific mailboxes to sync
 }
 
 // AuthConfig contains password-based authentication settings

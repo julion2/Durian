@@ -29,6 +29,14 @@ port = 587
 auth = "password"
 max_attachment_size = "20MB"  # GMX limit is 20MB
 
+[accounts.imap]
+host = "imap.example.com"
+port = 993
+auth = "password"
+maildir = "~/.mail/personal"
+max_messages = 5000  # Limit per mailbox, 0 = unlimited
+# mailboxes = ["INBOX", "Sent", "Drafts"]  # Optional, has smart defaults
+
 [accounts.auth]
 username = "you@example.com"
 password_keychain = "example-smtp"
@@ -46,6 +54,13 @@ port = 587
 auth = "oauth2"
 max_attachment_size = "25MB"  # Office 365 default, can be up to 150MB
 
+[accounts.imap]
+host = "outlook.office365.com"
+port = 993
+auth = "oauth2"
+maildir = "~/.mail/work"
+max_messages = 5000
+
 [accounts.oauth]
 provider = "microsoft"
 client_id = "your-azure-client-id"
@@ -60,6 +75,13 @@ host = "smtp.gmail.com"
 port = 587
 auth = "oauth2"
 max_attachment_size = "25MB"  # Gmail limit is 25MB
+
+[accounts.imap]
+host = "imap.gmail.com"
+port = 993
+auth = "oauth2"
+maildir = "~/.mail/gmail"
+max_messages = 5000
 
 [accounts.oauth]
 provider = "google"
