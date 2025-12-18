@@ -1,0 +1,54 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Email with Attachment
+Date: Thu, 18 Dec 2025 13:00:00 +0100
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----=_Part_Mixed_789"
+
+------=_Part_Mixed_789
+Content-Type: multipart/alternative; boundary="----=_Part_Alt_456"
+
+------=_Part_Alt_456
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+This email has an attachment.
+
+Please see the attached PDF file.
+
+------=_Part_Alt_456
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<html>
+<body>
+<p>This email has an attachment.</p>
+<p>Please see the attached PDF file.</p>
+</body>
+</html>
+
+------=_Part_Alt_456--
+
+------=_Part_Mixed_789
+Content-Type: application/pdf; name="document.pdf"
+Content-Disposition: attachment; filename="document.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5k
+b2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKL01l
+ZGlhQm94IFswIDAgNjEyIDc5Ml0KPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UK
+L1BhcmVudCAyIDAgUgovUmVzb3VyY2VzIDw8Pj4KL0NvbnRlbnRzIDQgMCBSCj4+CmVuZG9i
+ago0IDAgb2JqCjw8Ci9MZW5ndGggMAo+PgpzdHJlYW0KZW5kc3RyZWFtCmVuZG9iagp4cmVm
+CjAgNQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1
+OCAwMDAwMCBuIAowMDAwMDAwMTQ3IDAwMDAwIG4gCjAwMDAwMDAyNDYgMDAwMDAgbiAKdHJh
+aWxlcgo8PAovU2l6ZSA1Ci9Sb290IDEgMCBSCj4+CnN0YXJ0eHJlZgoyOTUKJSVFT0YK
+
+------=_Part_Mixed_789
+Content-Type: image/png; name="image.png"
+Content-Disposition: attachment; filename="image.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGA
+faKk0AAAAABJRU5ErkJggg==
+
+------=_Part_Mixed_789--

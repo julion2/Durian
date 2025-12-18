@@ -1,0 +1,16 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Simple HTML Email
+Date: Thu, 18 Dec 2025 11:00:00 +0100
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<h1>Hello World</h1>
+<p>This is a <strong>HTML</strong> email.</p>
+<p>With multiple paragraphs.</p>
+</body>
+</html>

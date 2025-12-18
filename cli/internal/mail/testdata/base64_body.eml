@@ -1,0 +1,9 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Base64 Encoded Body
+Date: Thu, 18 Dec 2025 15:00:00 +0100
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: base64
+
+SGVsbG8sIHRoaXMgaXMgYSBiYXNlNjQgZW5jb2RlZCBlbWFpbCBib2R5Lg0KDQpJdCBjb250
+YWlucyBtdWx0aXBsZSBsaW5lcy4NCg0KQmVzdCByZWdhcmRzIQ==

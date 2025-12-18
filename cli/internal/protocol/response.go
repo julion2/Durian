@@ -1,0 +1,58 @@
+package protocol
+
+import "github.com/durian-dev/durian/cli/internal/mail"
+
+// ErrorCode represents standardized error codes for client handling
+type ErrorCode string
+
+const (
+	ErrNone         ErrorCode = ""
+	ErrInvalidJSON  ErrorCode = "INVALID_JSON"
+	ErrUnknownCmd   ErrorCode = "UNKNOWN_COMMAND"
+	ErrNotFound     ErrorCode = "NOT_FOUND"
+	ErrParseFailed  ErrorCode = "PARSE_FAILED"
+	ErrBackendError ErrorCode = "BACKEND_ERROR"
+	ErrFileError    ErrorCode = "FILE_ERROR"
+)
+
+// Response represents a JSON response sent to the client
+type Response struct {
+	OK        bool              `json:"ok"`
+	ErrorCode ErrorCode         `json:"error_code,omitempty"`
+	Error     string            `json:"error,omitempty"`
+	Results   []mail.Mail       `json:"results,omitempty"`
+	Mail      *mail.MailContent `json:"mail,omitempty"`
+}
+
+// Success returns a successful response with no data
+func Success() Response {
+	return Response{OK: true}
+}
+
+// SuccessWithResults returns a successful response with mail results
+func SuccessWithResults(results []mail.Mail) Response {
+	return Response{OK: true, Results: results}
+}
+
+// SuccessWithMail returns a successful response with mail content
+func SuccessWithMail(m *mail.MailContent) Response {
+	return Response{OK: true, Mail: m}
+}
+
+// Fail returns a failed response with an error code and message
+func Fail(code ErrorCode, err error) Response {
+	return Response{
+		OK:        false,
+		ErrorCode: code,
+		Error:     err.Error(),
+	}
+}
+
+// FailWithMessage returns a failed response with an error code and custom message
+func FailWithMessage(code ErrorCode, message string) Response {
+	return Response{
+		OK:        false,
+		ErrorCode: code,
+		Error:     message,
+	}
+}

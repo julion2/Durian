@@ -24,6 +24,10 @@ DerivedData/
 
 bin/
 .DS_Store
+.idea/
+
+# Go binaries
+cli/durian
 
 ## Obj-C/Swift specific
 *.hmap
