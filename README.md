@@ -46,7 +46,21 @@ make test         # run tests
 
 Custom keymaps: `~/.config/durian/keymaps.toml`
 
+## CLI
+
+```bash
+durian search "tag:inbox" --limit 10
+durian show <thread-id>
+durian tag "tag:inbox" +archived -unread
+durian auth login you@company.com
+durian auth status
+```
+
 ## Config
 
-`~/.config/durian/config.toml` – see [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md)
+`~/.config/durian/config.toml`
+
+- [docs/config-example.toml](docs/config-example.toml) – Full config example
+- [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) – OAuth setup for Gmail/Microsoft
+- [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md) – mbsync/notmuch setup
 

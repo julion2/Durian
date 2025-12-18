@@ -1,0 +1,64 @@
+# Durian Configuration Example
+# Copy to ~/.config/durian/config.toml
+
+[settings]
+theme = "light"
+notifications_enabled = true
+load_remote_images = false
+
+[sync]
+auto_fetch_enabled = true
+auto_fetch_interval = 120
+mbsync_channels = ["work", "personal"]
+
+[notmuch]
+database_path = "~/.mail"
+
+[signatures]
+default = "Best regards"
+work = "Best regards,\nYour Name\nCompany Inc."
+
+# Password auth (e.g. GMX, custom SMTP)
+[[accounts]]
+name = "Personal"
+email = "you@example.com"
+
+[accounts.smtp]
+host = "smtp.example.com"
+port = 587
+auth = "password"
+
+[accounts.auth]
+username = "you@example.com"
+password_keychain = "example-smtp"
+
+# Microsoft 365 OAuth
+[[accounts]]
+name = "Work"
+email = "you@company.com"
+default = true
+default_signature = "work"
+
+[accounts.smtp]
+host = "smtp.office365.com"
+port = 587
+auth = "oauth2"
+
+[accounts.oauth]
+provider = "microsoft"
+client_id = "your-azure-client-id"
+
+# Google OAuth
+[[accounts]]
+name = "Gmail"
+email = "you@gmail.com"
+
+[accounts.smtp]
+host = "smtp.gmail.com"
+port = 587
+auth = "oauth2"
+
+[accounts.oauth]
+provider = "google"
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
