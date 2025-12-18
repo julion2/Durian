@@ -56,5 +56,7 @@ type AuthConfig struct {
 
 // OAuthConfig contains OAuth2 authentication settings
 type OAuthConfig struct {
-	Provider string `toml:"provider"` // "google", "microsoft"
+	Provider string `toml:"provider"`  // "google", "microsoft"
+	ClientID string `toml:"client_id"` // Azure App Client ID or Google Client ID
+	Tenant   string `toml:"tenant"`    // Microsoft tenant (default: "common")
 }
