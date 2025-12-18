@@ -58,10 +58,11 @@ func (c *ExecClient) Search(query string, limit int) ([]SearchResult, error) {
 
 // GetFiles returns file paths for messages matching the query
 func (c *ExecClient) GetFiles(query string, limit int) ([]string, error) {
-	args := []string{"search", "--output=files", query}
+	args := []string{"search", "--output=files"}
 	if limit > 0 {
 		args = append(args, "--limit="+strconv.Itoa(limit))
 	}
+	args = append(args, query)
 
 	cmd := exec.Command("notmuch", args...)
 	out, err := cmd.Output()
