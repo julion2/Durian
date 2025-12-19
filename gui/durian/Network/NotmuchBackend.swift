@@ -93,6 +93,7 @@ class NotmuchBackend: ObservableObject {
         
         process = Process()
         process?.executableURL = URL(fileURLWithPath: durianPath)
+        process?.arguments = ["serve"]  // Start JSON protocol server
         
         // Set PATH to include Homebrew bin directories so durian can find notmuch
         var environment = ProcessInfo.processInfo.environment
