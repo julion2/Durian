@@ -2,8 +2,7 @@
 //  SyncManager.swift
 //  Durian
 //
-//  Manages email synchronization via mbsync + notmuch
-//  Uses launchd to avoid fork() crashes in macOS apps
+//  Manages email synchronization via durian CLI
 //
 
 import Foundation
@@ -16,23 +15,21 @@ import UserNotifications
 enum SyncState: Equatable {
     case idle
     case syncing           // Rotating icon - sync in progress
-    case success           // 🟢 Green - all accounts synced
-    case partial(Int)      // 🟠 Orange - some accounts failed (exit code)
-    case failed(String)    // 🔴 Red - complete failure
+    case success           // Green - sync completed
+    case failed(String)    // Red - sync failed
     
     var color: Color {
         switch self {
         case .idle: return .secondary
-        case .syncing: return .secondary  // No color during animation
+        case .syncing: return .secondary
         case .success: return .green
-        case .partial: return .orange
         case .failed: return .red
         }
     }
     
     var shouldNotify: Bool {
         switch self {
-        case .partial, .failed: return true
+        case .failed: return true
         default: return false
         }
     }
@@ -42,19 +39,7 @@ enum SyncState: Equatable {
         case .idle: return ""
         case .syncing: return "Syncing..."
         case .success: return "Synced"
-        case .partial(let code): return "Partial sync (exit \(code))"
         case .failed(let reason): return "Failed: \(reason)"
-        }
-    }
-    
-    /// Check if two states are the same "type" for notification deduplication
-    var notificationKey: String {
-        switch self {
-        case .idle: return "idle"
-        case .syncing: return "syncing"
-        case .success: return "success"
-        case .partial: return "partial"
-        case .failed: return "failed"
         }
     }
 }
@@ -75,39 +60,23 @@ class SyncManager: ObservableObject {
     /// True if a sync is currently in progress
     var isSyncing: Bool { syncLock }
     
-    // MARK: - Notification Deduplication
-    private var lastNotifiedStateKey: String? = nil
-    
     // MARK: - Paths
-    private let scriptDir: URL
-    private let scriptPath: URL
-    private let plistPath: URL
-    private let completionFile = "/tmp/durian-sync-complete"
-    private let launchdLabel = "com.durian.mbsync"
+    private let durianPath: String
     
     // MARK: - Timers
     private var quickSyncTimer: Timer?
     private var fullSyncTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
-    // MARK: - Full Sync Lock (separate from quick sync)
-    private var isFullSyncing = false
-    
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        scriptDir = home.appendingPathComponent(".local/bin")
-        scriptPath = scriptDir.appendingPathComponent("durian-sync.sh")
-        plistPath = home.appendingPathComponent("Library/LaunchAgents/com.durian.mbsync.plist")
+        durianPath = home.appendingPathComponent(".local/bin/durian").path
     }
     
     // MARK: - Setup (call on app start)
     
     func setup() {
         print("SYNC: Setting up SyncManager...")
-        
-        // Ensure script and launchd agent exist
-        ensureScriptExists()
-        ensureLaunchdAgentExists()
         
         // Start timers based on config
         startQuickSyncTimer()
@@ -116,7 +85,7 @@ class SyncManager: ObservableObject {
         // Listen for settings changes to update timers
         SettingsManager.shared.$settings
             .dropFirst()
-            .sink { [weak self] settings in
+            .sink { [weak self] _ in
                 self?.restartTimers()
             }
             .store(in: &cancellables)
@@ -139,9 +108,7 @@ class SyncManager: ObservableObject {
         quickSyncTimer?.invalidate()
         quickSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            
-            // Skip if sync already in progress
-            guard !self.syncLock && !self.isFullSyncing else {
+            guard !self.syncLock else {
                 print("SYNC: Quick sync timer skipped - sync already in progress")
                 return
             }
@@ -165,9 +132,7 @@ class SyncManager: ObservableObject {
         fullSyncTimer?.invalidate()
         fullSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            
-            // Skip if sync already in progress
-            guard !self.syncLock && !self.isFullSyncing else {
+            guard !self.syncLock else {
                 print("SYNC: Full sync timer skipped - sync already in progress")
                 return
             }
@@ -195,12 +160,12 @@ class SyncManager: ObservableObject {
         }
     }
     
-    // MARK: - Quick Sync (configured channels, 60s timeout, UI feedback)
+    // MARK: - Quick Sync (Cmd+R)
     
-    /// Quick sync - syncs only configured channels (Cmd+R)
+    /// Quick sync - syncs all accounts with shorter timeout
+    @discardableResult
     func quickSync() async -> Bool {
-        // Use syncLock to prevent concurrent syncs
-        guard !syncLock && !isFullSyncing else {
+        guard !syncLock else {
             print("SYNC: Quick sync - already syncing, skipping")
             return false
         }
@@ -208,50 +173,56 @@ class SyncManager: ObservableObject {
         syncLock = true
         defer { syncLock = false }
         
-        let channels = SettingsManager.shared.settings.mbsyncChannels
-        let channelsStr = channels.isEmpty ? "-a" : channels.joined(separator: " ")
-        print("SYNC: Quick sync starting - channels: \(channelsStr)")
+        print("SYNC: Quick sync starting")
+        syncState = .syncing
         
-        syncState = .syncing  // Rotating icon
-        
-        // Run sync with channels
-        let success = await runMbsync(channels: channels, timeout: 60, isQuickSync: true)
+        let success = await runDurianSync(timeout: 60)
         
         if success {
             print("SYNC: Quick sync completed successfully")
+            syncState = .success
+            lastSyncTime = Date()
+            
+            // After 3 seconds, go back to idle
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if case .success = self.syncState {
+                    self.syncState = .idle
+                }
+            }
         } else {
-            print("SYNC: Quick sync finished with issues")
+            print("SYNC: Quick sync failed")
+            syncState = .failed("sync error")
+            sendNotification(title: "Sync Failed", body: "Could not sync emails")
         }
         
         return success
     }
     
-    // MARK: - Full Sync (all channels, 360s timeout, background, only fail notification)
+    // MARK: - Full Sync (Cmd+Shift+R or timer)
     
-    /// Full sync - syncs all channels (Cmd+Shift+R or timer every 2h)
+    /// Full sync - syncs all accounts with longer timeout
+    @discardableResult
     func fullSync() async -> Bool {
-        // Use separate lock for full sync
-        guard !syncLock && !isFullSyncing else {
+        guard !syncLock else {
             print("SYNC: Full sync - already syncing, skipping")
             return false
         }
         
-        isFullSyncing = true
-        defer { isFullSyncing = false }
+        syncLock = true
+        defer { syncLock = false }
         
-        print("SYNC: Full sync starting - mbsync -a")
-        print("SYNC: Full sync - timeout: 360s")
-        
+        print("SYNC: Full sync starting")
         // No UI feedback for full sync (runs in background)
-        // Only notify on complete failure
         
-        // Run sync with all channels (empty = -a)
-        let success = await runMbsync(channels: [], timeout: 360, isQuickSync: false)
+        let success = await runDurianSync(timeout: 300)
         
         if success {
             print("SYNC: Full sync completed successfully")
+            lastSyncTime = Date()
         } else {
-            print("SYNC: Full sync finished with issues")
+            print("SYNC: Full sync failed")
+            sendNotification(title: "Full Sync Failed", body: "Could not sync emails")
         }
         
         return success
@@ -259,172 +230,29 @@ class SyncManager: ObservableObject {
     
     // MARK: - Core Sync Logic
     
-    /// Run mbsync with specified channels via launchd (for keychain access)
-    /// - Parameters:
-    ///   - channels: Array of channel names (empty = mbsync -a)
-    ///   - timeout: Timeout in seconds
-    ///   - isQuickSync: If true, shows UI feedback and all notifications. If false, only notifies on failure.
-    private func runMbsync(channels: [String], timeout: TimeInterval, isQuickSync: Bool) async -> Bool {
-        let channelsFile = "/tmp/durian-sync-channels"
-        
-        // 1. Write channels to file (empty string for full sync = -a)
-        let channelContent = channels.joined(separator: " ")
-        do {
-            try channelContent.write(toFile: channelsFile, atomically: true, encoding: .utf8)
-            print("SYNC: Wrote channels to file: '\(channelContent.isEmpty ? "-a (full)" : channelContent)'")
-        } catch {
-            print("SYNC: Failed to write channels file: \(error)")
-            if isQuickSync {
-                updateState(.failed("setup error"), notify: true, title: "Sync Failed", body: "Could not prepare sync")
-            } else {
-                sendNotification(title: "Full Sync Failed", body: "Could not prepare sync")
-            }
+    /// Run durian sync directly
+    private func runDurianSync(timeout: TimeInterval) async -> Bool {
+        guard FileManager.default.fileExists(atPath: durianPath) else {
+            print("SYNC: durian not found at \(durianPath)")
             return false
         }
         
-        // 2. Remove old completion file
-        try? FileManager.default.removeItem(atPath: completionFile)
+        print("SYNC: Running durian sync (timeout: \(Int(timeout))s)")
+        let result = await runCommand(durianPath, args: ["sync"], timeout: timeout)
         
-        // 3. Trigger launchd (runs outside sandbox with keychain access!)
-        print("SYNC: Triggering launchd agent: \(launchdLabel)")
-        let startResult = await runShellCommand("launchctl start \(launchdLabel)")
-        
-        if !startResult.success {
-            print("SYNC: Failed to start launchd agent: \(startResult.error ?? "unknown")")
-            // Cleanup channels file
-            try? FileManager.default.removeItem(atPath: channelsFile)
-            if isQuickSync {
-                updateState(.failed("launchd error"), notify: true, title: "Sync Failed", body: "Could not start sync agent")
-            } else {
-                sendNotification(title: "Full Sync Failed", body: "Could not start sync agent")
-            }
-            return false
-        }
-        
-        // 4. Wait for completion with timeout
-        print("SYNC: Waiting for completion (timeout: \(Int(timeout))s)")
-        let completed = await waitForCompletion(timeout: timeout)
-        
-        if !completed {
-            // Timeout - try to stop the job
-            print("SYNC: Timeout reached after \(Int(timeout))s, stopping launchd agent")
-            let _ = await runShellCommand("launchctl stop \(launchdLabel)")
-            // Cleanup channels file (script might not have run)
-            try? FileManager.default.removeItem(atPath: channelsFile)
-            
-            if isQuickSync {
-                updateState(.failed("sync timed out"), notify: true, title: "Sync Timed Out", body: "mbsync did not complete within \(Int(timeout))s")
-            } else {
-                sendNotification(title: "Full Sync Timed Out", body: "mbsync did not complete within \(Int(timeout))s")
-            }
-            return false
-        }
-        
-        // 5. Check exit code and validate requested channels synced
-        var isPartialSync = false
-        let stdoutLog = "/tmp/durian-mbsync.log"
-        
-        if let completionContent = try? String(contentsOfFile: completionFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) {
-            // Parse completion file: "EXIT_CODE:CHANNEL_COUNT"
-            let parts = completionContent.split(separator: ":")
-            let exitCode = Int(parts.first ?? "1") ?? 1
-            let requestedChannelCount = parts.count > 1 ? (Int(parts[1]) ?? 0) : 0
-            
-            if exitCode == 0 {
-                // Exit 0 = everything succeeded
-                print("SYNC: mbsync completed successfully")
-            } else if requestedChannelCount > 0 {
-                // Quick Sync with exit code != 0
-                // Check if requested channels still synced successfully
-                var syncedChannelCount = 0
-                
-                if let logContent = try? String(contentsOfFile: stdoutLog, encoding: .utf8) {
-                    // Look for last "Channels: N" in log
-                    let pattern = "Channels:\\s*(\\d+)"
-                    if let regex = try? NSRegularExpression(pattern: pattern),
-                       let lastMatch = regex.matches(in: logContent, range: NSRange(logContent.startIndex..., in: logContent)).last,
-                       let range = Range(lastMatch.range(at: 1), in: logContent) {
-                        syncedChannelCount = Int(logContent[range]) ?? 0
-                    }
-                }
-                
-                if syncedChannelCount >= requestedChannelCount {
-                    // All requested channels synced - errors were from other accounts
-                    print("SYNC: All \(requestedChannelCount) requested channels synced (exit \(exitCode) from non-requested accounts)")
-                } else {
-                    // Some requested channels failed
-                    print("SYNC: Only \(syncedChannelCount)/\(requestedChannelCount) channels synced - partial failure")
-                    isPartialSync = true
-                    if isQuickSync {
-                        updateState(.partial(exitCode), notify: true, title: "Sync Warning", body: "Some requested channels failed to sync")
-                    }
-                }
-            } else {
-                // Full Sync (requestedChannelCount = 0) - use exit code directly
-                if exitCode != 0 {
-                    print("SYNC: Full sync exited with code \(exitCode) - partial sync")
-                    isPartialSync = true
-                }
+        if result.success {
+            print("SYNC: durian sync completed successfully")
+            if let output = result.output, !output.isEmpty {
+                print("SYNC: Output: \(output.prefix(500))")
             }
         } else {
-            print("SYNC: Could not read completion file")
-        }
-        
-        // 6. Run notmuch new (always, even after partial sync)
-        print("SYNC: Running notmuch new")
-        let notmuchResult = await runShellCommand("notmuch new", timeout: 30)
-        
-        if !notmuchResult.success {
-            print("SYNC: notmuch new failed: \(notmuchResult.error ?? "unknown")")
-            if isQuickSync {
-                updateState(.failed("indexing failed"), notify: true, title: "Sync Failed", body: "Email indexing failed")
-            } else {
-                sendNotification(title: "Full Sync Failed", body: "Email indexing failed")
-            }
-            return false
-        }
-        
-        // 7. Final state
-        lastSyncTime = Date()
-        
-        if isQuickSync {
-            if isPartialSync {
-                // Keep orange state - already set above
-                print("SYNC: Quick sync - partial completion")
-            } else {
-                syncState = .success
-                print("SYNC: Quick sync - success")
-                
-                // Reset notification state on success (so next error will notify again)
-                lastNotifiedStateKey = nil
-                
-                // After 3 seconds, go back to idle
-                Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    if case .success = self.syncState {
-                        self.syncState = .idle
-                    }
-                }
+            print("SYNC: durian sync failed")
+            if let error = result.error, !error.isEmpty {
+                print("SYNC: Error: \(error)")
             }
         }
         
-        return true
-    }
-    
-    /// Update state and optionally send notification (with deduplication)
-    private func updateState(_ newState: SyncState, notify: Bool, title: String, body: String) {
-        syncState = newState
-        
-        // Only notify if this is a new state type (avoid spam for repeated partial syncs)
-        if notify && newState.shouldNotify {
-            let stateKey = newState.notificationKey
-            if lastNotifiedStateKey != stateKey {
-                sendNotification(title: title, body: body)
-                lastNotifiedStateKey = stateKey
-            } else {
-                print("SYNC: Skipping duplicate notification for state '\(stateKey)'")
-            }
-        }
+        return result.success
     }
     
     // MARK: - Notifications
@@ -448,175 +276,6 @@ class SyncManager: ObservableObject {
         }
     }
     
-    /// Wait for completion file to appear
-    private func waitForCompletion(timeout: TimeInterval) async -> Bool {
-        let startTime = Date()
-        let pollInterval: UInt64 = 500_000_000 // 500ms in nanoseconds
-        
-        while Date().timeIntervalSince(startTime) < timeout {
-            if FileManager.default.fileExists(atPath: completionFile) {
-                return true
-            }
-            try? await Task.sleep(nanoseconds: pollInterval)
-        }
-        
-        return false
-    }
-    
-    // MARK: - Script & Launchd Setup
-    
-    private func ensureScriptExists() {
-        // Create directory if needed
-        if !FileManager.default.fileExists(atPath: scriptDir.path) {
-            do {
-                try FileManager.default.createDirectory(at: scriptDir, withIntermediateDirectories: true)
-                print("SYNC: Created \(scriptDir.path)")
-            } catch {
-                print("SYNC: Failed to create script directory: \(error)")
-                return
-            }
-        }
-        
-        // Create/update script - reads channels from file (for launchd compatibility)
-        let scriptContent = """
-        #!/bin/bash
-        # durian mail sync script
-        # Auto-generated - do not edit
-        #
-        # Reads channels from /tmp/durian-sync-channels
-        # If file is empty or missing, runs mbsync -a (full sync)
-        # Writes EXIT_CODE:CHANNEL_COUNT to completion file
-        
-        CHANNELS_FILE="/tmp/durian-sync-channels"
-        COMPLETION_FILE="/tmp/durian-sync-complete"
-        STDOUT_LOG="/tmp/durian-mbsync.log"
-        STDERR_LOG="/tmp/durian-mbsync-error.log"
-        
-        # Remove old completion file
-        rm -f "$COMPLETION_FILE"
-        
-        # Clear logs before each sync
-        > "$STDOUT_LOG"
-        > "$STDERR_LOG"
-        
-        # Read channels from file, or use -a if empty/missing
-        if [ -f "$CHANNELS_FILE" ] && [ -s "$CHANNELS_FILE" ]; then
-            CHANNELS=$(cat "$CHANNELS_FILE")
-            CHANNEL_COUNT=$(echo $CHANNELS | wc -w | tr -d ' ')
-            
-            echo "Running: mbsync $CHANNELS" >> "$STDOUT_LOG"
-            /opt/homebrew/bin/mbsync $CHANNELS >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
-            EXIT_CODE=$?
-            
-            # Format: EXIT_CODE:CHANNEL_COUNT (for quick sync validation)
-            echo "$EXIT_CODE:$CHANNEL_COUNT" > "$COMPLETION_FILE"
-        else
-            echo "Running: mbsync -a" >> "$STDOUT_LOG"
-            /opt/homebrew/bin/mbsync -a >> "$STDOUT_LOG" 2>> "$STDERR_LOG"
-            EXIT_CODE=$?
-            
-            # Format: EXIT_CODE:0 (0 = full sync, use exit code directly)
-            echo "$EXIT_CODE:0" > "$COMPLETION_FILE"
-        fi
-        
-        # Cleanup channels file
-        rm -f "$CHANNELS_FILE"
-        
-        exit $EXIT_CODE
-        """
-        
-        do {
-            try scriptContent.write(to: scriptPath, atomically: true, encoding: .utf8)
-            
-            // Make executable
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
-            print("SYNC: Created/updated sync script at \(scriptPath.path)")
-        } catch {
-            print("SYNC: Failed to create sync script: \(error)")
-        }
-    }
-    
-    private func ensureLaunchdAgentExists() {
-        // Create LaunchAgents directory if needed
-        let launchAgentsDir = plistPath.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: launchAgentsDir.path) {
-            do {
-                try FileManager.default.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
-                print("SYNC: Created \(launchAgentsDir.path)")
-            } catch {
-                print("SYNC: Failed to create LaunchAgents directory: \(error)")
-                return
-            }
-        }
-        
-        let plistContent = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(launchdLabel)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>\(scriptPath.path)</string>
-            </array>
-            <key>EnvironmentVariables</key>
-            <dict>
-                <key>PATH</key>
-                <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-                <key>HOME</key>
-                <string>\(FileManager.default.homeDirectoryForCurrentUser.path)</string>
-            </dict>
-            <key>StandardOutPath</key>
-            <string>/tmp/durian-mbsync.log</string>
-            <key>StandardErrorPath</key>
-            <string>/tmp/durian-mbsync-error.log</string>
-        </dict>
-        </plist>
-        """
-        
-        let needsUpdate: Bool
-        if FileManager.default.fileExists(atPath: plistPath.path) {
-            // Check if content changed
-            let existingContent = try? String(contentsOf: plistPath, encoding: .utf8)
-            needsUpdate = existingContent != plistContent
-        } else {
-            needsUpdate = true
-        }
-        
-        // Run async setup in a task
-        Task {
-            if needsUpdate {
-                do {
-                    // Unload old agent if exists
-                    let _ = await runShellCommand("launchctl unload \"\(plistPath.path)\"")
-                    
-                    // Write new plist
-                    try plistContent.write(to: plistPath, atomically: true, encoding: .utf8)
-                    print("SYNC: Created/updated launchd plist at \(plistPath.path)")
-                    
-                    // Load agent
-                    let loadResult = await runShellCommand("launchctl load \"\(plistPath.path)\"")
-                    if loadResult.success {
-                        print("SYNC: Loaded launchd agent")
-                    } else {
-                        print("SYNC: Failed to load launchd agent: \(loadResult.error ?? "unknown")")
-                    }
-                } catch {
-                    print("SYNC: Failed to create launchd plist: \(error)")
-                }
-            } else {
-                print("SYNC: launchd plist already up to date")
-                
-                // Make sure it's loaded
-                let listResult = await runShellCommand("launchctl list \(launchdLabel)")
-                if !listResult.success {
-                    let _ = await runShellCommand("launchctl load \"\(plistPath.path)\"")
-                }
-            }
-        }
-    }
-    
     // MARK: - Command Execution
     
     private struct CommandResult {
@@ -625,14 +284,13 @@ class SyncManager: ObservableObject {
         let error: String?
     }
     
-    /// Run a shell command via /bin/bash -c with optional timeout
-    /// This is more robust than calling executables directly as bash handles PATH resolution
-    private func runShellCommand(_ command: String, timeout: TimeInterval? = nil) async -> CommandResult {
+    /// Run a command directly with timeout
+    private func runCommand(_ path: String, args: [String], timeout: TimeInterval) async -> CommandResult {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/bash")
-                process.arguments = ["-c", command]
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = args
                 
                 // Set up environment with Homebrew paths
                 var env = ProcessInfo.processInfo.environment
@@ -649,20 +307,18 @@ class SyncManager: ObservableObject {
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
                 
-                // Set up timeout if specified
+                // Set up timeout
                 var timeoutWorkItem: DispatchWorkItem?
                 var didTimeout = false
                 
-                if let timeout = timeout {
-                    timeoutWorkItem = DispatchWorkItem {
-                        if process.isRunning {
-                            print("SYNC: Command timed out after \(timeout)s, terminating process")
-                            didTimeout = true
-                            process.terminate()
-                        }
+                timeoutWorkItem = DispatchWorkItem {
+                    if process.isRunning {
+                        print("SYNC: Command timed out after \(timeout)s, terminating process")
+                        didTimeout = true
+                        process.terminate()
                     }
-                    DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem!)
                 }
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem!)
                 
                 do {
                     try process.run()
@@ -671,12 +327,11 @@ class SyncManager: ObservableObject {
                     // Cancel timeout timer if process completed
                     timeoutWorkItem?.cancel()
                     
-                    // Check if we timed out
                     if didTimeout {
                         continuation.resume(returning: CommandResult(
                             success: false,
                             output: nil,
-                            error: "Command timed out after \(Int(timeout ?? 0)) seconds"
+                            error: "Command timed out after \(Int(timeout)) seconds"
                         ))
                         return
                     }

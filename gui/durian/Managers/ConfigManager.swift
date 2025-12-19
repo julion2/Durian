@@ -140,12 +140,6 @@ class ConfigManager {
         toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
         
         // Sync configuration
-        if !config.settings.mbsyncChannels.isEmpty {
-            let channelsStr = config.settings.mbsyncChannels.map { "\"\($0)\"" }.joined(separator: ", ")
-            toml += "mbsync_channels = [\(channelsStr)]\n"
-        } else {
-            toml += "mbsync_channels = []  # Empty = mbsync -a (all channels)\n"
-        }
         toml += "full_sync_interval = \(config.settings.fullSyncInterval)  # Full sync every 2 hours\n\n"
         
         // Signatures section

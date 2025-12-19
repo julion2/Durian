@@ -68,7 +68,6 @@ struct AppSettings: Codable {
     var loadRemoteImages: Bool = false  // Security: block tracking pixels by default
     
     // Sync configuration
-    var mbsyncChannels: [String] = []  // Quick sync channels (empty = mbsync -a)
     var fullSyncInterval: TimeInterval = 7200  // Full sync interval (2 hours)
     
     enum CodingKeys: String, CodingKey {
@@ -77,7 +76,6 @@ struct AppSettings: Codable {
         case notificationsEnabled = "notifications_enabled"
         case theme
         case loadRemoteImages = "load_remote_images"
-        case mbsyncChannels = "mbsync_channels"
         case fullSyncInterval = "full_sync_interval"
     }
     
@@ -92,7 +90,6 @@ struct AppSettings: Codable {
         notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? "system"
         loadRemoteImages = try container.decodeIfPresent(Bool.self, forKey: .loadRemoteImages) ?? false
-        mbsyncChannels = try container.decodeIfPresent([String].self, forKey: .mbsyncChannels) ?? []
         fullSyncInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .fullSyncInterval) ?? 7200
     }
 }
