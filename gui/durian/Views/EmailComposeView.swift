@@ -552,9 +552,6 @@ struct AttachmentChip: View {
                     MailAccount(
                         name: "Test Account",
                         email: "test@example.com",
-                        imap: ServerConfig(host: "imap.example.com", port: 993, ssl: true),
-                        smtp: ServerConfig(host: "smtp.example.com", port: 587, ssl: false),
-                        auth: AuthConfig(username: "test", passwordKeychain: "test-keychain"),
                         defaultSignature: nil
                     )
                 ],

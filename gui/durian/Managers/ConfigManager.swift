@@ -3,6 +3,7 @@
 //  Durian
 //
 //  Manages app configuration from config.toml
+//  Note: IMAP/SMTP config is handled by CLI, GUI only needs account names/emails
 //
 
 import Foundation
@@ -10,33 +11,31 @@ import TOMLDecoder
 
 // MARK: - Config Models
 
+/// Simplified account info - GUI only needs name/email for account picker
+/// IMAP/SMTP configuration is handled by the durian CLI
 struct MailAccount: Codable {
     let name: String
     let email: String
-    let imap: ServerConfig
-    let smtp: ServerConfig
-    let auth: AuthConfig
     let defaultSignature: String?
     
     enum CodingKeys: String, CodingKey {
-        case name, email, imap, smtp, auth
+        case name, email
         case defaultSignature = "default_signature"
     }
-}
-
-struct ServerConfig: Codable {
-    let host: String
-    let port: Int
-    let ssl: Bool
-}
-
-struct AuthConfig: Codable {
-    let username: String
-    let passwordKeychain: String?
     
-    enum CodingKeys: String, CodingKey {
-        case username
-        case passwordKeychain = "password_keychain"
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        email = try container.decode(String.self, forKey: .email)
+        defaultSignature = try container.decodeIfPresent(String.self, forKey: .defaultSignature)
+        
+        // Skip IMAP/SMTP/Auth sections - they're handled by CLI
+    }
+    
+    init(name: String, email: String, defaultSignature: String? = nil) {
+        self.name = name
+        self.email = email
+        self.defaultSignature = defaultSignature
     }
 }
 
@@ -49,6 +48,17 @@ struct AppConfig: Codable {
         self.accounts = accounts
         self.settings = settings
         self.signatures = signatures
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case accounts, settings, signatures
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accounts = try container.decodeIfPresent([MailAccount].self, forKey: .accounts) ?? []
+        settings = try container.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
+        signatures = try container.decodeIfPresent([String: String].self, forKey: .signatures) ?? [:]
     }
 }
 
@@ -64,7 +74,6 @@ class ConfigManager {
     
     private func loadConfig() {
         let tomlURL = getConfigURL()
-        let jsonURL = getLegacyConfigURL()
         
         // Create config directory if it doesn't exist
         let configDir = tomlURL.deletingLastPathComponent()
@@ -75,11 +84,6 @@ class ConfigManager {
                 print("CONFIG_ERROR: Failed to create config directory: \(error)")
                 return
             }
-        }
-        
-        // Migration: Check if JSON config exists but TOML doesn't
-        if FileManager.default.fileExists(atPath: jsonURL.path) && !FileManager.default.fileExists(atPath: tomlURL.path) {
-            migrateFromJSON(jsonURL: jsonURL, tomlURL: tomlURL)
         }
         
         // Create default config if it doesn't exist
@@ -102,98 +106,14 @@ class ConfigManager {
         return homeURL.appendingPathComponent(".config/durian/config.toml")
     }
     
-    private func getLegacyConfigURL() -> URL {
-        let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        return homeURL.appendingPathComponent(".config/durian/config.json")
-    }
-    
-    private func migrateFromJSON(jsonURL: URL, tomlURL: URL) {
-        print("CONFIG: Migrating from JSON to TOML...")
-        do {
-            let jsonData = try Data(contentsOf: jsonURL)
-            let jsonConfig = try JSONDecoder().decode(AppConfig.self, from: jsonData)
-            
-            // Write as TOML
-            let tomlString = generateTOML(from: jsonConfig)
-            try tomlString.write(to: tomlURL, atomically: true, encoding: .utf8)
-            
-            // Backup old JSON file
-            let backupURL = jsonURL.deletingPathExtension().appendingPathExtension("json.bak")
-            try FileManager.default.moveItem(at: jsonURL, to: backupURL)
-            
-            print("CONFIG: Migration complete. JSON backup at \(backupURL.path)")
-        } catch {
-            print("CONFIG_ERROR: Migration failed: \(error)")
-        }
-    }
-    
-    private func generateTOML(from config: AppConfig) -> String {
-        var toml = "# Durian Configuration\n"
-        toml += "# Documentation: https://github.com/julion2/durian\n\n"
-        
-        // Settings section
-        toml += "[settings]\n"
-        toml += "auto_fetch_enabled = \(config.settings.autoFetchEnabled)\n"
-        toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
-        toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
-        toml += "theme = \"\(config.settings.theme)\"\n"
-        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
-        
-        // Sync configuration
-        toml += "full_sync_interval = \(config.settings.fullSyncInterval)  # Full sync every 2 hours\n\n"
-        
-        // Signatures section
-        if !config.signatures.isEmpty {
-            toml += "[signatures]\n"
-            for (name, content) in config.signatures {
-                // Use TOML multi-line strings (triple quotes) for values with newlines
-                if content.contains("\n") {
-                    toml += "\(name) = \"\"\"\n\(content)\"\"\"\n"
-                } else {
-                    let escapedContent = content
-                        .replacingOccurrences(of: "\\", with: "\\\\")
-                        .replacingOccurrences(of: "\"", with: "\\\"")
-                    toml += "\(name) = \"\(escapedContent)\"\n"
-                }
-            }
-            toml += "\n"
-        }
-        
-        // Accounts array
-        for account in config.accounts {
-            toml += "[[accounts]]\n"
-            toml += "name = \"\(account.name)\"\n"
-            toml += "email = \"\(account.email)\"\n"
-            if let sig = account.defaultSignature {
-                toml += "default_signature = \"\(sig)\"\n"
-            }
-            toml += "\n"
-            
-            toml += "[accounts.imap]\n"
-            toml += "host = \"\(account.imap.host)\"\n"
-            toml += "port = \(account.imap.port)\n"
-            toml += "ssl = \(account.imap.ssl)\n\n"
-            
-            toml += "[accounts.smtp]\n"
-            toml += "host = \"\(account.smtp.host)\"\n"
-            toml += "port = \(account.smtp.port)\n"
-            toml += "ssl = \(account.smtp.ssl)\n\n"
-            
-            toml += "[accounts.auth]\n"
-            toml += "username = \"\(account.auth.username)\"\n"
-            if let keychain = account.auth.passwordKeychain {
-                toml += "password_keychain = \"\(keychain)\"\n"
-            }
-            toml += "\n"
-        }
-        
-        return toml
-    }
-    
     private func createDefaultConfig(at url: URL) {
+        // Note: This is a minimal GUI config. The CLI config has IMAP/SMTP details.
         let defaultTOML = """
         # Durian Configuration
         # Documentation: https://github.com/julion2/durian
+        #
+        # Note: IMAP/SMTP configuration should be done in the CLI config.
+        # Run 'durian auth login <email>' to set up accounts.
 
         [settings]
         auto_fetch_enabled = true
@@ -201,34 +121,18 @@ class ConfigManager {
         notifications_enabled = true
         theme = "system"
         load_remote_images = false
-        
-        # Sync configuration
-        # Quick sync channels (empty array = mbsync -a for all channels)
-        mbsync_channels = []
-        # Full sync interval in seconds (7200 = 2 hours)
         full_sync_interval = 7200
 
         [signatures]
         # Add your signatures here:
         # work = "Best regards,\\nYour Name"
 
-        [[accounts]]
-        name = "Default"
-        email = "user@example.com"
-
-        [accounts.imap]
-        host = "imap.example.com"
-        port = 993
-        ssl = true
-
-        [accounts.smtp]
-        host = "smtp.example.com"
-        port = 587
-        ssl = false
-
-        [accounts.auth]
-        username = "user"
-        password_keychain = "example-password"
+        # Accounts are loaded from the CLI config (~/.config/durian/config.toml)
+        # The GUI only needs name and email for the account picker.
+        # [[accounts]]
+        # name = "Personal"
+        # email = "user@example.com"
+        # default_signature = "work"
 
         """
         
@@ -266,9 +170,9 @@ class ConfigManager {
     }
     
     func updateSettings(_ newSettings: AppSettings) {
-        guard let config = self.config else { return }
+        guard let currentConfig = self.config else { return }
         
-        let updatedConfig = AppConfig(accounts: config.accounts, settings: newSettings, signatures: config.signatures)
+        let updatedConfig = AppConfig(accounts: currentConfig.accounts, settings: newSettings, signatures: currentConfig.signatures)
         self.config = updatedConfig
         
         saveConfigToFile()
@@ -285,5 +189,48 @@ class ConfigManager {
         } catch {
             print("CONFIG_ERROR: Failed to save config: \(error)")
         }
+    }
+    
+    private func generateTOML(from config: AppConfig) -> String {
+        var toml = "# Durian Configuration\n"
+        toml += "# Documentation: https://github.com/julion2/durian\n\n"
+        
+        // Settings section
+        toml += "[settings]\n"
+        toml += "auto_fetch_enabled = \(config.settings.autoFetchEnabled)\n"
+        toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
+        toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
+        toml += "theme = \"\(config.settings.theme)\"\n"
+        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
+        toml += "full_sync_interval = \(config.settings.fullSyncInterval)\n\n"
+        
+        // Signatures section
+        if !config.signatures.isEmpty {
+            toml += "[signatures]\n"
+            for (name, content) in config.signatures {
+                if content.contains("\n") {
+                    toml += "\(name) = \"\"\"\n\(content)\"\"\"\n"
+                } else {
+                    let escapedContent = content
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "\"", with: "\\\"")
+                    toml += "\(name) = \"\(escapedContent)\"\n"
+                }
+            }
+            toml += "\n"
+        }
+        
+        // Accounts array (simplified - no IMAP/SMTP)
+        for account in config.accounts {
+            toml += "[[accounts]]\n"
+            toml += "name = \"\(account.name)\"\n"
+            toml += "email = \"\(account.email)\"\n"
+            if let sig = account.defaultSignature {
+                toml += "default_signature = \"\(sig)\"\n"
+            }
+            toml += "\n"
+        }
+        
+        return toml
     }
 }

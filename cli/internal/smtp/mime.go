@@ -19,6 +19,8 @@ import (
 type Message struct {
 	From        string
 	To          []string
+	CC          []string
+	BCC         []string
 	Subject     string
 	Body        string
 	IsHTML      bool
@@ -69,6 +71,10 @@ func (m *Message) Build() ([]byte, error) {
 	// Write headers
 	fmt.Fprintf(&buf, "From: %s\r\n", m.From)
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(m.To, ", "))
+	if len(m.CC) > 0 {
+		fmt.Fprintf(&buf, "Cc: %s\r\n", strings.Join(m.CC, ", "))
+	}
+	// Note: BCC is not included in headers (by design - recipients are added via RCPT TO only)
 	fmt.Fprintf(&buf, "Subject: %s\r\n", encodeHeader(m.Subject))
 	fmt.Fprintf(&buf, "Date: %s\r\n", date)
 	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
@@ -127,8 +133,13 @@ func (m *Message) Build() ([]byte, error) {
 }
 
 // Recipients returns all recipient addresses (for SMTP RCPT TO)
+// Includes To, CC, and BCC recipients
 func (m *Message) Recipients() []string {
-	return m.To
+	recipients := make([]string, 0, len(m.To)+len(m.CC)+len(m.BCC))
+	recipients = append(recipients, m.To...)
+	recipients = append(recipients, m.CC...)
+	recipients = append(recipients, m.BCC...)
+	return recipients
 }
 
 // encodeHeader encodes a header value using RFC 2047 if it contains non-ASCII

@@ -17,6 +17,8 @@ import (
 
 var (
 	sendTo       string
+	sendCC       string
+	sendBCC      string
 	sendSubject  string
 	sendBody     string
 	sendFrom     string
@@ -34,6 +36,9 @@ var sendCmd = &cobra.Command{
 Examples:
   # Send with all flags
   durian send --to "recipient@example.com" --subject "Hello" --body "Message"
+
+  # Send with CC and BCC
+  durian send --to "main@example.com" --cc "copy@example.com" --bcc "hidden@example.com" --subject "Hello" --body "Message"
 
   # Send with attachment
   durian send --to "..." --subject "..." --body "..." --attach file.pdf
@@ -58,6 +63,8 @@ Examples:
 
 func init() {
 	sendCmd.Flags().StringVar(&sendTo, "to", "", "recipient email address(es), comma-separated")
+	sendCmd.Flags().StringVar(&sendCC, "cc", "", "CC recipient(s), comma-separated")
+	sendCmd.Flags().StringVar(&sendBCC, "bcc", "", "BCC recipient(s), comma-separated")
 	sendCmd.Flags().StringVar(&sendSubject, "subject", "", "email subject")
 	sendCmd.Flags().StringVar(&sendBody, "body", "", "email body")
 	sendCmd.Flags().StringVar(&sendFrom, "from", "", "sender account (alias, name, or email; uses default if not specified)")
@@ -150,10 +157,30 @@ func runSend(cmd *cobra.Command, args []string) error {
 		return errors.New("empty message body, aborting")
 	}
 
+	// Parse CC recipients
+	var ccRecipients []string
+	if sendCC != "" {
+		ccRecipients, err = smtp.ParseAddressList(sendCC)
+		if err != nil {
+			return fmt.Errorf("invalid CC address: %w", err)
+		}
+	}
+
+	// Parse BCC recipients
+	var bccRecipients []string
+	if sendBCC != "" {
+		bccRecipients, err = smtp.ParseAddressList(sendBCC)
+		if err != nil {
+			return fmt.Errorf("invalid BCC address: %w", err)
+		}
+	}
+
 	// Build message
 	msg := &smtp.Message{
 		From:    account.Email,
 		To:      recipients,
+		CC:      ccRecipients,
+		BCC:     bccRecipients,
 		Subject: subject,
 		Body:    body,
 		IsHTML:  sendHTML,

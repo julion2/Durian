@@ -2,7 +2,7 @@
 //  EmailSendingManager.swift
 //  Durian
 //
-//  Manages email sending across multiple accounts
+//  Manages email sending via durian CLI
 //
 
 import Foundation
@@ -16,19 +16,29 @@ class EmailSendingManager: ObservableObject {
     @Published var sendingProgress = ""
     @Published var lastError: EmailSendingError?
     
-    private var smtpClients: [String: SMTPClient] = [:]
+    private let durianPath: String
     
-    private init() {}
-    
-    func prepareSMTP(for account: MailAccount) {
-        if smtpClients[account.email] == nil {
-            smtpClients[account.email] = SMTPClient(account: account)
-        }
+    private init() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        durianPath = home.appendingPathComponent(".local/bin/durian").path
     }
     
+    /// Send email using durian CLI
     func send(draft: EmailDraft, fromAccount accountEmail: String) async throws {
+        guard draft.hasRecipients else {
+            let error = EmailSendingError.invalidRecipients
+            lastError = error
+            throw error
+        }
+        
+        guard FileManager.default.fileExists(atPath: durianPath) else {
+            let error = EmailSendingError.sendFailed("durian CLI not found at \(durianPath)")
+            lastError = error
+            throw error
+        }
+        
         isSending = true
-        sendingProgress = "Connecting to SMTP server..."
+        sendingProgress = "Preparing email..."
         lastError = nil
         
         defer {
@@ -36,39 +46,182 @@ class EmailSendingManager: ObservableObject {
             sendingProgress = ""
         }
         
-        guard let account = ConfigManager.shared.getAccounts().first(where: { $0.email == accountEmail }) else {
-            let error = EmailSendingError.noSMTPConfiguration
-            lastError = error
-            throw error
+        // Build durian send arguments
+        var args = ["send",
+            "--from", accountEmail,
+            "--to", draft.to.joined(separator: ","),
+            "--subject", draft.subject
+        ]
+        
+        // CC recipients
+        if !draft.cc.isEmpty {
+            args.append("--cc")
+            args.append(draft.cc.joined(separator: ","))
         }
         
-        prepareSMTP(for: account)
-        guard let client = smtpClients[accountEmail] else {
-            let error = EmailSendingError.noSMTPConfiguration
-            lastError = error
-            throw error
+        // BCC recipients
+        if !draft.bcc.isEmpty {
+            args.append("--bcc")
+            args.append(draft.bcc.joined(separator: ","))
         }
         
+        // HTML flag
+        if draft.isHTML {
+            args.append("--html")
+        }
+        
+        // Body as temp file (handles long bodies and special characters)
+        let bodyFile = "/tmp/durian-email-body-\(UUID().uuidString).txt"
         do {
-            try await client.connect()
-            
-            sendingProgress = "Sending email..."
-            try await client.send(draft: draft)
-            
-            sendingProgress = "Email sent successfully"
-            await client.disconnect()
-            
-            DraftManager.shared.deleteDraft(id: draft.id)
-            
-            // Note: Sent emails are synced to local maildir via mbsync
-            
-        } catch let error as EmailSendingError {
-            lastError = error
-            throw error
+            try draft.body.write(toFile: bodyFile, atomically: true, encoding: .utf8)
         } catch {
-            let sendError = EmailSendingError.sendFailed(error.localizedDescription)
+            let sendError = EmailSendingError.sendFailed("Failed to write body file: \(error.localizedDescription)")
             lastError = sendError
             throw sendError
+        }
+        defer { try? FileManager.default.removeItem(atPath: bodyFile) }
+        args.append(contentsOf: ["--body-file", bodyFile])
+        
+        // Attachments - write to temp files
+        var tempAttachmentPaths: [String] = []
+        for attachment in draft.attachments {
+            let tempPath = "/tmp/durian-attach-\(UUID().uuidString)-\(attachment.filename)"
+            do {
+                try attachment.data.write(to: URL(fileURLWithPath: tempPath))
+                tempAttachmentPaths.append(tempPath)
+                args.append("--attach")
+                args.append(tempPath)
+            } catch {
+                // Clean up any already-written temp files
+                for path in tempAttachmentPaths {
+                    try? FileManager.default.removeItem(atPath: path)
+                }
+                let sendError = EmailSendingError.sendFailed("Failed to write attachment: \(error.localizedDescription)")
+                lastError = sendError
+                throw sendError
+            }
+        }
+        
+        // Clean up temp attachments after sending
+        defer {
+            for path in tempAttachmentPaths {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+        }
+        
+        // Execute durian send
+        sendingProgress = "Sending email..."
+        print("EMAIL: Executing durian send")
+        print("EMAIL:   From: \(accountEmail)")
+        print("EMAIL:   To: \(draft.to.joined(separator: ", "))")
+        if !draft.cc.isEmpty {
+            print("EMAIL:   CC: \(draft.cc.joined(separator: ", "))")
+        }
+        if !draft.bcc.isEmpty {
+            print("EMAIL:   BCC: \(draft.bcc.joined(separator: ", "))")
+        }
+        print("EMAIL:   Subject: \(draft.subject)")
+        if !draft.attachments.isEmpty {
+            print("EMAIL:   Attachments: \(draft.attachments.count)")
+        }
+        
+        let result = await runCommand(args: args, timeout: 120)
+        
+        if result.success {
+            sendingProgress = "Email sent successfully"
+            print("EMAIL: Sent successfully")
+            
+            // Delete draft after successful send
+            DraftManager.shared.deleteDraft(id: draft.id)
+        } else {
+            let errorMessage = result.error ?? "Unknown error"
+            print("EMAIL: Send failed: \(errorMessage)")
+            let sendError = EmailSendingError.sendFailed(errorMessage)
+            lastError = sendError
+            throw sendError
+        }
+    }
+    
+    // MARK: - Command Execution
+    
+    private struct CommandResult {
+        let success: Bool
+        let output: String?
+        let error: String?
+    }
+    
+    private func runCommand(args: [String], timeout: TimeInterval) async -> CommandResult {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: self.durianPath)
+                process.arguments = args
+                
+                // Set up environment with Homebrew paths
+                var env = ProcessInfo.processInfo.environment
+                let homebrewPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
+                if let existingPath = env["PATH"] {
+                    env["PATH"] = "\(homebrewPaths):\(existingPath)"
+                } else {
+                    env["PATH"] = "\(homebrewPaths):/usr/bin:/bin:/usr/sbin:/sbin"
+                }
+                process.environment = env
+                
+                let outputPipe = Pipe()
+                let errorPipe = Pipe()
+                process.standardOutput = outputPipe
+                process.standardError = errorPipe
+                
+                // Set up timeout
+                var timeoutWorkItem: DispatchWorkItem?
+                var didTimeout = false
+                
+                timeoutWorkItem = DispatchWorkItem {
+                    if process.isRunning {
+                        print("EMAIL: Command timed out after \(timeout)s, terminating process")
+                        didTimeout = true
+                        process.terminate()
+                    }
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem!)
+                
+                do {
+                    try process.run()
+                    process.waitUntilExit()
+                    
+                    // Cancel timeout timer if process completed
+                    timeoutWorkItem?.cancel()
+                    
+                    if didTimeout {
+                        continuation.resume(returning: CommandResult(
+                            success: false,
+                            output: nil,
+                            error: "Send timed out after \(Int(timeout)) seconds"
+                        ))
+                        return
+                    }
+                    
+                    let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    
+                    let output = String(data: outputData, encoding: .utf8)
+                    let errorOutput = String(data: errorData, encoding: .utf8)
+                    
+                    let success = process.terminationStatus == 0
+                    continuation.resume(returning: CommandResult(
+                        success: success,
+                        output: output,
+                        error: success ? nil : (errorOutput?.isEmpty == false ? errorOutput : "Exit code \(process.terminationStatus)")
+                    ))
+                } catch {
+                    timeoutWorkItem?.cancel()
+                    continuation.resume(returning: CommandResult(
+                        success: false,
+                        output: nil,
+                        error: error.localizedDescription
+                    ))
+                }
+            }
         }
     }
 }
