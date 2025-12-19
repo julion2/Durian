@@ -312,12 +312,17 @@ func (c *Client) StoreFlags(uid uint32, flags []string) error {
 	// Use FLAGS.SILENT to set flags without response
 	item := imap.FormatFlagsOp(imap.SetFlags, true)
 
-	// Must provide a channel even for SILENT mode
+	// Convert []string to []interface{} - go-imap requires this type
+	ifaceFlags := make([]interface{}, len(flags))
+	for i, f := range flags {
+		ifaceFlags[i] = f
+	}
+
 	messages := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 
 	go func() {
-		done <- c.conn.UidStore(seqSet, item, flags, messages)
+		done <- c.conn.UidStore(seqSet, item, ifaceFlags, messages)
 	}()
 
 	// Drain any messages
@@ -346,12 +351,17 @@ func (c *Client) AddFlags(uid uint32, flags []string) error {
 
 	item := imap.FormatFlagsOp(imap.AddFlags, true) // .SILENT - no response
 
-	// Run in goroutine and collect results
+	// Convert []string to []interface{} - go-imap requires this type
+	ifaceFlags := make([]interface{}, len(flags))
+	for i, f := range flags {
+		ifaceFlags[i] = f
+	}
+
 	messages := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 
 	go func() {
-		done <- c.conn.UidStore(seqSet, item, flags, messages)
+		done <- c.conn.UidStore(seqSet, item, ifaceFlags, messages)
 	}()
 
 	// Drain the channel (should be empty with SILENT)
@@ -380,12 +390,17 @@ func (c *Client) RemoveFlags(uid uint32, flags []string) error {
 
 	item := imap.FormatFlagsOp(imap.RemoveFlags, true) // .SILENT - no response
 
-	// Run in goroutine and collect results
+	// Convert []string to []interface{} - go-imap requires this type
+	ifaceFlags := make([]interface{}, len(flags))
+	for i, f := range flags {
+		ifaceFlags[i] = f
+	}
+
 	messages := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
 
 	go func() {
-		done <- c.conn.UidStore(seqSet, item, flags, messages)
+		done <- c.conn.UidStore(seqSet, item, ifaceFlags, messages)
 	}()
 
 	// Drain the channel (should be empty with SILENT)

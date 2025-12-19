@@ -475,19 +475,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 		// Check for local changes (local differs from stored)
 		if NeedsUpload(localState, storedState) && s.options.Mode != SyncDownloadOnly {
-			// TODO: Flag upload is currently hanging on Gmail - needs investigation
-			// For now, just log the change
-			fmt.Fprintf(s.output, "    → Would upload flag change for UID %d\n", uid)
-			uploaded++
-			// Update stored state to prevent repeated attempts
-			mboxState.SetMessageFlags(uid, localState)
-			/*
-				if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
-					uploaded++
-					// Update stored state
-					mboxState.SetMessageFlags(uid, localState)
-				}
-			*/
+			if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
+				uploaded++
+				// Update stored state
+				mboxState.SetMessageFlags(uid, localState)
+			}
 		}
 
 		// Check for server changes (server differs from stored)
@@ -513,10 +505,9 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 // uploadFlagChanges uploads flag changes to the IMAP server
 func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
-	// Merge local state onto server and set all flags at once
-	// This is simpler than add/remove operations
-	merged := local.Merge(server)
-	newFlags := merged.ToIMAPFlags()
+	// Set the server flags to match local state
+	// We use the local state directly since the user changed it locally
+	newFlags := local.ToIMAPFlags()
 
 	return s.client.StoreFlags(uid, newFlags)
 }
