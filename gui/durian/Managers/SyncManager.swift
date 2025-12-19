@@ -21,7 +21,7 @@ enum SyncState: Equatable {
     var color: Color {
         switch self {
         case .idle: return .secondary
-        case .syncing: return .secondary
+        case .syncing: return .blue
         case .success: return .green
         case .failed: return .red
         }

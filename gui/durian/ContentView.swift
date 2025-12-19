@@ -226,12 +226,23 @@ struct ContentView: View {
                     .help("Search (Cmd+/)")
                     
                     Button(action: {
-                        Task { await accountManager.reloadNotmuch() }
+                        Task {
+                            await syncManager.quickSync()
+                            await accountManager.reloadNotmuch()
+                        }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
+                            .rotationEffect(.degrees(syncManager.syncState == .syncing ? 360 : 0))
+                            .animation(
+                                syncManager.syncState == .syncing
+                                    ? .linear(duration: 1).repeatForever(autoreverses: false)
+                                    : .default,
+                                value: syncManager.syncState
+                            )
                             .foregroundColor(syncManager.syncState.color)
                     }
-                    .help("Sync")
+                    .keyboardShortcut("r", modifiers: .command)
+                    .help("Sync (Cmd+R)")
                     .disabled(syncManager.isSyncing)
                 }
             }
