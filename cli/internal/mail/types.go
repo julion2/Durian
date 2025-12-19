@@ -2,12 +2,13 @@ package mail
 
 // Mail represents a mail summary for list views
 type Mail struct {
-	ThreadID string `json:"thread_id"`
-	File     string `json:"file"`
-	Subject  string `json:"subject"`
-	From     string `json:"from"`
-	Date     string `json:"date"`
-	Tags     string `json:"tags"`
+	ThreadID  string `json:"thread_id"`
+	File      string `json:"file"`
+	Subject   string `json:"subject"`
+	From      string `json:"from"`
+	Date      string `json:"date"`
+	Timestamp int64  `json:"timestamp"`
+	Tags      string `json:"tags"`
 }
 
 // MailContent represents the full content of an email

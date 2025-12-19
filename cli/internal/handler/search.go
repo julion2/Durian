@@ -21,12 +21,13 @@ func (h *Handler) Search(query string, limit int) protocol.Response {
 	mails := make([]mail.Mail, len(results))
 	for i, r := range results {
 		mails[i] = mail.Mail{
-			ThreadID: r.Thread,
-			File:     "", // Skip file lookup - use showByThread instead
-			Subject:  r.Subject,
-			From:     r.Authors,
-			Date:     r.DateRelative,
-			Tags:     strings.Join(r.Tags, ","),
+			ThreadID:  r.Thread,
+			File:      "", // Skip file lookup - use showByThread instead
+			Subject:   r.Subject,
+			From:      r.Authors,
+			Date:      r.DateRelative,
+			Timestamp: r.Timestamp,
+			Tags:      strings.Join(r.Tags, ","),
 		}
 	}
 

@@ -10,6 +10,7 @@ import (
 // SearchResult represents a single result from notmuch search
 type SearchResult struct {
 	Thread       string   `json:"thread"`
+	Timestamp    int64    `json:"timestamp"`
 	Subject      string   `json:"subject"`
 	Authors      string   `json:"authors"`
 	DateRelative string   `json:"date_relative"`
