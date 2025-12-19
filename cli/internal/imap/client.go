@@ -260,6 +260,101 @@ func (c *Client) Idle(stop <-chan struct{}, updates chan<- bool) error {
 	}
 }
 
+// FetchFlags fetches only flags for the given UIDs (faster than full fetch)
+func (c *Client) FetchFlags(uids []uint32) (map[uint32][]string, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	if len(uids) == 0 {
+		return make(map[uint32][]string), nil
+	}
+
+	seqSet := new(imap.SeqSet)
+	for _, uid := range uids {
+		seqSet.AddNum(uid)
+	}
+
+	// Fetch only UID and FLAGS (much faster than full message)
+	items := []imap.FetchItem{
+		imap.FetchUid,
+		imap.FetchFlags,
+	}
+
+	messages := make(chan *imap.Message, len(uids))
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidFetch(seqSet, items, messages)
+	}()
+
+	result := make(map[uint32][]string)
+	for msg := range messages {
+		result[msg.Uid] = msg.Flags
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch flags: %w", err)
+	}
+
+	return result, nil
+}
+
+// StoreFlags sets flags on a message (replaces existing flags)
+func (c *Client) StoreFlags(uid uint32, flags []string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	// Use FLAGS.SILENT to set flags without response
+	item := imap.FormatFlagsOp(imap.SetFlags, true)
+
+	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+		return fmt.Errorf("failed to store flags for UID %d: %w", uid, err)
+	}
+
+	return nil
+}
+
+// AddFlags adds flags to a message (keeps existing flags)
+func (c *Client) AddFlags(uid uint32, flags []string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+
+	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+		return fmt.Errorf("failed to add flags for UID %d: %w", uid, err)
+	}
+
+	return nil
+}
+
+// RemoveFlags removes flags from a message
+func (c *Client) RemoveFlags(uid uint32, flags []string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	item := imap.FormatFlagsOp(imap.RemoveFlags, true)
+
+	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+		return fmt.Errorf("failed to remove flags for UID %d: %w", uid, err)
+	}
+
+	return nil
+}
+
 // Close closes the IMAP connection
 func (c *Client) Close() error {
 	if c.conn == nil {

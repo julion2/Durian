@@ -15,10 +15,13 @@ import (
 )
 
 var (
-	syncDryRun    bool
-	syncQuiet     bool
-	syncNoNotmuch bool
-	syncWatch     bool
+	syncDryRun       bool
+	syncQuiet        bool
+	syncNoNotmuch    bool
+	syncWatch        bool
+	syncNoFlags      bool
+	syncDownloadOnly bool
+	syncUploadOnly   bool
 )
 
 var syncCmd = &cobra.Command{
@@ -26,10 +29,13 @@ var syncCmd = &cobra.Command{
 	Short: "Sync email via IMAP",
 	Long: `Sync email from IMAP server to local Maildir.
 
+By default, sync is bidirectional: messages are downloaded from the server,
+and flag changes (read/unread, starred, etc.) are synchronized both ways.
+
 The account can be specified by alias, name, or email address.
 
 Examples:
-  # Sync all configured accounts
+  # Sync all configured accounts (bidirectional)
   durian sync
 
   # Sync specific account (by alias or email)
@@ -38,6 +44,15 @@ Examples:
 
   # Sync specific mailbox
   durian sync gmail INBOX
+
+  # Download only (no flag upload to server)
+  durian sync --download-only
+
+  # Upload only (sync local flag changes to server)
+  durian sync --upload-only
+
+  # Skip flag synchronization entirely
+  durian sync --no-flags
 
   # Dry run - show what would be synced
   durian sync --dry-run
@@ -55,6 +70,9 @@ func init() {
 	syncCmd.Flags().BoolVarP(&syncQuiet, "quiet", "q", false, "suppress progress output")
 	syncCmd.Flags().BoolVar(&syncNoNotmuch, "no-notmuch", false, "don't run notmuch new after sync")
 	syncCmd.Flags().BoolVarP(&syncWatch, "watch", "w", false, "stay running with IDLE for push notifications")
+	syncCmd.Flags().BoolVar(&syncNoFlags, "no-flags", false, "skip flag synchronization")
+	syncCmd.Flags().BoolVar(&syncDownloadOnly, "download-only", false, "only download from server (no flag upload)")
+	syncCmd.Flags().BoolVar(&syncUploadOnly, "upload-only", false, "only upload local changes to server")
 
 	rootCmd.AddCommand(syncCmd)
 }
@@ -66,11 +84,21 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Determine sync mode
+	mode := imap.SyncBidirectional
+	if syncDownloadOnly {
+		mode = imap.SyncDownloadOnly
+	} else if syncUploadOnly {
+		mode = imap.SyncUploadOnly
+	}
+
 	// Build sync options
 	options := &imap.SyncOptions{
 		DryRun:    syncDryRun,
 		Quiet:     syncQuiet,
 		NoNotmuch: syncNoNotmuch,
+		NoFlags:   syncNoFlags,
+		Mode:      mode,
 	}
 
 	// Determine which accounts to sync
@@ -235,6 +263,8 @@ func printSyncSummary(results []*imap.SyncResult) {
 	fmt.Fprintf(os.Stderr, "\n=== Sync Summary ===\n")
 
 	totalNew := 0
+	totalFlagsUp := 0
+	totalFlagsDown := 0
 	totalErrors := 0
 
 	for _, result := range results {
@@ -244,13 +274,25 @@ func printSyncSummary(results []*imap.SyncResult) {
 			totalErrors++
 		}
 
-		fmt.Fprintf(os.Stderr, "%s %s: %d new messages (%.1fs)\n",
-			status, result.Account, result.TotalNew, result.Duration.Seconds())
+		// Build summary line
+		summary := fmt.Sprintf("%d new", result.TotalNew)
+		if result.FlagsUploaded > 0 || result.FlagsDownload > 0 {
+			summary += fmt.Sprintf(", %d⬆ %d⬇ flags", result.FlagsUploaded, result.FlagsDownload)
+		}
+
+		fmt.Fprintf(os.Stderr, "%s %s: %s (%.1fs)\n",
+			status, result.Account, summary, result.Duration.Seconds())
 
 		totalNew += result.TotalNew
+		totalFlagsUp += result.FlagsUploaded
+		totalFlagsDown += result.FlagsDownload
 	}
 
-	fmt.Fprintf(os.Stderr, "\nTotal: %d new messages across %d account(s)\n", totalNew, len(results))
+	fmt.Fprintf(os.Stderr, "\nTotal: %d new messages", totalNew)
+	if totalFlagsUp > 0 || totalFlagsDown > 0 {
+		fmt.Fprintf(os.Stderr, ", %d flags uploaded, %d downloaded", totalFlagsUp, totalFlagsDown)
+	}
+	fmt.Fprintf(os.Stderr, " across %d account(s)\n", len(results))
 
 	if totalErrors > 0 {
 		fmt.Fprintf(os.Stderr, "Errors: %d account(s) failed\n", totalErrors)

@@ -19,6 +19,14 @@ type MailboxState struct {
 	UIDValidity uint32   `json:"uid_validity"`
 	LastUID     uint32   `json:"last_uid"`
 	SyncedUIDs  []uint32 `json:"synced_uids"`
+
+	// MessageFlags tracks the last-synced flag state for each message
+	// Key is UID, value is the FlagState at last sync
+	MessageFlags map[uint32]FlagState `json:"message_flags,omitempty"`
+
+	// UIDToMessageID maps IMAP UIDs to notmuch Message-IDs
+	// This allows us to look up the notmuch message for flag sync
+	UIDToMessageID map[uint32]string `json:"uid_to_message_id,omitempty"`
 }
 
 // NewState creates a new empty state
@@ -36,8 +44,18 @@ func (s *State) GetMailboxState(mailbox string) *MailboxState {
 
 	if _, ok := s.Mailboxes[mailbox]; !ok {
 		s.Mailboxes[mailbox] = &MailboxState{
-			SyncedUIDs: make([]uint32, 0),
+			SyncedUIDs:     make([]uint32, 0),
+			MessageFlags:   make(map[uint32]FlagState),
+			UIDToMessageID: make(map[uint32]string),
 		}
+	}
+
+	// Initialize maps if nil (for backwards compatibility with old state files)
+	if s.Mailboxes[mailbox].MessageFlags == nil {
+		s.Mailboxes[mailbox].MessageFlags = make(map[uint32]FlagState)
+	}
+	if s.Mailboxes[mailbox].UIDToMessageID == nil {
+		s.Mailboxes[mailbox].UIDToMessageID = make(map[uint32]string)
 	}
 
 	return s.Mailboxes[mailbox]
@@ -90,6 +108,54 @@ func (ms *MailboxState) Reset(uidValidity uint32) {
 	ms.UIDValidity = uidValidity
 	ms.LastUID = 0
 	ms.SyncedUIDs = make([]uint32, 0)
+	ms.MessageFlags = make(map[uint32]FlagState)
+	ms.UIDToMessageID = make(map[uint32]string)
+}
+
+// GetMessageFlags returns the stored flag state for a UID
+func (ms *MailboxState) GetMessageFlags(uid uint32) (FlagState, bool) {
+	if ms.MessageFlags == nil {
+		return FlagState{}, false
+	}
+	flags, ok := ms.MessageFlags[uid]
+	return flags, ok
+}
+
+// SetMessageFlags stores the flag state for a UID
+func (ms *MailboxState) SetMessageFlags(uid uint32, flags FlagState) {
+	if ms.MessageFlags == nil {
+		ms.MessageFlags = make(map[uint32]FlagState)
+	}
+	ms.MessageFlags[uid] = flags
+}
+
+// GetMessageID returns the notmuch Message-ID for a UID
+func (ms *MailboxState) GetMessageID(uid uint32) (string, bool) {
+	if ms.UIDToMessageID == nil {
+		return "", false
+	}
+	id, ok := ms.UIDToMessageID[uid]
+	return id, ok
+}
+
+// SetMessageID stores the notmuch Message-ID for a UID
+func (ms *MailboxState) SetMessageID(uid uint32, messageID string) {
+	if ms.UIDToMessageID == nil {
+		ms.UIDToMessageID = make(map[uint32]string)
+	}
+	ms.UIDToMessageID[uid] = messageID
+}
+
+// GetUIDsWithFlags returns all UIDs that have stored flag state
+func (ms *MailboxState) GetUIDsWithFlags() []uint32 {
+	if ms.MessageFlags == nil {
+		return nil
+	}
+	uids := make([]uint32, 0, len(ms.MessageFlags))
+	for uid := range ms.MessageFlags {
+		uids = append(uids, uid)
+	}
+	return uids
 }
 
 // StateManager handles loading and saving sync state

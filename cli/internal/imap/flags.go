@@ -1,0 +1,171 @@
+package imap
+
+import (
+	"github.com/emersion/go-imap"
+)
+
+// FlagState represents the sync-relevant flags for a message
+type FlagState struct {
+	Seen     bool `json:"seen"`
+	Flagged  bool `json:"flagged"`
+	Answered bool `json:"answered"`
+	Deleted  bool `json:"deleted"`
+}
+
+// Equal checks if two FlagStates are equal
+func (f FlagState) Equal(other FlagState) bool {
+	return f.Seen == other.Seen &&
+		f.Flagged == other.Flagged &&
+		f.Answered == other.Answered &&
+		f.Deleted == other.Deleted
+}
+
+// IsEmpty checks if all flags are false
+func (f FlagState) IsEmpty() bool {
+	return !f.Seen && !f.Flagged && !f.Answered && !f.Deleted
+}
+
+// Merge combines two FlagStates using OR logic (except Deleted which uses server value)
+func (f FlagState) Merge(server FlagState) FlagState {
+	return FlagState{
+		Seen:     f.Seen || server.Seen,
+		Flagged:  f.Flagged || server.Flagged,
+		Answered: f.Answered || server.Answered,
+		Deleted:  server.Deleted, // Server wins for deletes
+	}
+}
+
+// ToIMAPFlags converts FlagState to IMAP flag strings
+func (f FlagState) ToIMAPFlags() []string {
+	var flags []string
+	if f.Seen {
+		flags = append(flags, imap.SeenFlag)
+	}
+	if f.Flagged {
+		flags = append(flags, imap.FlaggedFlag)
+	}
+	if f.Answered {
+		flags = append(flags, imap.AnsweredFlag)
+	}
+	if f.Deleted {
+		flags = append(flags, imap.DeletedFlag)
+	}
+	return flags
+}
+
+// FlagStateFromIMAP creates a FlagState from IMAP flags
+func FlagStateFromIMAP(flags []string) FlagState {
+	state := FlagState{}
+	for _, flag := range flags {
+		switch flag {
+		case imap.SeenFlag:
+			state.Seen = true
+		case imap.FlaggedFlag:
+			state.Flagged = true
+		case imap.AnsweredFlag:
+			state.Answered = true
+		case imap.DeletedFlag:
+			state.Deleted = true
+		}
+	}
+	return state
+}
+
+// FlagStateFromNotmuchTags creates a FlagState from notmuch tags
+// Note: notmuch uses "unread" tag (inverse of Seen)
+func FlagStateFromNotmuchTags(tags []string) FlagState {
+	state := FlagState{
+		Seen: true, // Default to seen (no unread tag)
+	}
+
+	for _, tag := range tags {
+		switch tag {
+		case "unread":
+			state.Seen = false
+		case "flagged":
+			state.Flagged = true
+		case "replied":
+			state.Answered = true
+		case "deleted":
+			state.Deleted = true
+		}
+	}
+
+	return state
+}
+
+// ToNotmuchTags converts FlagState to notmuch tags
+// Returns tags to add and tags to remove
+func (f FlagState) ToNotmuchTags() (add []string, remove []string) {
+	if f.Seen {
+		remove = append(remove, "unread")
+	} else {
+		add = append(add, "unread")
+	}
+
+	if f.Flagged {
+		add = append(add, "flagged")
+	} else {
+		remove = append(remove, "flagged")
+	}
+
+	if f.Answered {
+		add = append(add, "replied")
+	} else {
+		remove = append(remove, "replied")
+	}
+
+	if f.Deleted {
+		add = append(add, "deleted")
+	} else {
+		remove = append(remove, "deleted")
+	}
+
+	return add, remove
+}
+
+// DiffFlags returns the flags that differ between local and server
+// Returns: flagsToAdd (to server), flagsToRemove (from server)
+func DiffFlags(local, server FlagState) (toAdd, toRemove []string) {
+	// Seen
+	if local.Seen && !server.Seen {
+		toAdd = append(toAdd, imap.SeenFlag)
+	} else if !local.Seen && server.Seen {
+		toRemove = append(toRemove, imap.SeenFlag)
+	}
+
+	// Flagged
+	if local.Flagged && !server.Flagged {
+		toAdd = append(toAdd, imap.FlaggedFlag)
+	} else if !local.Flagged && server.Flagged {
+		toRemove = append(toRemove, imap.FlaggedFlag)
+	}
+
+	// Answered
+	if local.Answered && !server.Answered {
+		toAdd = append(toAdd, imap.AnsweredFlag)
+	} else if !local.Answered && server.Answered {
+		toRemove = append(toRemove, imap.AnsweredFlag)
+	}
+
+	// Deleted - we don't propagate local deletes to server for safety
+	// Server deletes are handled separately
+
+	return toAdd, toRemove
+}
+
+// NeedsUpload checks if local flags differ from stored state (needs upload to server)
+func NeedsUpload(local, stored FlagState) bool {
+	return local.Seen != stored.Seen ||
+		local.Flagged != stored.Flagged ||
+		local.Answered != stored.Answered
+	// Note: We don't upload Deleted flag changes for safety
+}
+
+// NeedsDownload checks if server flags differ from stored state (needs download to local)
+func NeedsDownload(server, stored FlagState) bool {
+	return server.Seen != stored.Seen ||
+		server.Flagged != stored.Flagged ||
+		server.Answered != stored.Answered ||
+		server.Deleted != stored.Deleted
+}
