@@ -157,7 +157,8 @@ func RefreshAccessToken(provider *Provider, clientID, clientSecret string, token
 
 // GetValidToken loads a token and refreshes it if needed
 // Returns a valid access token ready for use
-func GetValidToken(email, clientID, tenant string) (*Token, error) {
+// clientSecret is required for Google, optional for Microsoft
+func GetValidToken(email, clientID, clientSecret, tenant string) (*Token, error) {
 	token, err := LoadToken(email)
 	if err != nil {
 		return nil, err
@@ -174,7 +175,7 @@ func GetValidToken(email, clientID, tenant string) (*Token, error) {
 		return nil, err
 	}
 
-	newToken, err := RefreshAccessToken(provider, clientID, "", token)
+	newToken, err := RefreshAccessToken(provider, clientID, clientSecret, token)
 	if err != nil {
 		// If refresh failed, delete the invalid token
 		if errors.Is(err, ErrTokenExpired) {

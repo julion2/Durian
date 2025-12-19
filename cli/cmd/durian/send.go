@@ -210,7 +210,7 @@ func getAuth(account *config.AccountConfig) (smtp.Auth, error) {
 			return nil, fmt.Errorf("OAuth provider not configured for %s", account.Email)
 		}
 
-		token, err := oauth.GetValidToken(account.Email, account.OAuth.ClientID, account.OAuth.Tenant)
+		token, err := oauth.GetValidToken(account.Email, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
 		if err != nil {
 			if errors.Is(err, oauth.ErrTokenNotFound) {
 				return nil, fmt.Errorf("not authenticated\nRun: durian auth login %s", account.Email)

@@ -71,6 +71,13 @@ func (p *Provider) AuthorizationURL(clientID, redirectURI, state string, pkce *P
 		"code_challenge_method": {pkce.Method},
 	}
 
+	// Google requires access_type=offline to return a refresh token
+	// prompt=consent ensures we always get a refresh token (not just on first login)
+	if p.Name == "google" {
+		params.Set("access_type", "offline")
+		params.Set("prompt", "consent")
+	}
+
 	return p.AuthorizeEndpoint + "?" + params.Encode()
 }
 

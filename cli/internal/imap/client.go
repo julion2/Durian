@@ -85,6 +85,7 @@ func (c *Client) authenticateOAuth2() error {
 	token, err := oauth.GetValidToken(
 		c.account.Email,
 		c.account.OAuth.ClientID,
+		c.account.OAuth.ClientSecret,
 		c.account.OAuth.Tenant,
 	)
 	if err != nil {
