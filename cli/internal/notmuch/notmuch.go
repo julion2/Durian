@@ -111,27 +111,39 @@ func (c *Client) showMessage(messageID string) (*Message, error) {
 		return nil, err
 	}
 
-	// notmuch show returns a nested structure: [[[ message ]]]
-	var result [][]*showResult
+	// notmuch show returns a nested structure: [[[message, replies], ...]]
+	// The structure is: list of threads -> list of messages -> [message_data, replies]
+	var result [][][]json.RawMessage
 	if err := json.Unmarshal(output, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse show results: %w", err)
 	}
 
-	if len(result) == 0 || len(result[0]) == 0 {
+	if len(result) == 0 || len(result[0]) == 0 || len(result[0][0]) == 0 {
 		return nil, fmt.Errorf("no message found")
 	}
 
-	msg := result[0][0]
+	// Parse the first element which is the message data
+	var msg showResult
+	if err := json.Unmarshal(result[0][0][0], &msg); err != nil {
+		return nil, fmt.Errorf("failed to parse message: %w", err)
+	}
+
+	// Use first filename if multiple
+	filename := ""
+	if len(msg.Filename) > 0 {
+		filename = msg.Filename[0]
+	}
+
 	return &Message{
 		ID:       msg.ID,
-		Filename: msg.Filename,
+		Filename: filename,
 		Tags:     msg.Tags,
 	}, nil
 }
 
 type showResult struct {
 	ID       string   `json:"id"`
-	Filename string   `json:"filename"`
+	Filename []string `json:"filename"` // Can be multiple filenames for duplicates
 	Tags     []string `json:"tags"`
 }
 

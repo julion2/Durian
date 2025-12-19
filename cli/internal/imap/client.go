@@ -312,7 +312,19 @@ func (c *Client) StoreFlags(uid uint32, flags []string) error {
 	// Use FLAGS.SILENT to set flags without response
 	item := imap.FormatFlagsOp(imap.SetFlags, true)
 
-	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+	// Must provide a channel even for SILENT mode
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidStore(seqSet, item, flags, messages)
+	}()
+
+	// Drain any messages
+	for range messages {
+	}
+
+	if err := <-done; err != nil {
 		return fmt.Errorf("failed to store flags for UID %d: %w", uid, err)
 	}
 
@@ -325,12 +337,28 @@ func (c *Client) AddFlags(uid uint32, flags []string) error {
 		return fmt.Errorf("not connected")
 	}
 
+	if len(flags) == 0 {
+		return nil
+	}
+
 	seqSet := new(imap.SeqSet)
 	seqSet.AddNum(uid)
 
-	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	item := imap.FormatFlagsOp(imap.AddFlags, true) // .SILENT - no response
 
-	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+	// Run in goroutine and collect results
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidStore(seqSet, item, flags, messages)
+	}()
+
+	// Drain the channel (should be empty with SILENT)
+	for range messages {
+	}
+
+	if err := <-done; err != nil {
 		return fmt.Errorf("failed to add flags for UID %d: %w", uid, err)
 	}
 
@@ -343,12 +371,28 @@ func (c *Client) RemoveFlags(uid uint32, flags []string) error {
 		return fmt.Errorf("not connected")
 	}
 
+	if len(flags) == 0 {
+		return nil
+	}
+
 	seqSet := new(imap.SeqSet)
 	seqSet.AddNum(uid)
 
-	item := imap.FormatFlagsOp(imap.RemoveFlags, true)
+	item := imap.FormatFlagsOp(imap.RemoveFlags, true) // .SILENT - no response
 
-	if err := c.conn.UidStore(seqSet, item, flags, nil); err != nil {
+	// Run in goroutine and collect results
+	messages := make(chan *imap.Message, 10)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidStore(seqSet, item, flags, messages)
+	}()
+
+	// Drain the channel (should be empty with SILENT)
+	for range messages {
+	}
+
+	if err := <-done; err != nil {
 		return fmt.Errorf("failed to remove flags for UID %d: %w", uid, err)
 	}
 
