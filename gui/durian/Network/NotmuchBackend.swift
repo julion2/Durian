@@ -2,16 +2,16 @@
 //  NotmuchBackend.swift
 //  Durian
 //
-//  notmuch mail backend using mailctl IPC
+//  notmuch mail backend using durian CLI IPC
 //
 
 import Foundation
 import Combine
 import AppKit
 
-// MARK: - JSON Models for mailctl
+// MARK: - JSON Models for durian
 
-struct MailctlRequest: Encodable {
+struct DurianRequest: Encodable {
     let cmd: String
     var query: String?
     var limit: Int?
@@ -19,7 +19,7 @@ struct MailctlRequest: Encodable {
     var tags: String?
 }
 
-struct MailctlResponse: Decodable {
+struct DurianResponse: Decodable {
     let ok: Bool
     let error: String?
     let results: [NotmuchMailResult]?
@@ -83,18 +83,18 @@ class NotmuchBackend: ObservableObject {
     // MARK: - Protocol: Connection
     
     func connect() async {
-        let mailctlPath = "\(NSHomeDirectory())/.local/bin/mailctl"
+        let durianPath = "\(NSHomeDirectory())/.local/bin/durian"
         
-        guard FileManager.default.fileExists(atPath: mailctlPath) else {
-            connectionStatus = "mailctl not found at \(mailctlPath)"
+        guard FileManager.default.fileExists(atPath: durianPath) else {
+            connectionStatus = "durian not found at \(durianPath)"
             print("NOTMUCH ERROR: \(connectionStatus)")
             return
         }
         
         process = Process()
-        process?.executableURL = URL(fileURLWithPath: mailctlPath)
+        process?.executableURL = URL(fileURLWithPath: durianPath)
         
-        // Set PATH to include Homebrew bin directories so mailctl can find notmuch
+        // Set PATH to include Homebrew bin directories so durian can find notmuch
         var environment = ProcessInfo.processInfo.environment
         let homebrewPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
         if let existingPath = environment["PATH"] {
@@ -117,7 +117,7 @@ class NotmuchBackend: ObservableObject {
             try process?.run()
             isConnected = true
             connectionStatus = "Connected to notmuch"
-            print("NOTMUCH Started mailctl process")
+            print("NOTMUCH Started durian process")
             
             // Initial load
             await selectFolder("inbox")
@@ -159,8 +159,8 @@ class NotmuchBackend: ObservableObject {
             emails[index].bodyState = .loading
         }
         
-        // Use thread_id directly - mailctl will resolve the file path
-        let request = MailctlRequest(cmd: "show", thread: id)
+        // Use thread_id directly - durian will resolve the file path
+        let request = DurianRequest(cmd: "show", thread: id)
         
         guard let response = await sendCommand(request),
               response.ok,
@@ -274,7 +274,7 @@ class NotmuchBackend: ObservableObject {
         isLoadingEmails = true
         loadingProgress = "Searching..."
         
-        let request = MailctlRequest(cmd: "search", query: query, limit: limit)
+        let request = DurianRequest(cmd: "search", query: query, limit: limit)
         
         guard let response = await sendCommand(request) else {
             isLoadingEmails = false
@@ -320,7 +320,7 @@ class NotmuchBackend: ObservableObject {
     func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
         await restartProcessIfNeeded()
         
-        let request = MailctlRequest(cmd: "search", query: query, limit: limit)
+        let request = DurianRequest(cmd: "search", query: query, limit: limit)
         
         guard let response = await sendCommand(request) else {
             return []
@@ -348,7 +348,7 @@ class NotmuchBackend: ObservableObject {
     private func tag(query: String, tags: String) async -> Bool {
         await restartProcessIfNeeded()
         
-        let request = MailctlRequest(cmd: "tag", query: query, tags: tags)
+        let request = DurianRequest(cmd: "tag", query: query, tags: tags)
         
         guard let response = await sendCommand(request) else {
             return false
@@ -372,7 +372,7 @@ class NotmuchBackend: ObservableObject {
         }
     }
     
-    private func sendCommand(_ request: MailctlRequest) async -> MailctlResponse? {
+    private func sendCommand(_ request: DurianRequest) async -> DurianResponse? {
         guard let stdin = stdin, let stdout = stdout else {
             print("NOTMUCH ERROR: No stdin/stdout")
             return nil
@@ -435,7 +435,7 @@ class NotmuchBackend: ObservableObject {
                     }
                     
                     do {
-                        let response = try self.decoder.decode(MailctlResponse.self, from: responseData)
+                        let response = try self.decoder.decode(DurianResponse.self, from: responseData)
                         continuation.resume(returning: response)
                     } catch {
                         print("NOTMUCH ERROR: Decode failed: \(error)")
