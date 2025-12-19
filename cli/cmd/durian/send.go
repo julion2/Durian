@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/keychain"
 	"github.com/durian-dev/durian/cli/internal/oauth"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 	"github.com/spf13/cobra"
@@ -228,13 +229,12 @@ func getAuth(account *config.AccountConfig) (smtp.Auth, error) {
 		}, nil
 
 	case "password":
-		// Get password from keychain
-		if account.Auth.PasswordKeychain == "" {
-			return nil, fmt.Errorf("password_keychain not configured for %s", account.Email)
-		}
-
-		password, err := getPasswordFromKeychain(account.Auth.PasswordKeychain, account.Auth.Username)
+		// Get password from keychain (unified durian-password service)
+		password, err := keychain.GetPassword(PasswordKeychainService, account.Email)
 		if err != nil {
+			if errors.Is(err, keychain.ErrNotFound) {
+				return nil, fmt.Errorf("no password stored for %s\nRun: durian auth login %s", account.Email, account.Email)
+			}
 			return nil, fmt.Errorf("failed to get password from keychain: %w", err)
 		}
 
@@ -252,16 +252,6 @@ func getAuth(account *config.AccountConfig) (smtp.Auth, error) {
 	default:
 		return nil, fmt.Errorf("unsupported auth method: %s\nUse 'oauth2' or 'password'", account.SMTP.Auth)
 	}
-}
-
-// getPasswordFromKeychain retrieves a password from macOS Keychain
-func getPasswordFromKeychain(service, account string) (string, error) {
-	cmd := exec.Command("security", "find-generic-password", "-s", service, "-a", account, "-w")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("keychain entry not found: %s", service)
-	}
-	return strings.TrimSpace(string(output)), nil
 }
 
 // prompt displays a prompt and reads a line of input

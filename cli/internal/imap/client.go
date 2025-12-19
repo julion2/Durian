@@ -4,8 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -13,6 +11,7 @@ import (
 	"github.com/emersion/go-sasl"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/keychain"
 	"github.com/durian-dev/durian/cli/internal/oauth"
 )
 
@@ -110,9 +109,10 @@ func (c *Client) authenticatePassword() error {
 		username = c.account.Email
 	}
 
-	password, err := getPasswordFromKeychain(c.account.Auth.PasswordKeychain, username)
+	// Get password from unified keychain service
+	password, err := keychain.GetPassword("durian-password", c.account.Email)
 	if err != nil {
-		return fmt.Errorf("failed to get password: %w", err)
+		return fmt.Errorf("failed to get password: %w\nRun: durian auth login %s", err, c.account.Email)
 	}
 
 	// Try PLAIN auth first
@@ -279,16 +279,6 @@ func (c *Client) Close() error {
 // Account returns the account config
 func (c *Client) Account() *config.AccountConfig {
 	return c.account
-}
-
-// getPasswordFromKeychain retrieves a password from macOS Keychain
-func getPasswordFromKeychain(service, account string) (string, error) {
-	cmd := exec.Command("security", "find-generic-password", "-s", service, "-a", account, "-w")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("keychain entry not found: %w", err)
-	}
-	return strings.TrimSpace(string(output)), nil
 }
 
 // XOAuth2Client implements go-sasl Client interface for XOAUTH2
