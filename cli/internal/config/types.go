@@ -33,6 +33,7 @@ type NotmuchConfig struct {
 type AccountConfig struct {
 	Name             string      `toml:"name"`
 	Email            string      `toml:"email"`
+	Alias            string      `toml:"alias"` // Short alias for CLI (e.g., "gmx", "habric")
 	Default          bool        `toml:"default"`
 	DefaultSignature string      `toml:"default_signature"`
 	SMTP             SMTPConfig  `toml:"smtp"`

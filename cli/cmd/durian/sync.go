@@ -22,19 +22,22 @@ var (
 )
 
 var syncCmd = &cobra.Command{
-	Use:   "sync [email] [mailbox]",
+	Use:   "sync [account] [mailbox]",
 	Short: "Sync email via IMAP",
 	Long: `Sync email from IMAP server to local Maildir.
+
+The account can be specified by alias, name, or email address.
 
 Examples:
   # Sync all configured accounts
   durian sync
 
-  # Sync specific account
+  # Sync specific account (by alias or email)
+  durian sync gmail
   durian sync julian@habric.com
 
   # Sync specific mailbox
-  durian sync julian@habric.com INBOX
+  durian sync gmail INBOX
 
   # Dry run - show what would be synced
   durian sync --dry-run
@@ -75,13 +78,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if len(args) > 0 {
 		// Sync specific account
-		account, err := cfg.GetAccountByEmail(args[0])
+		account, err := cfg.GetAccountByIdentifier(args[0])
 		if err != nil {
-			return fmt.Errorf("account not found: %s", args[0])
+			return fmt.Errorf("account not found: %s\nAvailable accounts: %s", args[0], cfg.ListAccountIdentifiers())
 		}
 
 		if account.IMAP.Host == "" {
-			return fmt.Errorf("account %s has no IMAP configuration", args[0])
+			return fmt.Errorf("account %s has no IMAP configuration", account.Email)
 		}
 
 		accounts = append(accounts, account)

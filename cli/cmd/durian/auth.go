@@ -27,7 +27,7 @@ var authCmd = &cobra.Command{
 }
 
 var authLoginCmd = &cobra.Command{
-	Use:   "login <email>",
+	Use:   "login <account>",
 	Short: "Authenticate with an email account",
 	Long: `Authenticate with an email account using OAuth or password.
 
@@ -37,10 +37,11 @@ For OAuth accounts (Gmail, Microsoft 365):
 For password accounts:
   Prompts for your password and stores it securely in Keychain.
 
+The account can be specified by email address, alias, or name.
 The account must be configured in your config.toml.`,
-	Example: `  durian auth login julian@habric.com     # OAuth (Microsoft)
-  durian auth login julianschenker05@gmail.com  # OAuth (Google)
-  durian auth login julian.schenker@gmx.de      # Password`,
+	Example: `  durian auth login gmail       # Use alias
+  durian auth login habric      # Use alias  
+  durian auth login julian@habric.com  # Use full email`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAuthLogin,
 }
@@ -53,19 +54,23 @@ var authStatusCmd = &cobra.Command{
 }
 
 var authLogoutCmd = &cobra.Command{
-	Use:   "logout <email>",
+	Use:   "logout <account>",
 	Short: "Remove credentials for an account",
-	Long:  `Remove stored OAuth tokens or passwords from the keychain.`,
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAuthLogout,
+	Long: `Remove stored OAuth tokens or passwords from the keychain.
+
+The account can be specified by email address, alias, or name.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAuthLogout,
 }
 
 var authRefreshCmd = &cobra.Command{
-	Use:   "refresh <email>",
+	Use:   "refresh <account>",
 	Short: "Manually refresh OAuth token for an account",
-	Long:  `Force a token refresh for the specified account. This is normally done automatically.`,
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAuthRefresh,
+	Long: `Force a token refresh for the specified account. This is normally done automatically.
+
+The account can be specified by email address, alias, or name.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAuthRefresh,
 }
 
 func init() {
@@ -77,7 +82,7 @@ func init() {
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {
-	email := args[0]
+	identifier := args[0]
 
 	// Get config
 	cfg := GetConfig()
@@ -85,10 +90,11 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return errors.New("no configuration loaded")
 	}
 
-	// Find account by email
-	account, err := cfg.GetAccountByEmail(email)
+	// Find account by email, alias, or name
+	account, err := cfg.GetAccountByIdentifier(identifier)
 	if err != nil {
-		return fmt.Errorf("account not found: %s\nMake sure it's configured in your config.toml", email)
+		return fmt.Errorf("account not found: %s\nMake sure it's configured in your config.toml\nAvailable accounts: %s",
+			identifier, cfg.ListAccountIdentifiers())
 	}
 
 	// Determine auth type: OAuth or Password
@@ -101,7 +107,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return runPasswordLogin(account)
 	}
 
-	return fmt.Errorf("no authentication method configured for %s\nAdd [accounts.oauth] or set auth = \"password\" in config.toml", email)
+	return fmt.Errorf("no authentication method configured for %s\nAdd [accounts.oauth] or set auth = \"password\" in config.toml", account.Email)
 }
 
 // runOAuthLogin handles OAuth authentication
@@ -207,14 +213,19 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 
 	for _, account := range cfg.Accounts {
 		status := getAccountStatus(&account)
-		fmt.Printf("  %-30s  %-12s  %s\n", account.Email, getAuthType(&account), status)
+		// Show alias in parentheses if set
+		emailDisplay := account.Email
+		if account.Alias != "" {
+			emailDisplay = fmt.Sprintf("%s (%s)", account.Email, account.Alias)
+		}
+		fmt.Printf("  %-40s  %-12s  %s\n", emailDisplay, getAuthType(&account), status)
 	}
 
 	return nil
 }
 
 func runAuthLogout(cmd *cobra.Command, args []string) error {
-	email := args[0]
+	identifier := args[0]
 
 	cfg := GetConfig()
 	if cfg == nil {
@@ -222,53 +233,57 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find account to determine auth type
-	account, err := cfg.GetAccountByEmail(email)
+	account, err := cfg.GetAccountByIdentifier(identifier)
 	if err != nil {
-		// Account not in config, try to delete both types
-		oauthDeleted := oauth.DeleteToken(email) == nil && keychain.Exists(oauth.KeychainService, email)
-		pwDeleted := keychain.DeletePassword(PasswordKeychainService, email) == nil && keychain.Exists(PasswordKeychainService, email)
+		// Account not in config, try to delete both types (using identifier as email)
+		oauthDeleted := oauth.DeleteToken(identifier) == nil && keychain.Exists(oauth.KeychainService, identifier)
+		pwDeleted := keychain.DeletePassword(PasswordKeychainService, identifier) == nil && keychain.Exists(PasswordKeychainService, identifier)
 
 		if !oauthDeleted && !pwDeleted {
-			fmt.Printf("No credentials found for %s\n", email)
+			fmt.Printf("No credentials found for %s\n", identifier)
 			return nil
 		}
-	} else {
-		// Delete based on account type
-		if account.OAuth.Provider != "" {
-			// OAuth account
-			_, err := oauth.LoadToken(email)
-			if err != nil {
-				if errors.Is(err, oauth.ErrTokenNotFound) {
-					fmt.Printf("No token found for %s\n", email)
-					return nil
-				}
-				return err
-			}
 
-			if err := oauth.DeleteToken(email); err != nil {
-				return fmt.Errorf("failed to delete token: %w", err)
-			}
-		} else {
-			// Password account
-			if !keychain.Exists(PasswordKeychainService, email) {
-				fmt.Printf("No password found for %s\n", email)
+		fmt.Printf("✓ Logged out from %s\n", identifier)
+		fmt.Printf("✓ Credentials removed from Keychain\n")
+		return nil
+	}
+
+	// Delete based on account type
+	if account.OAuth.Provider != "" {
+		// OAuth account
+		_, err := oauth.LoadToken(account.Email)
+		if err != nil {
+			if errors.Is(err, oauth.ErrTokenNotFound) {
+				fmt.Printf("No token found for %s\n", account.Email)
 				return nil
 			}
+			return err
+		}
 
-			if err := keychain.DeletePassword(PasswordKeychainService, email); err != nil {
-				return fmt.Errorf("failed to delete password: %w", err)
-			}
+		if err := oauth.DeleteToken(account.Email); err != nil {
+			return fmt.Errorf("failed to delete token: %w", err)
+		}
+	} else {
+		// Password account
+		if !keychain.Exists(PasswordKeychainService, account.Email) {
+			fmt.Printf("No password found for %s\n", account.Email)
+			return nil
+		}
+
+		if err := keychain.DeletePassword(PasswordKeychainService, account.Email); err != nil {
+			return fmt.Errorf("failed to delete password: %w", err)
 		}
 	}
 
-	fmt.Printf("✓ Logged out from %s\n", email)
+	fmt.Printf("✓ Logged out from %s\n", account.Email)
 	fmt.Printf("✓ Credentials removed from Keychain\n")
 
 	return nil
 }
 
 func runAuthRefresh(cmd *cobra.Command, args []string) error {
-	email := args[0]
+	identifier := args[0]
 
 	cfg := GetConfig()
 	if cfg == nil {
@@ -276,25 +291,25 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 	}
 
 	// Find account
-	account, err := cfg.GetAccountByEmail(email)
+	account, err := cfg.GetAccountByIdentifier(identifier)
 	if err != nil {
-		return fmt.Errorf("account not found: %s", email)
+		return fmt.Errorf("account not found: %s\nAvailable accounts: %s", identifier, cfg.ListAccountIdentifiers())
 	}
 
 	// Only OAuth accounts can be refreshed
 	if account.OAuth.Provider == "" {
-		return fmt.Errorf("%s uses password authentication (no refresh needed)", email)
+		return fmt.Errorf("%s uses password authentication (no refresh needed)", account.Email)
 	}
 
 	if account.OAuth.ClientID == "" {
-		return fmt.Errorf("no OAuth configuration for %s", email)
+		return fmt.Errorf("no OAuth configuration for %s", account.Email)
 	}
 
 	// Load existing token
-	token, err := oauth.LoadToken(email)
+	token, err := oauth.LoadToken(account.Email)
 	if err != nil {
 		if errors.Is(err, oauth.ErrTokenNotFound) {
-			return fmt.Errorf("no token found for %s\nRun: durian auth login %s", email, email)
+			return fmt.Errorf("no token found for %s\nRun: durian auth login %s", account.Email, account.GetAliasOrName())
 		}
 		return err
 	}
@@ -305,21 +320,21 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Refreshing token for %s...\n", email)
+	fmt.Printf("Refreshing token for %s...\n", account.Email)
 
 	// Refresh token
 	newToken, err := oauth.RefreshAccessToken(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, token)
 	if err != nil {
 		if errors.Is(err, oauth.ErrTokenExpired) {
 			// Delete invalid token
-			_ = oauth.DeleteToken(email)
-			return fmt.Errorf("refresh token expired\nRun: durian auth login %s", email)
+			_ = oauth.DeleteToken(account.Email)
+			return fmt.Errorf("refresh token expired\nRun: durian auth login %s", account.GetAliasOrName())
 		}
 		return fmt.Errorf("refresh failed: %w", err)
 	}
 
 	// Save new token
-	if err := oauth.SaveToken(email, newToken); err != nil {
+	if err := oauth.SaveToken(account.Email, newToken); err != nil {
 		return fmt.Errorf("failed to save token: %w", err)
 	}
 

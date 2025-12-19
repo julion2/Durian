@@ -699,6 +699,268 @@ func TestGetMaxAttachmentSize(t *testing.T) {
 	}
 }
 
+func TestGetAccountByIdentifier(t *testing.T) {
+	cfg := &Config{
+		Accounts: []AccountConfig{
+			{Name: "GMX", Email: "julian@gmx.de", Alias: "gmx"},
+			{Name: "Habric", Email: "julian@habric.com", Alias: "habric"},
+			{Name: "Schenker Capital", Email: "julian@sc.com", Alias: "sc"},
+			{Name: "TUM", Email: "julian@tum.de"}, // No alias - should use name
+		},
+	}
+
+	tests := []struct {
+		name       string
+		identifier string
+		wantEmail  string
+		wantErr    error
+	}{
+		// Email lookup
+		{
+			name:       "exact email match",
+			identifier: "julian@gmx.de",
+			wantEmail:  "julian@gmx.de",
+		},
+		{
+			name:       "email with different case",
+			identifier: "Julian@GMX.de",
+			wantEmail:  "", // Email match is case-sensitive
+			wantErr:    ErrAccountNotFound,
+		},
+		// Alias lookup
+		{
+			name:       "alias lowercase",
+			identifier: "gmx",
+			wantEmail:  "julian@gmx.de",
+		},
+		{
+			name:       "alias uppercase",
+			identifier: "GMX",
+			wantEmail:  "julian@gmx.de",
+		},
+		{
+			name:       "alias mixed case",
+			identifier: "Habric",
+			wantEmail:  "julian@habric.com",
+		},
+		{
+			name:       "short alias",
+			identifier: "sc",
+			wantEmail:  "julian@sc.com",
+		},
+		// Name lookup (fallback)
+		{
+			name:       "name when no alias",
+			identifier: "tum",
+			wantEmail:  "julian@tum.de",
+		},
+		{
+			name:       "name uppercase when no alias",
+			identifier: "TUM",
+			wantEmail:  "julian@tum.de",
+		},
+		// Not found
+		{
+			name:       "not found",
+			identifier: "unknown",
+			wantErr:    ErrAccountNotFound,
+		},
+		{
+			name:       "empty identifier",
+			identifier: "",
+			wantErr:    ErrAccountNotFound,
+		},
+		{
+			name:       "whitespace only",
+			identifier: "   ",
+			wantErr:    ErrAccountNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			acc, err := cfg.GetAccountByIdentifier(tt.identifier)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("GetAccountByIdentifier(%q) error = %v, want %v", tt.identifier, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("GetAccountByIdentifier(%q) unexpected error: %v", tt.identifier, err)
+				return
+			}
+			if acc.Email != tt.wantEmail {
+				t.Errorf("GetAccountByIdentifier(%q).Email = %q, want %q", tt.identifier, acc.Email, tt.wantEmail)
+			}
+		})
+	}
+}
+
+func TestGetAccountByIdentifierNoAccounts(t *testing.T) {
+	cfg := &Config{Accounts: []AccountConfig{}}
+	_, err := cfg.GetAccountByIdentifier("any")
+	if err != ErrNoAccounts {
+		t.Errorf("GetAccountByIdentifier() error = %v, want %v", err, ErrNoAccounts)
+	}
+}
+
+func TestValidateAliases(t *testing.T) {
+	tests := []struct {
+		name     string
+		accounts []AccountConfig
+		wantErr  bool
+		errMsg   string
+	}{
+		{
+			name: "valid aliases",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "gmx"},
+				{Name: "Habric", Email: "b@test.com", Alias: "habric"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no aliases - valid",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com"},
+				{Name: "Habric", Email: "b@test.com"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "duplicate aliases",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "mail"},
+				{Name: "Habric", Email: "b@test.com", Alias: "mail"},
+			},
+			wantErr: true,
+			errMsg:  "duplicate alias",
+		},
+		{
+			name: "duplicate aliases different case",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "Mail"},
+				{Name: "Habric", Email: "b@test.com", Alias: "mail"},
+			},
+			wantErr: true,
+			errMsg:  "duplicate alias",
+		},
+		{
+			name: "alias matches another email (lowercase)",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "btest"},
+				{Name: "Habric", Email: "btest"},
+			},
+			wantErr: true,
+			errMsg:  "conflicts with email",
+		},
+		{
+			name: "invalid alias with spaces",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "my mail"},
+			},
+			wantErr: true,
+			errMsg:  "invalid alias",
+		},
+		{
+			name: "invalid alias with special chars",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "mail@work"},
+			},
+			wantErr: true,
+			errMsg:  "invalid alias",
+		},
+		{
+			name: "valid alias with dash and underscore",
+			accounts: []AccountConfig{
+				{Name: "GMX", Email: "a@test.com", Alias: "my-mail_1"},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{Accounts: tt.accounts}
+			err := cfg.ValidateAliases()
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ValidateAliases() expected error containing %q, got nil", tt.errMsg)
+				} else if !containsString(err.Error(), tt.errMsg) {
+					t.Errorf("ValidateAliases() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			} else if err != nil {
+				t.Errorf("ValidateAliases() unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestGetAliasOrName(t *testing.T) {
+	tests := []struct {
+		name    string
+		account AccountConfig
+		want    string
+	}{
+		{
+			name:    "has alias",
+			account: AccountConfig{Name: "Schenker Capital", Alias: "sc"},
+			want:    "sc",
+		},
+		{
+			name:    "no alias - uses name",
+			account: AccountConfig{Name: "TUM", Alias: ""},
+			want:    "TUM",
+		},
+		{
+			name:    "both empty",
+			account: AccountConfig{Name: "", Alias: ""},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.account.GetAliasOrName()
+			if got != tt.want {
+				t.Errorf("GetAliasOrName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestListAccountIdentifiers(t *testing.T) {
+	cfg := &Config{
+		Accounts: []AccountConfig{
+			{Name: "GMX", Email: "a@gmx.de", Alias: "gmx"},
+			{Name: "Habric", Email: "b@habric.com"}, // No alias
+			{Email: "c@test.com"},                   // No name or alias
+		},
+	}
+
+	identifiers := cfg.ListAccountIdentifiers()
+
+	if len(identifiers) != 3 {
+		t.Fatalf("ListAccountIdentifiers() returned %d items, want 3", len(identifiers))
+	}
+
+	// First should be alias
+	if identifiers[0] != "gmx" {
+		t.Errorf("identifiers[0] = %q, want %q", identifiers[0], "gmx")
+	}
+
+	// Second should be name (no alias)
+	if identifiers[1] != "Habric" {
+		t.Errorf("identifiers[1] = %q, want %q", identifiers[1], "Habric")
+	}
+
+	// Third should be email (no name or alias)
+	if identifiers[2] != "c@test.com" {
+		t.Errorf("identifiers[2] = %q, want %q", identifiers[2], "c@test.com")
+	}
+}
+
 // Helper function
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))

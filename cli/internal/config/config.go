@@ -23,6 +23,11 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Validate aliases
+	if err := cfg.ValidateAliases(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+
 	return &cfg, nil
 }
 

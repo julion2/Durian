@@ -50,8 +50,9 @@ Examples:
   # Interactive mode (prompts for missing fields, opens $EDITOR for body)
   durian send --to "recipient@example.com" --subject "Hello"
 
-  # Specify sender account
-  durian send --from "work@company.com" --to "..." --subject "..." --body "..."`,
+  # Specify sender account (by alias or email)
+  durian send --from gmail --to "..." --subject "..." --body "..."
+  durian send --from julian@habric.com --to "..." --subject "..." --body "..."`,
 	RunE: runSend,
 }
 
@@ -59,7 +60,7 @@ func init() {
 	sendCmd.Flags().StringVar(&sendTo, "to", "", "recipient email address(es), comma-separated")
 	sendCmd.Flags().StringVar(&sendSubject, "subject", "", "email subject")
 	sendCmd.Flags().StringVar(&sendBody, "body", "", "email body")
-	sendCmd.Flags().StringVar(&sendFrom, "from", "", "sender email (uses default account if not specified)")
+	sendCmd.Flags().StringVar(&sendFrom, "from", "", "sender account (alias, name, or email; uses default if not specified)")
 	sendCmd.Flags().StringSliceVar(&sendAttach, "attach", nil, "attach file(s), can be specified multiple times")
 	sendCmd.Flags().StringVar(&sendBodyFile, "body-file", "", "read body from file (cannot use with --body)")
 	sendCmd.Flags().BoolVar(&sendHTML, "html", false, "send body as HTML")
@@ -79,9 +80,9 @@ func runSend(cmd *cobra.Command, args []string) error {
 	var err error
 
 	if sendFrom != "" {
-		account, err = cfg.GetAccountByEmail(sendFrom)
+		account, err = cfg.GetAccountByIdentifier(sendFrom)
 		if err != nil {
-			return fmt.Errorf("account not found: %s", sendFrom)
+			return fmt.Errorf("account not found: %s\nAvailable accounts: %s", sendFrom, cfg.ListAccountIdentifiers())
 		}
 	} else {
 		account, err = cfg.GetDefaultAccount()

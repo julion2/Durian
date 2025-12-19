@@ -17,6 +17,10 @@ var (
 	ErrAccountNotFound = errors.New("account not found")
 	// ErrSignatureNotFound is returned when the requested signature is not found
 	ErrSignatureNotFound = errors.New("signature not found")
+	// ErrDuplicateAlias is returned when two accounts have the same alias
+	ErrDuplicateAlias = errors.New("duplicate alias found")
+	// ErrInvalidAlias is returned when an alias contains invalid characters
+	ErrInvalidAlias = errors.New("invalid alias: use only a-z, 0-9, -, _")
 )
 
 // GetDefaultAccount returns the account marked as default
@@ -62,6 +66,101 @@ func (c *Config) GetAccountByName(name string) (*AccountConfig, error) {
 		}
 	}
 	return nil, ErrAccountNotFound
+}
+
+// GetAccountByIdentifier finds an account by email, alias, or name (in that order)
+// The lookup is case-insensitive for alias and name.
+func (c *Config) GetAccountByIdentifier(identifier string) (*AccountConfig, error) {
+	if len(c.Accounts) == 0 {
+		return nil, ErrNoAccounts
+	}
+
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return nil, ErrAccountNotFound
+	}
+
+	// 1. Exact email match (case-sensitive)
+	for i := range c.Accounts {
+		if c.Accounts[i].Email == identifier {
+			return &c.Accounts[i], nil
+		}
+	}
+
+	// 2. Case-insensitive alias match
+	identifierLower := strings.ToLower(identifier)
+	for i := range c.Accounts {
+		if c.Accounts[i].Alias != "" && strings.ToLower(c.Accounts[i].Alias) == identifierLower {
+			return &c.Accounts[i], nil
+		}
+	}
+
+	// 3. Case-insensitive name match
+	for i := range c.Accounts {
+		if strings.ToLower(c.Accounts[i].Name) == identifierLower {
+			return &c.Accounts[i], nil
+		}
+	}
+
+	return nil, ErrAccountNotFound
+}
+
+// ValidateAliases checks that all aliases are unique and valid
+func (c *Config) ValidateAliases() error {
+	aliasRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	seen := make(map[string]string) // alias -> email
+
+	for _, account := range c.Accounts {
+		if account.Alias == "" {
+			continue
+		}
+
+		// Validate alias format
+		if !aliasRegex.MatchString(account.Alias) {
+			return fmt.Errorf("%w: '%s' for account %s", ErrInvalidAlias, account.Alias, account.Email)
+		}
+
+		aliasLower := strings.ToLower(account.Alias)
+
+		// Check for duplicate aliases
+		if existingEmail, exists := seen[aliasLower]; exists {
+			return fmt.Errorf("%w: '%s' used by both %s and %s", ErrDuplicateAlias, account.Alias, existingEmail, account.Email)
+		}
+
+		// Check that alias doesn't conflict with another account's email
+		for _, other := range c.Accounts {
+			if strings.ToLower(other.Email) == aliasLower {
+				return fmt.Errorf("alias '%s' conflicts with email address %s", account.Alias, other.Email)
+			}
+		}
+
+		seen[aliasLower] = account.Email
+	}
+
+	return nil
+}
+
+// GetAliasOrName returns the alias if set, otherwise the name
+func (a *AccountConfig) GetAliasOrName() string {
+	if a.Alias != "" {
+		return a.Alias
+	}
+	return a.Name
+}
+
+// ListAccountIdentifiers returns a list of all available identifiers (aliases/names)
+func (c *Config) ListAccountIdentifiers() []string {
+	var identifiers []string
+	for _, account := range c.Accounts {
+		if account.Alias != "" {
+			identifiers = append(identifiers, account.Alias)
+		} else if account.Name != "" {
+			identifiers = append(identifiers, account.Name)
+		} else {
+			identifiers = append(identifiers, account.Email)
+		}
+	}
+	return identifiers
 }
 
 // GetSignature returns the signature with the given name
