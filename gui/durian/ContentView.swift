@@ -127,10 +127,13 @@ struct ContentView: View {
                         selection: $selectedNotmuchEmails,
                         onEmailAppear: { email in
                             // Prefetch body when email becomes visible
-                            if case .notLoaded = email.bodyState {
+                            switch email.bodyState {
+                            case .notLoaded, .failed:
                                 Task {
                                     await accountManager.fetchNotmuchEmailBody(id: email.id)
                                 }
+                            case .loading, .loaded:
+                                break // Already loading or loaded
                             }
                         },
                         onTogglePin: { emailId in
@@ -399,11 +402,14 @@ struct ContentView: View {
         .background(Color(NSColor.controlBackgroundColor))
         .navigationTitle("Email")
         .onAppear {
-            // Auto-load body
-            if case .notLoaded = email.bodyState {
+            // Auto-load body if not loaded or previously failed
+            switch email.bodyState {
+            case .notLoaded, .failed:
                 Task {
                     await accountManager.fetchNotmuchEmailBody(id: email.id)
                 }
+            case .loading, .loaded:
+                break // Already loading or loaded
             }
         }
     }
@@ -453,12 +459,15 @@ struct ContentView: View {
     private func handleNotmuchEmailSelection(_ emailId: String) {
         detailMode = .notmuchEmailDetail(emailId: emailId)
         
-        // Auto-load body if not loaded
+        // Auto-load body if not loaded or previously failed
         if let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
-            if case .notLoaded = email.bodyState {
+            switch email.bodyState {
+            case .notLoaded, .failed:
                 Task {
                     await accountManager.fetchNotmuchEmailBody(id: emailId)
                 }
+            case .loading, .loaded:
+                break // Already loading or loaded
             }
             
             // Mark as read

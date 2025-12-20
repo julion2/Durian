@@ -166,8 +166,17 @@ class NotmuchBackend: ObservableObject {
         guard let response = await sendCommand(request),
               response.ok,
               let mail = response.mail else {
+            // Check if this was a cancellation vs real failure
+            // If cancelled, set back to .notLoaded so it can be retried
+            // If real failure, set to .failed
             if let index = emails.firstIndex(where: { $0.id == id }) {
-                emails[index].bodyState = .failed(message: "Failed to load")
+                if shouldCancelPrefetch || Task.isCancelled {
+                    emails[index].bodyState = .notLoaded
+                    print("NOTMUCH Body fetch cancelled for \(id), reset to notLoaded")
+                } else {
+                    emails[index].bodyState = .failed(message: "Failed to load")
+                    print("NOTMUCH Body fetch failed for \(id)")
+                }
             }
             return
         }
