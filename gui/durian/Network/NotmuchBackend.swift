@@ -164,7 +164,16 @@ class NotmuchBackend: ObservableObject {
     
     // MARK: - Protocol: Email Operations
     
+    /// Protocol conformance: fetch email body (user-initiated, not cancellable)
     func fetchEmailBody(id: String) async {
+        await fetchEmailBodyInternal(id: id, isPrefetch: false)
+    }
+    
+    /// Internal fetch email body with prefetch option
+    /// - Parameters:
+    ///   - id: The thread/email ID
+    ///   - isPrefetch: If true, this request can be cancelled when shouldCancelPrefetch is set
+    private func fetchEmailBodyInternal(id: String, isPrefetch: Bool) async {
         // Find and update email state to loading
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].bodyState = .loading
@@ -173,19 +182,23 @@ class NotmuchBackend: ObservableObject {
         // Use thread_id directly - durian will resolve the file path
         let request = DurianRequest(cmd: "show", thread: id)
         
-        guard let response = await sendCommand(request),
+        guard let response = await sendCommand(request, cancelOnPrefetchAbort: isPrefetch),
               response.ok,
               let mail = response.mail else {
             // Check if this was a cancellation vs real failure
-            // If cancelled, set back to .notLoaded so it can be retried
-            // If real failure, set to .failed
+            // Only treat as cancellation if this is a prefetch request
             if let index = emails.firstIndex(where: { $0.id == id }) {
-                if shouldCancelPrefetch || Task.isCancelled {
+                if isPrefetch && (shouldCancelPrefetch || Task.isCancelled) {
                     emails[index].bodyState = .notLoaded
-                    print("NOTMUCH Body fetch cancelled for \(id), reset to notLoaded")
-                } else {
+                    print("NOTMUCH Prefetch cancelled for \(id), reset to notLoaded")
+                } else if !isPrefetch {
+                    // User-initiated request failed - mark as failed
                     emails[index].bodyState = .failed(message: "Failed to load")
                     print("NOTMUCH Body fetch failed for \(id)")
+                } else {
+                    // Prefetch failed but not due to cancellation
+                    emails[index].bodyState = .notLoaded
+                    print("NOTMUCH Prefetch failed for \(id), reset to notLoaded")
                 }
             }
             return
@@ -311,7 +324,7 @@ class NotmuchBackend: ObservableObject {
                 print("NOTMUCH Prefetch cancelled")
                 return
             }
-            await fetchEmailBody(id: email.id)
+            await fetchEmailBodyInternal(id: email.id, isPrefetch: true)
         }
     }
     
@@ -345,6 +358,10 @@ class NotmuchBackend: ObservableObject {
             loadingProgress = "Error: \(response.error ?? "unknown")"
             return
         }
+        
+        // Reset prefetch cancellation flag before updating emails
+        // This allows onAppear/selection requests to proceed immediately
+        shouldCancelPrefetch = false
         
         // Convert to MailMessage
         let results = response.results ?? []
@@ -432,7 +449,11 @@ class NotmuchBackend: ObservableObject {
         }
     }
     
-    private func sendCommand(_ request: DurianRequest) async -> DurianResponse? {
+    /// Send a command to the durian process
+    /// - Parameters:
+    ///   - request: The request to send
+    ///   - cancelOnPrefetchAbort: If true, this request will be cancelled when shouldCancelPrefetch is set
+    private func sendCommand(_ request: DurianRequest, cancelOnPrefetchAbort: Bool = false) async -> DurianResponse? {
         guard let stdin = stdin, let stdout = stdout else {
             print("NOTMUCH ERROR: No stdin/stdout")
             return nil
@@ -448,9 +469,9 @@ class NotmuchBackend: ObservableObject {
                     // Use timeout-based wait so we can check for cancellation
                     var waitResult = self.requestSemaphore.wait(timeout: .now() + 0.1)
                     while waitResult == .timedOut {
-                        // Check if prefetch should be cancelled
-                        if self.shouldCancelPrefetch {
-                            print("NOTMUCH sendCommand: Cancelled while waiting for semaphore")
+                        // Only cancel if this is a prefetch request AND cancellation is requested
+                        if cancelOnPrefetchAbort && self.shouldCancelPrefetch {
+                            print("NOTMUCH sendCommand: Prefetch cancelled while waiting for semaphore")
                             continuation.resume(returning: nil)
                             return
                         }
