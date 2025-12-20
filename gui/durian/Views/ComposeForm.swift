@@ -1,15 +1,15 @@
 //
-//  EmailComposeView.swift
+//  ComposeForm.swift
 //  Durian
 //
-//  Email composition interface
+//  Email composition form
 //
 
 import SwiftUI
 import Combine
 import UniformTypeIdentifiers
 
-struct EmailComposeView: View {
+struct ComposeForm: View {
     @StateObject private var sendingManager = EmailSendingManager.shared
     
     let accounts: [MailAccount]
@@ -70,7 +70,7 @@ struct EmailComposeView: View {
             formSection
             
             // Formatting Toolbar
-            FormattingToolbar()
+            ComposeToolbar()
             
             // Message Editor
             messageEditor
@@ -703,10 +703,10 @@ struct AttachmentChip: View {
     struct PreviewWrapper: View {
         @State private var triggerSend = false
         @State private var showingFilePicker = false
-        @State private var draft: EmailDraft? = nil
+        @State private var draft: EmailDraft?
         
         var body: some View {
-            EmailComposeView(
+            ComposeForm(
                 accounts: [
                     MailAccount(
                         name: "Test Account",

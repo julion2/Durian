@@ -69,7 +69,7 @@ struct DurianApp: App {
         // Compose Window - supports multiple windows via UUID
         WindowGroup("New Message", for: UUID.self) { $draftId in
             if let draftId = draftId {
-                ComposeWindowView(draftId: draftId)
+                ComposeWindow(draftId: draftId)
             }
         }
         .defaultSize(width: 650, height: 550)

@@ -1,5 +1,5 @@
 //
-//  FormattingToolbar.swift
+//  ComposeToolbar.swift
 //  Durian
 //
 //  Rich text formatting toolbar (visual only, functionality to be added later)
@@ -9,7 +9,7 @@ import SwiftUI
 
 /// Formatting toolbar for the email composer
 /// Currently visual-only - formatting functionality will be added later
-struct FormattingToolbar: View {
+struct ComposeToolbar: View {
     @State private var selectedFont: String = "Helvetica"
     @State private var selectedSize: Int = 13
     
@@ -191,6 +191,6 @@ struct ToolbarIconButton: View {
 // Color(hex:) extension is defined in ProfileManager.swift
 
 #Preview {
-    FormattingToolbar()
+    ComposeToolbar()
         .frame(width: 700)
 }

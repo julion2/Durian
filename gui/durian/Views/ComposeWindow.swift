@@ -1,14 +1,14 @@
 //
-//  ComposeWindowView.swift
+//  ComposeWindow.swift
 //  Durian
 //
-//  Standalone window wrapper for EmailComposeView
+//  Standalone window wrapper for ComposeForm
 //
 
 import SwiftUI
 
 /// Wrapper view for the compose window
-struct ComposeWindowView: View {
+struct ComposeWindow: View {
     let draftId: UUID
     
     @Environment(\.dismiss) private var dismiss
@@ -55,7 +55,7 @@ struct ComposeWindowView: View {
     }
     
     private func composeView(draft: EmailDraft, accounts: [MailAccount]) -> some View {
-        EmailComposeView(
+        ComposeForm(
             accounts: accounts,
             existingDraft: draft,
             triggerSend: $triggerSend,
@@ -198,6 +198,6 @@ struct ComposeWindowView: View {
 }
 
 #Preview {
-    ComposeWindowView(draftId: UUID())
+    ComposeWindow(draftId: UUID())
         .frame(width: 700, height: 600)
 }
