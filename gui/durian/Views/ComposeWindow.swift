@@ -96,12 +96,12 @@ struct ComposeWindow: View {
                 }
                 .help("Add Attachment")
                 
-                // Link
+                // Templates
                 Button(action: {}) {
-                    Image(systemName: "link")
+                    Image(systemName: "doc.on.doc")
                 }
                 .disabled(true)
-                .help("Insert Link (Coming Soon)")
+                .help("Templates (Coming Soon)")
                 
                 // Text format
                 Button(action: {}) {
