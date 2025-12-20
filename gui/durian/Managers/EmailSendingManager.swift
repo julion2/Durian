@@ -130,9 +130,7 @@ class EmailSendingManager: ObservableObject {
         if result.success {
             sendingProgress = "Email sent successfully"
             print("EMAIL: Sent successfully")
-            
-            // Delete draft after successful send
-            DraftManager.shared.deleteDraft(id: draft.id)
+            // Note: Draft deletion is handled by the caller (ComposeWindow.handleSend)
         } else {
             let errorMessage = result.error ?? "Unknown error"
             print("EMAIL: Send failed: \(errorMessage)")
