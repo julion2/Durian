@@ -544,10 +544,24 @@ struct ContentView: View {
     
     // MARK: - Reply/Forward Actions
     
+    /// Get default from-account based on current profile
+    private var defaultFromAccount: String? {
+        // Get first account from current profile
+        if let profile = profileManager.currentProfile,
+           let accountName = profile.accounts.first,
+           accountName != "*" {
+            // Find matching account by name
+            return ConfigManager.shared.getAccounts()
+                .first(where: { $0.name == accountName })?.email
+        }
+        // Fallback to first configured account
+        return ConfigManager.shared.getAccounts().first?.email
+    }
+    
     private func replyToSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+              let fromAccount = defaultFromAccount else { return }
         
         let replyDraft = EmailDraft.createReply(from: email, fromAccount: fromAccount)
         let draftId = DraftService.shared.createDraft(with: replyDraft)
@@ -557,7 +571,7 @@ struct ContentView: View {
     private func replyAllToSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+              let fromAccount = defaultFromAccount else { return }
         
         let replyDraft = EmailDraft.createReplyAll(from: email, fromAccount: fromAccount)
         let draftId = DraftService.shared.createDraft(with: replyDraft)
@@ -567,7 +581,7 @@ struct ContentView: View {
     private func forwardSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+              let fromAccount = defaultFromAccount else { return }
         
         let forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)
         let draftId = DraftService.shared.createDraft(with: forwardDraft)

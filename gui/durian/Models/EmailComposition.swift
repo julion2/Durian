@@ -209,14 +209,20 @@ extension EmailDraft {
             ? message.subject 
             : "Fwd: \(message.subject)"
         
-        // Build forwarded message body
-        let forwardedBody = buildForwardBody(message)
+        // Check if original was HTML
+        let hasHTML = message.htmlBody != nil && !message.htmlBody!.isEmpty
+        
+        // Build forwarded message body (HTML or plain text)
+        let forwardedBody = hasHTML 
+            ? buildForwardBodyHTML(message) 
+            : buildForwardBody(message)
         
         return EmailDraft(
             from: fromAccount,
             to: [],
             subject: subject,
-            body: "\n\n" + forwardedBody
+            body: "\n\n" + forwardedBody,
+            isHTML: hasHTML
         )
     }
     
@@ -250,7 +256,7 @@ extension EmailDraft {
         return quoted
     }
     
-    /// Build forwarded message body with original headers
+    /// Build forwarded message body with original headers (plain text)
     private static func buildForwardBody(_ message: MailMessage) -> String {
         var body = "---------- Forwarded message ----------\n"
         body += "From: \(message.from)\n"
@@ -262,6 +268,38 @@ extension EmailDraft {
         body += "\n"
         body += message.body ?? ""
         return body
+    }
+    
+    /// Build forwarded message body with original headers (HTML)
+    private static func buildForwardBodyHTML(_ message: MailMessage) -> String {
+        var html = """
+        <br><br>
+        <div style="border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px; color: #555;">
+        <p style="font-size: 12px; color: #888;">---------- Forwarded message ----------</p>
+        <p style="font-size: 12px;">
+        <b>From:</b> \(escapeHTML(message.from))<br>
+        """
+        if let to = message.to {
+            html += "<b>To:</b> \(escapeHTML(to))<br>"
+        }
+        html += """
+        <b>Date:</b> \(escapeHTML(message.date))<br>
+        <b>Subject:</b> \(escapeHTML(message.subject))
+        </p>
+        <hr style="border: none; border-top: 1px solid #ccc;">
+        \(message.htmlBody ?? message.body ?? "")
+        </div>
+        """
+        return html
+    }
+    
+    /// Escape HTML special characters
+    private static func escapeHTML(_ string: String) -> String {
+        return string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }
 
