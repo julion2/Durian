@@ -27,6 +27,7 @@ struct ComposeForm: View {
     @State private var selectedAttachmentIndex: Int? = nil
     @State private var keyMonitor: Any?
     @State private var showCcBcc: Bool = false
+    @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
     
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
@@ -345,86 +346,78 @@ struct ComposeForm: View {
     // MARK: - Message Editor
     
     private var messageEditor: some View {
-        VStack(spacing: 0) {
-            // User's editable text area
-            ZStack(alignment: .topLeading) {
-                // Placeholder
-                if draft.body.isEmpty {
-                    Text("Message")
-                        .font(.system(size: 14))
-                        .foregroundColor(placeholderColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                }
-                
-                // Text Editor
-                TextEditor(text: $draft.body)
-                    .font(.system(size: 14))
-                    .foregroundColor(textColor)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .onChange(of: draft.body) {
-                        scheduleAutoSave()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // User's editable text area
+                ZStack(alignment: .topLeading) {
+                    // Placeholder
+                    if draft.body.isEmpty && draft.quotedContent == nil {
+                        Text("Message")
+                            .font(.system(size: 14))
+                            .foregroundColor(placeholderColor)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 8)
                     }
+                    
+                    // Text Editor - grows with content
+                    TextEditor(text: $draft.body)
+                        .font(.system(size: 14))
+                        .foregroundColor(textColor)
+                        .scrollContentBackground(.hidden)
+                        .scrollDisabled(true)  // Disable inner scroll, use outer ScrollView
+                        .frame(minHeight: 100)
+                        .fixedSize(horizontal: false, vertical: true)  // Grow vertically
+                        .onChange(of: draft.body) {
+                            scheduleAutoSave()
+                        }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                
+                // Quoted content (for reply/forward) - rendered with full HTML fidelity
+                if let quoted = draft.quotedContent, !quoted.isEmpty {
+                    quotedContentView(quoted)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: .infinity)
-            .background(Color.white)
-            .cornerRadius(8)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
+        }
+        .background(Color.white)
+        .cornerRadius(8)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Quoted Content View
+    
+    @ViewBuilder
+    private func quotedContentView(_ quoted: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Visual separator
+            Divider()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             
-            // Quoted content preview (for reply/forward)
-            if let quoted = draft.quotedContent, !quoted.isEmpty {
-                quotedContentPreview(quoted)
-            }
+            // Always use NonScrollingWebView for consistent scrolling behavior
+            // For plain text, wrap in basic HTML
+            let htmlContent = draft.quotedIsHTML ? quoted : plainTextToHTML(quoted)
+            
+            NonScrollingWebView(
+                html: htmlContent,
+                contentHeight: $quotedContentHeight
+            )
+            .frame(height: quotedContentHeight)
         }
     }
     
-    // MARK: - Quoted Content Preview
-    
-    @ViewBuilder
-    private func quotedContentPreview(_ quoted: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Divider()
-                .padding(.horizontal, 24)
-            
-            // Header
-            HStack {
-                Image(systemName: "quote.opening")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Text("Original Message")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 8)
-            
-            // Content
-            if draft.quotedIsHTML {
-                EmailWebView(
-                    html: quoted,
-                    theme: SettingsManager.shared.settings.theme,
-                    loadRemoteImages: false
-                )
-                .frame(minHeight: 150, maxHeight: 300)
-                .padding(.horizontal, 24)
-                .padding(.bottom, 8)
-            } else {
-                ScrollView {
-                    Text(quoted)
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 8)
-                }
-                .frame(minHeight: 100, maxHeight: 250)
-            }
-        }
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+    /// Convert plain text quote to HTML with proper styling
+    private func plainTextToHTML(_ text: String) -> String {
+        // Escape HTML and convert newlines to <br>
+        let escaped = text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+        
+        return "<div style=\"font-family: -apple-system, monospace; font-size: 13px; color: #666; white-space: pre-wrap;\">\(escaped)</div>"
     }
     
     // MARK: - Attachments

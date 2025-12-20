@@ -156,8 +156,13 @@ extension EmailDraft {
             references += messageId
         }
         
-        // Quote the original body (always plain text for replies)
-        let quotedBody = quoteBody(message.body ?? "", from: message.from, date: message.date)
+        // Check if original was HTML
+        let hasHTML = message.htmlBody != nil && !message.htmlBody!.isEmpty
+        
+        // Quote the original body (use HTML if available)
+        let quotedBody = hasHTML
+            ? quoteBodyHTML(message.htmlBody!, from: message.from, date: message.date)
+            : quoteBody(message.body ?? "", from: message.from, date: message.date)
         
         return EmailDraft(
             from: fromAccount,
@@ -167,7 +172,7 @@ extension EmailDraft {
             inReplyTo: message.messageId,
             references: references.isEmpty ? nil : references,
             quotedContent: quotedBody,
-            quotedIsHTML: false
+            quotedIsHTML: hasHTML
         )
     }
     
@@ -256,7 +261,7 @@ extension EmailDraft {
             .filter { !$0.isEmpty }
     }
     
-    /// Quote body text for reply
+    /// Quote body text for reply (plain text)
     private static func quoteBody(_ body: String, from: String, date: String) -> String {
         var quoted = "On \(date), \(from) wrote:\n"
         
@@ -266,6 +271,18 @@ extension EmailDraft {
         }
         
         return quoted
+    }
+    
+    /// Quote body HTML for reply (preserves formatting)
+    private static func quoteBodyHTML(_ html: String, from: String, date: String) -> String {
+        return """
+        <div style="color: #555;">
+        <p style="font-size: 12px; color: #888; margin-bottom: 8px;">On \(escapeHTML(date)), \(escapeHTML(from)) wrote:</p>
+        <div style="border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px;">
+        \(html)
+        </div>
+        </div>
+        """
     }
     
     /// Build forwarded message body with original headers (plain text)
@@ -285,10 +302,9 @@ extension EmailDraft {
     /// Build forwarded message body with original headers (HTML)
     private static func buildForwardBodyHTML(_ message: MailMessage) -> String {
         var html = """
-        <br><br>
-        <div style="border-left: 2px solid #ccc; padding-left: 10px; margin-left: 5px; color: #555;">
-        <p style="font-size: 12px; color: #888;">---------- Forwarded message ----------</p>
-        <p style="font-size: 12px;">
+        <div style="color: #666;">
+        <p style="font-size: 12px; color: #888; margin-bottom: 8px;">---------- Forwarded message ----------</p>
+        <p style="font-size: 12px; margin-bottom: 8px;">
         <b>From:</b> \(escapeHTML(message.from))<br>
         """
         if let to = message.to {
@@ -298,7 +314,7 @@ extension EmailDraft {
         <b>Date:</b> \(escapeHTML(message.date))<br>
         <b>Subject:</b> \(escapeHTML(message.subject))
         </p>
-        <hr style="border: none; border-top: 1px solid #ccc;">
+        <hr style="border: none; border-top: 1px solid #ccc; margin: 8px 0;">
         \(message.htmlBody ?? message.body ?? "")
         </div>
         """
