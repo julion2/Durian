@@ -96,12 +96,8 @@ struct ComposeForm: View {
         } message: {
             Text(errorMessage)
         }
-        .onChange(of: triggerSend) { oldValue, newValue in
-            if newValue {
-                sendEmail()
-                triggerSend = false
-            }
-        }
+        // Note: triggerSend is handled by ComposeWindow.handleSend()
+        // Do not add onChange handler here to avoid double-sending
         .onChange(of: draft) { oldValue, newDraft in
             currentDraft = newDraft
         }
@@ -529,27 +525,6 @@ struct ComposeForm: View {
         
         print("DRAFTING: Saving draft to local storage")
         DraftManager.shared.saveDraft(updatedDraft)
-    }
-    
-    // MARK: - Send Email
-    
-    private func sendEmail() {
-        Task {
-            do {
-                print("COMPOSE: Sending email")
-                try await sendingManager.send(draft: draft, fromAccount: draft.from)
-                
-                print("COMPOSE: Deleting local draft")
-                DraftManager.shared.deleteDraft(id: draft.id)
-                
-                print("COMPOSE: Email sent successfully, dismissing")
-                onDismiss()
-            } catch {
-                print("COMPOSE: Send failed - \(error)")
-                errorMessage = error.localizedDescription
-                showError = true
-            }
-        }
     }
     
     // MARK: - File Handling
