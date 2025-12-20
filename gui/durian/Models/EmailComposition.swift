@@ -121,6 +121,150 @@ enum EmailSendingError: Error, LocalizedError {
     }
 }
 
+// MARK: - Reply/Forward Helpers
+
+extension EmailDraft {
+    /// Create a reply draft from a mail message
+    /// - Parameters:
+    ///   - message: The original message to reply to
+    ///   - fromAccount: The email address to send from
+    /// - Returns: A new EmailDraft configured as a reply
+    static func createReply(from message: MailMessage, fromAccount: String) -> EmailDraft {
+        // Extract sender email from "Name <email>" format
+        let replyTo = extractEmail(from: message.from)
+        
+        // Build subject with Re: prefix (avoid Re: Re: Re:)
+        let subject = message.subject.hasPrefix("Re:") 
+            ? message.subject 
+            : "Re: \(message.subject)"
+        
+        // Build references chain
+        var references = message.references ?? ""
+        if let messageId = message.messageId, !messageId.isEmpty {
+            if !references.isEmpty {
+                references += " "
+            }
+            references += messageId
+        }
+        
+        // Quote the original body
+        let quotedBody = quoteBody(message.body ?? "", from: message.from, date: message.date)
+        
+        return EmailDraft(
+            from: fromAccount,
+            to: [replyTo],
+            subject: subject,
+            body: "\n\n" + quotedBody,
+            inReplyTo: message.messageId,
+            references: references.isEmpty ? nil : references
+        )
+    }
+    
+    /// Create a reply-all draft from a mail message
+    /// - Parameters:
+    ///   - message: The original message to reply to
+    ///   - fromAccount: The email address to send from
+    /// - Returns: A new EmailDraft configured as a reply-all
+    static func createReplyAll(from message: MailMessage, fromAccount: String) -> EmailDraft {
+        var draft = createReply(from: message, fromAccount: fromAccount)
+        
+        // Add original To and CC recipients to CC (excluding self)
+        var ccRecipients: [String] = []
+        
+        // Add original To recipients (except sender and self)
+        if let originalTo = message.to {
+            let toEmails = parseEmailList(originalTo)
+            for email in toEmails {
+                let normalized = extractEmail(from: email).lowercased()
+                if normalized != fromAccount.lowercased() && 
+                   normalized != extractEmail(from: message.from).lowercased() {
+                    ccRecipients.append(email)
+                }
+            }
+        }
+        
+        // Add original CC recipients (except self)
+        if let originalCC = message.cc {
+            let ccEmails = parseEmailList(originalCC)
+            for email in ccEmails {
+                let normalized = extractEmail(from: email).lowercased()
+                if normalized != fromAccount.lowercased() {
+                    ccRecipients.append(email)
+                }
+            }
+        }
+        
+        draft.cc = ccRecipients
+        return draft
+    }
+    
+    /// Create a forward draft from a mail message
+    /// - Parameters:
+    ///   - message: The original message to forward
+    ///   - fromAccount: The email address to send from
+    /// - Returns: A new EmailDraft configured as a forward
+    static func createForward(from message: MailMessage, fromAccount: String) -> EmailDraft {
+        // Build subject with Fwd: prefix
+        let subject = message.subject.hasPrefix("Fwd:") 
+            ? message.subject 
+            : "Fwd: \(message.subject)"
+        
+        // Build forwarded message body
+        let forwardedBody = buildForwardBody(message)
+        
+        return EmailDraft(
+            from: fromAccount,
+            to: [],
+            subject: subject,
+            body: "\n\n" + forwardedBody
+        )
+    }
+    
+    // MARK: - Private Helpers
+    
+    /// Extract email address from "Name <email>" format
+    private static func extractEmail(from address: String) -> String {
+        if let start = address.firstIndex(of: "<"),
+           let end = address.firstIndex(of: ">") {
+            return String(address[address.index(after: start)..<end])
+        }
+        return address.trimmingCharacters(in: .whitespaces)
+    }
+    
+    /// Parse comma-separated email list
+    private static func parseEmailList(_ list: String) -> [String] {
+        return list.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+    
+    /// Quote body text for reply
+    private static func quoteBody(_ body: String, from: String, date: String) -> String {
+        var quoted = "On \(date), \(from) wrote:\n"
+        
+        let lines = body.components(separatedBy: .newlines)
+        for line in lines {
+            quoted += "> \(line)\n"
+        }
+        
+        return quoted
+    }
+    
+    /// Build forwarded message body with original headers
+    private static func buildForwardBody(_ message: MailMessage) -> String {
+        var body = "---------- Forwarded message ----------\n"
+        body += "From: \(message.from)\n"
+        if let to = message.to {
+            body += "To: \(to)\n"
+        }
+        body += "Date: \(message.date)\n"
+        body += "Subject: \(message.subject)\n"
+        body += "\n"
+        body += message.body ?? ""
+        return body
+    }
+}
+
 class DraftManager {
     static let shared = DraftManager()
     

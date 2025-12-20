@@ -185,23 +185,23 @@ struct ContentView: View {
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(ConfigManager.shared.getAccounts().isEmpty)
                     
-                    Button(action: { /* TODO: Reply */ }) {
+                    Button(action: { replyToSelected() }) {
                         Image(systemName: "arrowshape.turn.up.left")
                     }
-                    .help("Reply")
-                    .disabled(true)
+                    .help("Reply (R)")
+                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
                     
-                    Button(action: { /* TODO: Reply All */ }) {
+                    Button(action: { replyAllToSelected() }) {
                         Image(systemName: "arrowshape.turn.up.left.2")
                     }
-                    .help("Reply All")
-                    .disabled(true)
+                    .help("Reply All (Shift+R)")
+                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
                     
-                    Button(action: { /* TODO: Forward */ }) {
+                    Button(action: { forwardSelected() }) {
                         Image(systemName: "arrowshape.turn.up.right")
                     }
-                    .help("Forward")
-                    .disabled(true)
+                    .help("Forward (F)")
+                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
                     
                     Button(action: deleteSelectedEmail) {
                         Image(systemName: "trash")
@@ -497,6 +497,22 @@ struct ContentView: View {
         return email.isRead
     }
     
+    private var selectedEmailHasBody: Bool {
+        guard let emailId = selectedNotmuchEmails.first,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+            return false
+        }
+        if case .loaded = email.bodyState {
+            return true
+        }
+        return false
+    }
+    
+    private var selectedEmail: MailMessage? {
+        guard let emailId = selectedNotmuchEmails.first else { return nil }
+        return accountManager.mailMessages.first(where: { $0.id == emailId })
+    }
+    
     private func deleteSelectedEmail() {
         guard let emailId = selectedNotmuchEmails.first else { return }
         Task {
@@ -523,6 +539,38 @@ struct ContentView: View {
     private func openNewCompose() {
         guard !ConfigManager.shared.getAccounts().isEmpty else { return }
         let draftId = DraftService.shared.createDraft()
+        openWindow(value: draftId)
+    }
+    
+    // MARK: - Reply/Forward Actions
+    
+    private func replyToSelected() {
+        guard let email = selectedEmail,
+              case .loaded = email.bodyState,
+              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+        
+        let replyDraft = EmailDraft.createReply(from: email, fromAccount: fromAccount)
+        let draftId = DraftService.shared.createDraft(with: replyDraft)
+        openWindow(value: draftId)
+    }
+    
+    private func replyAllToSelected() {
+        guard let email = selectedEmail,
+              case .loaded = email.bodyState,
+              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+        
+        let replyDraft = EmailDraft.createReplyAll(from: email, fromAccount: fromAccount)
+        let draftId = DraftService.shared.createDraft(with: replyDraft)
+        openWindow(value: draftId)
+    }
+    
+    private func forwardSelected() {
+        guard let email = selectedEmail,
+              case .loaded = email.bodyState,
+              let fromAccount = ConfigManager.shared.getAccounts().first?.email else { return }
+        
+        let forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)
+        let draftId = DraftService.shared.createDraft(with: forwardDraft)
         openWindow(value: draftId)
     }
     
@@ -617,6 +665,27 @@ struct ContentView: View {
         keymapHandler.registerSimpleHandler(for: .compose) { [self] in
             await MainActor.run {
                 openNewCompose()
+            }
+        }
+        
+        // Reply: r
+        keymapHandler.registerSimpleHandler(for: .reply) { [self] in
+            await MainActor.run {
+                replyToSelected()
+            }
+        }
+        
+        // Reply All: R (Shift+r)
+        keymapHandler.registerSimpleHandler(for: .replyAll) { [self] in
+            await MainActor.run {
+                replyAllToSelected()
+            }
+        }
+        
+        // Forward: f
+        keymapHandler.registerSimpleHandler(for: .forward) { [self] in
+            await MainActor.run {
+                forwardSelected()
             }
         }
         

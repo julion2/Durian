@@ -75,6 +75,14 @@ class DraftService: ObservableObject {
         return id
     }
     
+    /// Create a draft from an existing EmailDraft (for reply/forward)
+    func createDraft(with draft: EmailDraft) -> UUID {
+        let id = draft.id
+        activeDrafts[id] = draft
+        print("DRAFT: Created draft from template \(id)")
+        return id
+    }
+    
     /// Get a draft by its UUID
     func getDraft(id: UUID) -> EmailDraft? {
         return activeDrafts[id]

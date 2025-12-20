@@ -38,8 +38,12 @@ struct NotmuchMailResult: Decodable {
 struct NotmuchMailContent: Decodable {
     let from: String
     let to: String
+    let cc: String?
     let subject: String
     let date: String
+    let message_id: String?
+    let in_reply_to: String?
+    let references: String?
     let body: String
     let html: String?
     let attachments: [String]?
@@ -204,10 +208,15 @@ class NotmuchBackend: ObservableObject {
             return
         }
         
-        // Update email with body
+        // Update email with body and reply metadata
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].body = mail.body
             emails[index].htmlBody = mail.html
+            emails[index].to = mail.to
+            emails[index].cc = mail.cc
+            emails[index].messageId = mail.message_id
+            emails[index].inReplyTo = mail.in_reply_to
+            emails[index].references = mail.references
             emails[index].bodyState = .loaded(body: mail.body, attributedBody: nil)
             print("NOTMUCH Loaded body for \(id): \(mail.body.prefix(100))...")
             

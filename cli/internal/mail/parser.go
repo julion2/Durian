@@ -22,10 +22,14 @@ func NewParser() *Parser {
 // Parse extracts content from a mail.Message and returns MailContent
 func (p *Parser) Parse(msg *mail.Message) *MailContent {
 	content := &MailContent{
-		From:    encoding.DecodeHeader(msg.Header.Get("From")),
-		To:      encoding.DecodeHeader(msg.Header.Get("To")),
-		Subject: encoding.DecodeHeader(msg.Header.Get("Subject")),
-		Date:    msg.Header.Get("Date"),
+		From:       encoding.DecodeHeader(msg.Header.Get("From")),
+		To:         encoding.DecodeHeader(msg.Header.Get("To")),
+		CC:         encoding.DecodeHeader(msg.Header.Get("Cc")),
+		Subject:    encoding.DecodeHeader(msg.Header.Get("Subject")),
+		Date:       msg.Header.Get("Date"),
+		MessageID:  msg.Header.Get("Message-ID"),
+		InReplyTo:  msg.Header.Get("In-Reply-To"),
+		References: msg.Header.Get("References"),
 	}
 
 	textBody, htmlBody, attachments := p.extractBody(msg)

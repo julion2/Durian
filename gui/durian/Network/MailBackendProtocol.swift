@@ -184,7 +184,8 @@ struct MailMessage: Identifiable, Hashable {
     let id: String  // thread_id for notmuch
     let subject: String
     let from: String
-    let to: String?
+    var to: String?
+    var cc: String?
     let date: String
     let timestamp: Int  // Unix timestamp for grouping
     let tags: String?
@@ -197,12 +198,18 @@ struct MailMessage: Identifiable, Hashable {
     var bodyState: EmailBodyState
     var incomingAttachments: [IncomingAttachmentMetadata]
     
+    // Reply/Forward metadata (loaded with body)
+    var messageId: String?
+    var inReplyTo: String?
+    var references: String?
+    
     /// Create from notmuch mail
     init(threadId: String, subject: String, from: String, date: String, timestamp: Int, tags: String) {
         self.id = threadId
         self.subject = subject
         self.from = from
         self.to = nil
+        self.cc = nil
         self.date = date
         self.timestamp = timestamp
         self.tags = tags
@@ -214,6 +221,9 @@ struct MailMessage: Identifiable, Hashable {
         self.hasAttachment = tags.contains("attachment")
         self.bodyState = .notLoaded
         self.incomingAttachments = []
+        self.messageId = nil
+        self.inReplyTo = nil
+        self.references = nil
     }
     
     /// Body preview for list view (first ~100 chars, stripped of HTML)
