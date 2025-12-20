@@ -345,32 +345,86 @@ struct ComposeForm: View {
     // MARK: - Message Editor
     
     private var messageEditor: some View {
-        ZStack(alignment: .topLeading) {
-            // Placeholder
-            if draft.body.isEmpty {
-                Text("Message")
-                    .font(.system(size: 14))
-                    .foregroundColor(placeholderColor)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-            }
-            
-            // Text Editor
-            TextEditor(text: $draft.body)
-                .font(.system(size: 14))
-                .foregroundColor(textColor)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .onChange(of: draft.body) {
-                    scheduleAutoSave()
+        VStack(spacing: 0) {
+            // User's editable text area
+            ZStack(alignment: .topLeading) {
+                // Placeholder
+                if draft.body.isEmpty {
+                    Text("Message")
+                        .font(.system(size: 14))
+                        .foregroundColor(placeholderColor)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                 }
+                
+                // Text Editor
+                TextEditor(text: $draft.body)
+                    .font(.system(size: 14))
+                    .foregroundColor(textColor)
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .onChange(of: draft.body) {
+                        scheduleAutoSave()
+                    }
+            }
+            .frame(maxWidth: .infinity, minHeight: 150, maxHeight: .infinity)
+            .background(Color.white)
+            .cornerRadius(8)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            
+            // Quoted content preview (for reply/forward)
+            if let quoted = draft.quotedContent, !quoted.isEmpty {
+                quotedContentPreview(quoted)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white)
-        .cornerRadius(8)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Quoted Content Preview
+    
+    @ViewBuilder
+    private func quotedContentPreview(_ quoted: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+                .padding(.horizontal, 24)
+            
+            // Header
+            HStack {
+                Image(systemName: "quote.opening")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Original Message")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+            
+            // Content
+            if draft.quotedIsHTML {
+                EmailWebView(
+                    html: quoted,
+                    theme: SettingsManager.shared.settings.theme,
+                    loadRemoteImages: false
+                )
+                .frame(minHeight: 150, maxHeight: 300)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+            } else {
+                ScrollView {
+                    Text(quoted)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 8)
+                }
+                .frame(minHeight: 100, maxHeight: 250)
+            }
+        }
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
     }
     
     // MARK: - Attachments

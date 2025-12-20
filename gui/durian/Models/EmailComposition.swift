@@ -14,7 +14,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var cc: [String]
     var bcc: [String]
     var subject: String
-    var body: String
+    var body: String  // User's editable text
     var isHTML: Bool
     var inReplyTo: String?
     var references: String?
@@ -27,6 +27,11 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     /// IMAP Message-ID (set after saving to server)
     var messageId: String?
     
+    /// Quoted/forwarded content (read-only, shown as preview)
+    var quotedContent: String?
+    /// Whether quotedContent is HTML
+    var quotedIsHTML: Bool = false
+    
     init(
         id: UUID = UUID(),
         from: String,
@@ -38,7 +43,9 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         isHTML: Bool = false,
         inReplyTo: String? = nil,
         references: String? = nil,
-        messageId: String? = nil
+        messageId: String? = nil,
+        quotedContent: String? = nil,
+        quotedIsHTML: Bool = false
     ) {
         self.id = id
         self.from = from
@@ -51,6 +58,8 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         self.inReplyTo = inReplyTo
         self.references = references
         self.messageId = messageId
+        self.quotedContent = quotedContent
+        self.quotedIsHTML = quotedIsHTML
         self.createdAt = Date()
         self.modifiedAt = Date()
     }
@@ -147,16 +156,18 @@ extension EmailDraft {
             references += messageId
         }
         
-        // Quote the original body
+        // Quote the original body (always plain text for replies)
         let quotedBody = quoteBody(message.body ?? "", from: message.from, date: message.date)
         
         return EmailDraft(
             from: fromAccount,
             to: [replyTo],
             subject: subject,
-            body: "\n\n" + quotedBody,
+            body: "",  // User writes here
             inReplyTo: message.messageId,
-            references: references.isEmpty ? nil : references
+            references: references.isEmpty ? nil : references,
+            quotedContent: quotedBody,
+            quotedIsHTML: false
         )
     }
     
@@ -221,8 +232,9 @@ extension EmailDraft {
             from: fromAccount,
             to: [],
             subject: subject,
-            body: "\n\n" + forwardedBody,
-            isHTML: hasHTML
+            body: "",  // User writes here
+            quotedContent: forwardedBody,
+            quotedIsHTML: hasHTML
         )
     }
     

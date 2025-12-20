@@ -65,15 +65,35 @@ class EmailSendingManager: ObservableObject {
             args.append(draft.bcc.joined(separator: ","))
         }
         
+        // Build final body by combining user text and quoted content
+        var finalBody = draft.body
+        var finalIsHTML = draft.isHTML
+        
+        if let quoted = draft.quotedContent, !quoted.isEmpty {
+            if draft.quotedIsHTML {
+                // Convert user text to HTML and combine with quoted HTML
+                let userHTML = draft.body
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                    .replacingOccurrences(of: "\n", with: "<br>")
+                finalBody = "<div>\(userHTML)</div><br><br>\(quoted)"
+                finalIsHTML = true
+            } else {
+                // Plain text: just concatenate
+                finalBody = draft.body + "\n\n" + quoted
+            }
+        }
+        
         // HTML flag
-        if draft.isHTML {
+        if finalIsHTML {
             args.append("--html")
         }
         
         // Body as temp file (handles long bodies and special characters)
         let bodyFile = "/tmp/durian-email-body-\(UUID().uuidString).txt"
         do {
-            try draft.body.write(toFile: bodyFile, atomically: true, encoding: .utf8)
+            try finalBody.write(toFile: bodyFile, atomically: true, encoding: .utf8)
         } catch {
             let sendError = EmailSendingError.sendFailed("Failed to write body file: \(error.localizedDescription)")
             lastError = sendError
