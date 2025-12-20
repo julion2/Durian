@@ -14,6 +14,7 @@ enum DetailViewMode: Equatable {
 }
 
 struct ContentView: View {
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var accountManager = AccountManager.shared
     @StateObject private var keymapsManager = KeymapsManager.shared
     @StateObject private var keymapHandler = KeymapHandler.shared
@@ -174,11 +175,12 @@ struct ContentView: View {
             .toolbar {
                 // Mitte: Compose + Email Aktionen
                 ToolbarItemGroup(placement: .principal) {
-                    Button(action: { /* TODO: Compose */ }) {
+                    Button(action: { openNewCompose() }) {
                         Image(systemName: "square.and.pencil")
                     }
-                    .help("New Message")
-                    .disabled(true)
+                    .help("New Message (Cmd+N)")
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(ConfigManager.shared.getAccounts().isEmpty)
                     
                     Button(action: { /* TODO: Reply */ }) {
                         Image(systemName: "arrowshape.turn.up.left")
@@ -507,6 +509,14 @@ struct ContentView: View {
         Task { await accountManager.toggleNotmuchRead(id: emailId) }
     }
     
+    // MARK: - Compose
+    
+    private func openNewCompose() {
+        guard !ConfigManager.shared.getAccounts().isEmpty else { return }
+        let draftId = DraftService.shared.createDraft()
+        openWindow(value: draftId)
+    }
+    
     // MARK: - Navigation Helpers
     
     /// Get sorted email IDs (by timestamp, newest first)
@@ -591,6 +601,13 @@ struct ContentView: View {
         keymapHandler.registerSimpleHandler(for: .search) { [self] in
             await MainActor.run {
                 showSearchPopup = true
+            }
+        }
+        
+        // Compose: c
+        keymapHandler.registerSimpleHandler(for: .compose) { [self] in
+            await MainActor.run {
+                openNewCompose()
             }
         }
         

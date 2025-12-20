@@ -1,0 +1,238 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/draft"
+	"github.com/durian-dev/durian/cli/internal/smtp"
+	"github.com/spf13/cobra"
+)
+
+var (
+	draftTo      string
+	draftCC      string
+	draftBCC     string
+	draftSubject string
+	draftBody    string
+	draftFrom    string
+	draftAttach  []string
+	draftHTML    bool
+	draftReplace string // Message-ID of draft to replace
+	draftAccount string // Account to use
+)
+
+var draftCmd = &cobra.Command{
+	Use:   "draft",
+	Short: "Manage email drafts",
+	Long:  `Manage email drafts in the IMAP Drafts folder.`,
+}
+
+var draftSaveCmd = &cobra.Command{
+	Use:   "save",
+	Short: "Save a draft to IMAP Drafts folder",
+	Long: `Save an email draft to the IMAP Drafts folder.
+
+The draft will be stored on the IMAP server and indexed by notmuch.
+
+Examples:
+  # Save a new draft
+  durian draft save --account "user@example.com" --to "recipient@example.com" --subject "Hello" --body "Message"
+
+  # Replace an existing draft
+  durian draft save --account "user@example.com" --to "..." --subject "..." --body "..." --replace "<old-message-id@host>"
+
+  # Save with attachments
+  durian draft save --account "..." --to "..." --subject "..." --body "..." --attach file.pdf
+
+Output (JSON):
+  {"ok": true, "message_id": "<uuid@hostname>", "uid": 12345}`,
+	RunE: runDraftSave,
+}
+
+var draftDeleteCmd = &cobra.Command{
+	Use:   "delete <message-id>",
+	Short: "Delete a draft from IMAP",
+	Long: `Delete a draft from the IMAP Drafts folder.
+
+Examples:
+  durian draft delete --account "user@example.com" "<message-id@host>"
+
+Output (JSON):
+  {"ok": true}`,
+	Args: cobra.ExactArgs(1),
+	RunE: runDraftDelete,
+}
+
+func init() {
+	// Save command flags
+	draftSaveCmd.Flags().StringVar(&draftAccount, "account", "", "account email (required)")
+	draftSaveCmd.Flags().StringVar(&draftFrom, "from", "", "from address (defaults to account email)")
+	draftSaveCmd.Flags().StringVar(&draftTo, "to", "", "recipient email address(es), comma-separated")
+	draftSaveCmd.Flags().StringVar(&draftCC, "cc", "", "CC recipient(s), comma-separated")
+	draftSaveCmd.Flags().StringVar(&draftBCC, "bcc", "", "BCC recipient(s), comma-separated")
+	draftSaveCmd.Flags().StringVar(&draftSubject, "subject", "", "email subject")
+	draftSaveCmd.Flags().StringVar(&draftBody, "body", "", "email body")
+	draftSaveCmd.Flags().StringSliceVar(&draftAttach, "attach", nil, "attach file(s)")
+	draftSaveCmd.Flags().BoolVar(&draftHTML, "html", false, "body is HTML")
+	draftSaveCmd.Flags().StringVar(&draftReplace, "replace", "", "Message-ID of draft to replace")
+	draftSaveCmd.MarkFlagRequired("account")
+
+	// Delete command flags
+	draftDeleteCmd.Flags().StringVar(&draftAccount, "account", "", "account email (required)")
+	draftDeleteCmd.MarkFlagRequired("account")
+
+	draftCmd.AddCommand(draftSaveCmd)
+	draftCmd.AddCommand(draftDeleteCmd)
+	rootCmd.AddCommand(draftCmd)
+}
+
+// draftResponse is the JSON output format
+type draftResponse struct {
+	OK        bool   `json:"ok"`
+	Error     string `json:"error,omitempty"`
+	MessageID string `json:"message_id,omitempty"`
+	UID       uint32 `json:"uid,omitempty"`
+}
+
+func runDraftSave(cmd *cobra.Command, args []string) error {
+	cfg := GetConfig()
+	if cfg == nil {
+		return outputDraftError("no configuration loaded")
+	}
+
+	// Get account
+	account, err := cfg.GetAccountByIdentifier(draftAccount)
+	if err != nil {
+		return outputDraftError(fmt.Sprintf("account not found: %s", draftAccount))
+	}
+
+	// Check IMAP config
+	if account.IMAP.Host == "" {
+		return outputDraftError(fmt.Sprintf("no IMAP host configured for %s", account.Email))
+	}
+
+	// Build from address
+	from := draftFrom
+	if from == "" {
+		from = account.Email
+	}
+
+	// Parse recipients
+	var toRecipients, ccRecipients, bccRecipients []string
+
+	if draftTo != "" {
+		toRecipients, err = smtp.ParseAddressList(draftTo)
+		if err != nil {
+			return outputDraftError(fmt.Sprintf("invalid To address: %v", err))
+		}
+	}
+
+	if draftCC != "" {
+		ccRecipients, err = smtp.ParseAddressList(draftCC)
+		if err != nil {
+			return outputDraftError(fmt.Sprintf("invalid CC address: %v", err))
+		}
+	}
+
+	if draftBCC != "" {
+		bccRecipients, err = smtp.ParseAddressList(draftBCC)
+		if err != nil {
+			return outputDraftError(fmt.Sprintf("invalid BCC address: %v", err))
+		}
+	}
+
+	// Build message
+	msg := &smtp.Message{
+		From:    from,
+		To:      toRecipients,
+		CC:      ccRecipients,
+		BCC:     bccRecipients,
+		Subject: draftSubject,
+		Body:    draftBody,
+		IsHTML:  draftHTML,
+	}
+
+	// Load attachments
+	var totalAttachmentSize int64
+	for _, attachPath := range draftAttach {
+		att, err := smtp.LoadAttachment(attachPath)
+		if err != nil {
+			return outputDraftError(fmt.Sprintf("failed to load attachment %s: %v", attachPath, err))
+		}
+		msg.Attachments = append(msg.Attachments, *att)
+		totalAttachmentSize += int64(len(att.Data))
+	}
+
+	// Check attachment size limit
+	if totalAttachmentSize > 0 {
+		maxSize := account.GetMaxAttachmentSize()
+		if totalAttachmentSize > maxSize {
+			return outputDraftError(fmt.Sprintf("total attachment size (%s) exceeds limit (%s)",
+				config.FormatSize(totalAttachmentSize), config.FormatSize(maxSize)))
+		}
+	}
+
+	// Save draft
+	service := draft.NewService(account)
+	result, err := service.Save(msg, draftReplace)
+	if err != nil {
+		return outputDraftError(fmt.Sprintf("failed to save draft: %v", err))
+	}
+
+	// Output success
+	resp := draftResponse{
+		OK:        true,
+		MessageID: result.MessageID,
+		UID:       result.UID,
+	}
+	return outputJSON(resp)
+}
+
+func runDraftDelete(cmd *cobra.Command, args []string) error {
+	cfg := GetConfig()
+	if cfg == nil {
+		return outputDraftError("no configuration loaded")
+	}
+
+	messageID := args[0]
+
+	// Get account
+	account, err := cfg.GetAccountByIdentifier(draftAccount)
+	if err != nil {
+		return outputDraftError(fmt.Sprintf("account not found: %s", draftAccount))
+	}
+
+	// Check IMAP config
+	if account.IMAP.Host == "" {
+		return outputDraftError(fmt.Sprintf("no IMAP host configured for %s", account.Email))
+	}
+
+	// Delete draft
+	service := draft.NewService(account)
+	if err := service.Delete(messageID); err != nil {
+		return outputDraftError(fmt.Sprintf("failed to delete draft: %v", err))
+	}
+
+	// Output success
+	resp := draftResponse{OK: true}
+	return outputJSON(resp)
+}
+
+func outputDraftError(message string) error {
+	resp := draftResponse{
+		OK:    false,
+		Error: message,
+	}
+	outputJSON(resp)
+	return errors.New(message)
+}
+
+func outputJSON(v interface{}) error {
+	encoder := json.NewEncoder(os.Stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(v)
+}

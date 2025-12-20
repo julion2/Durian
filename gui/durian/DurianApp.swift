@@ -10,6 +10,7 @@ import UserNotifications
 
 @main
 struct DurianApp: App {
+    @Environment(\.openWindow) private var openWindow
     
     init() {
         // Setup sync manager (creates script + launchd agent if needed)
@@ -64,6 +65,14 @@ struct DurianApp: App {
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
+        
+        // Compose Window - supports multiple windows via UUID
+        WindowGroup("New Message", for: UUID.self) { $draftId in
+            if let draftId = draftId {
+                ComposeWindowView(draftId: draftId)
+            }
+        }
+        .defaultSize(width: 650, height: 550)
     }
     
     private func openConfig() {

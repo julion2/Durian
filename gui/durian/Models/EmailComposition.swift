@@ -24,6 +24,9 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var accountId: String?
     var attachments: [EmailAttachment] = []
     
+    /// IMAP Message-ID (set after saving to server)
+    var messageId: String?
+    
     init(
         id: UUID = UUID(),
         from: String,
@@ -34,7 +37,8 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         body: String = "",
         isHTML: Bool = false,
         inReplyTo: String? = nil,
-        references: String? = nil
+        references: String? = nil,
+        messageId: String? = nil
     ) {
         self.id = id
         self.from = from
@@ -46,6 +50,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         self.isHTML = isHTML
         self.inReplyTo = inReplyTo
         self.references = references
+        self.messageId = messageId
         self.createdAt = Date()
         self.modifiedAt = Date()
     }

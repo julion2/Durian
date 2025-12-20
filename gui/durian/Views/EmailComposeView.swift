@@ -15,6 +15,7 @@ struct EmailComposeView: View {
     let accounts: [MailAccount]
     let existingDraft: EmailDraft?
     @Binding var triggerSend: Bool
+    @Binding var showingFilePicker: Bool
     @Binding var currentDraft: EmailDraft?
     let onDismiss: () -> Void
     
@@ -23,19 +24,26 @@ struct EmailComposeView: View {
     @State private var errorMessage = ""
     @State private var autoSaveCancellable: AnyCancellable?
     @State private var selectedSignature: String?
-    @State private var showingFilePicker = false
     @State private var selectedAttachmentIndex: Int? = nil
     @State private var keyMonitor: Any?
+    @State private var showCcBcc: Bool = false
     
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
     private let maxTotalSize: Int64 = 50_000_000
     private let maxAttachments: Int = 10
     
-    init(accounts: [MailAccount], existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
+    // MARK: - Colors
+    
+    private let labelColor = Color(hex: "#4a5565")
+    private let placeholderColor = Color(hex: "#717182")
+    private let textColor = Color(hex: "#0a0a0a")
+    
+    init(accounts: [MailAccount], existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, showingFilePicker: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts
         self.existingDraft = existingDraft
         self._triggerSend = triggerSend
+        self._showingFilePicker = showingFilePicker
         self._currentDraft = currentDraft
         self.onDismiss = onDismiss
         self.signatures = ConfigManager.shared.getSignatures()
@@ -45,184 +53,37 @@ struct EmailComposeView: View {
         if let existing = existingDraft {
             _draft = State(initialValue: existing)
             _selectedSignature = State(initialValue: nil)
+            // Auto-expand Cc/Bcc if draft has values
+            _showCcBcc = State(initialValue: !existing.cc.isEmpty || !existing.bcc.isEmpty)
         } else {
             _draft = State(initialValue: EmailDraft(from: defaultAccount))
             
             let account = accounts.first { $0.email == defaultAccount }
             _selectedSignature = State(initialValue: account?.defaultSignature)
+            _showCcBcc = State(initialValue: false)
         }
-    }
-    
-    private var attachmentsScrollView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(Array(draft.attachments.enumerated()), id: \.element.id) { index, attachment in
-                    AttachmentChip(
-                        filename: attachment.filename,
-                        size: attachment.sizeFormatted,
-                        isSelected: selectedAttachmentIndex == index,
-                        onClick: {
-                            selectedAttachmentIndex = index
-                        },
-                        onRemove: {
-                            removeAttachment(id: attachment.id)
-                        }
-                    )
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-        }
-        .background(Color(NSColor.controlBackgroundColor))
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    Text("From:")
-                        .frame(width: 60, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                    Picker("", selection: $draft.from) {
-                        ForEach(accounts, id: \.email) { account in
-                            Text(account.name).tag(account.email)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .tint(.accentColor)
-                    .onChange(of: draft.from) { oldValue, newAccount in
-                        if let account = accounts.first(where: { $0.email == newAccount }) {
-                            selectedSignature = account.defaultSignature
-                        }
-                        scheduleAutoSave()
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(height: 1)
-                        .padding(.leading, 76)
-                        .padding(.trailing, 16)
-                }
-                
-                HStack(spacing: 8) {
-                    Text("To:")
-                        .frame(width: 60, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                    TextField("", text: toBinding)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(height: 1)
-                        .padding(.leading, 76)
-                        .padding(.trailing, 16)
-                }
-                
-                HStack(spacing: 8) {
-                    Text("Cc:")
-                        .frame(width: 60, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                    TextField("", text: ccBinding)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(height: 1)
-                        .padding(.leading, 76)
-                        .padding(.trailing, 16)
-                }
-                
-                HStack(spacing: 8) {
-                    Text("Subject:")
-                        .frame(width: 60, alignment: .leading)
-                        .foregroundStyle(.secondary)
-                    TextField("", text: $draft.subject)
-                        .textFieldStyle(.plain)
-                    
-                    if !signatures.isEmpty {
-                        Text("Signature:")
-                            .foregroundStyle(.secondary)
-                        Picker("", selection: $selectedSignature) {
-                            Text("None").tag(nil as String?)
-                            ForEach(signatures.keys.sorted(), id: \.self) { key in
-                                Text(key.capitalized).tag(key as String?)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .tint(.accentColor)
-                        .onChange(of: selectedSignature) {
-                            updateBodyWithSignature()
-                        }
-                    }
-                }
-                .onChange(of: draft.subject) {
-                    scheduleAutoSave()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                
-                HStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.6))
-                        .frame(height: 1)
-                        .padding(.leading, 76)
-                        .padding(.trailing, 16)
-                }
-                
-                TextEditor(text: $draft.body)
-                    .font(.body)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(12)
-                    .onChange(of: draft.body) {
-                        scheduleAutoSave()
-                    }
-            }
+            // Form Area
+            formSection
             
+            // Formatting Toolbar
+            FormattingToolbar()
+            
+            // Message Editor
+            messageEditor
+            
+            // Attachments (if any)
             if !draft.attachments.isEmpty {
                 attachmentsScrollView
             }
             
-            Divider()
-            
-            HStack {
-                if sendingManager.isSending {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text(sendingManager.sendingProgress)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding()
-            .frame(height: 40)
+            // Bottom Status Bar
+            statusBar
         }
-        .navigationTitle(existingDraft != nil ? "Edit Draft" : "New Message")
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button(action: {
-                    showingFilePicker = true
-                }) {
-                    Label("Attach", systemImage: "paperclip")
-                }
-                .disabled(draft.attachments.count >= maxAttachments)
-            }
-        }
+        .navigationTitle("")
         .fileImporter(
             isPresented: $showingFilePicker,
             allowedContentTypes: [.data],
@@ -230,7 +91,7 @@ struct EmailComposeView: View {
         ) { result in
             handleFileSelection(result)
         }
-        .alert("Send Error", isPresented: $showError) {
+        .alert("Error", isPresented: $showError) {
             Button("OK") { showError = false }
         } message: {
             Text(errorMessage)
@@ -262,6 +123,299 @@ struct EmailComposeView: View {
         }
     }
     
+    // MARK: - Form Section
+    
+    private var formSection: some View {
+        VStack(spacing: 0) {
+            // To Row
+            toRow
+            
+            // Cc/Bcc Rows (expandable)
+            if showCcBcc {
+                ccRow
+                bccRow
+            }
+            
+            // From Row
+            fromRow
+            
+            // Subject Row
+            subjectRow
+            
+            Divider()
+                .padding(.horizontal, 24)
+        }
+        .padding(.top, 16)
+        .padding(.bottom, 8)
+    }
+    
+    // MARK: - To Row
+    
+    private var toRow: some View {
+        HStack(spacing: 12) {
+            Text("To:")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(labelColor)
+                .frame(width: 50, alignment: .leading)
+            
+            TextField("", text: toBinding)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(textColor)
+            
+            // Expand Cc/Bcc Button
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showCcBcc.toggle()
+                }
+            }) {
+                Image(systemName: showCcBcc ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(labelColor)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(showCcBcc ? "Hide Cc/Bcc" : "Show Cc/Bcc")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+    }
+    
+    // MARK: - Cc Row
+    
+    private var ccRow: some View {
+        HStack(spacing: 12) {
+            Text("Cc:")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(labelColor)
+                .frame(width: 50, alignment: .leading)
+            
+            TextField("", text: ccBinding)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(textColor)
+            
+            // Spacer to align with To row
+            Color.clear
+                .frame(width: 24, height: 24)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    // MARK: - Bcc Row
+    
+    private var bccRow: some View {
+        HStack(spacing: 12) {
+            Text("Bcc:")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(labelColor)
+                .frame(width: 50, alignment: .leading)
+            
+            TextField("", text: bccBinding)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14))
+                .foregroundColor(textColor)
+            
+            // Spacer to align with To row
+            Color.clear
+                .frame(width: 24, height: 24)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    // MARK: - From Row
+    
+    private var fromRow: some View {
+        HStack(spacing: 12) {
+            Text("From:")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(labelColor)
+                .frame(width: 50, alignment: .leading)
+            
+            // Account Menu
+            Menu {
+                ForEach(accounts, id: \.email) { account in
+                    Button(action: {
+                        draft.from = account.email
+                        if let defaultSig = account.defaultSignature {
+                            selectedSignature = defaultSig
+                        }
+                        scheduleAutoSave()
+                    }) {
+                        HStack {
+                            Text(account.name)
+                            if account.email == draft.from {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Text(currentAccountName)
+                        .font(.system(size: 14))
+                        .foregroundColor(textColor)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(labelColor)
+                }
+            }
+            .buttonStyle(.plain)
+            
+            Spacer()
+            
+            // Signature Button
+            if !signatures.isEmpty {
+                Menu {
+                    Button(action: { selectedSignature = nil }) {
+                        HStack {
+                            Text("None")
+                            if selectedSignature == nil {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    
+                    Divider()
+                    
+                    ForEach(signatures.keys.sorted(), id: \.self) { key in
+                        Button(action: {
+                            selectedSignature = key
+                            updateBodyWithSignature()
+                        }) {
+                            HStack {
+                                Text(key.capitalized)
+                                if selectedSignature == key {
+                                    Spacer()
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "signature")
+                        .font(.system(size: 14))
+                        .foregroundColor(labelColor)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Select Signature")
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
+    }
+    
+    private var currentAccountName: String {
+        accounts.first(where: { $0.email == draft.from })?.name ?? draft.from
+    }
+    
+    // MARK: - Subject Row
+    
+    private var subjectRow: some View {
+        ZStack(alignment: .leading) {
+            if draft.subject.isEmpty {
+                Text("Subject")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(placeholderColor)
+            }
+            
+            TextField("", text: $draft.subject)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(textColor)
+                .onChange(of: draft.subject) {
+                    scheduleAutoSave()
+                }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+    }
+    
+    // MARK: - Message Editor
+    
+    private var messageEditor: some View {
+        ZStack(alignment: .topLeading) {
+            // Placeholder
+            if draft.body.isEmpty {
+                Text("Message")
+                    .font(.system(size: 14))
+                    .foregroundColor(placeholderColor)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+            }
+            
+            // Text Editor
+            TextEditor(text: $draft.body)
+                .font(.system(size: 14))
+                .foregroundColor(textColor)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .onChange(of: draft.body) {
+                    scheduleAutoSave()
+                }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white)
+        .cornerRadius(8)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Attachments
+    
+    private var attachmentsScrollView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Array(draft.attachments.enumerated()), id: \.element.id) { index, attachment in
+                    AttachmentChip(
+                        filename: attachment.filename,
+                        size: attachment.sizeFormatted,
+                        isSelected: selectedAttachmentIndex == index,
+                        onClick: {
+                            selectedAttachmentIndex = index
+                        },
+                        onRemove: {
+                            removeAttachment(id: attachment.id)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 8)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+    }
+    
+    // MARK: - Status Bar
+    
+    private var statusBar: some View {
+        HStack {
+            if sendingManager.isSending {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text(sendingManager.sendingProgress)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .frame(height: 36)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+    
+    // MARK: - Bindings
+    
     private var toBinding: Binding<String> {
         Binding(
             get: { draft.to.joined(separator: ", ") },
@@ -281,6 +435,18 @@ struct EmailComposeView: View {
             }
         )
     }
+    
+    private var bccBinding: Binding<String> {
+        Binding(
+            get: { draft.bcc.joined(separator: ", ") },
+            set: { newValue in
+                draft.bcc = newValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                scheduleAutoSave()
+            }
+        )
+    }
+    
+    // MARK: - Signature Handling
     
     private struct BodySections {
         var userContent: String
@@ -341,15 +507,7 @@ struct EmailComposeView: View {
         draft.body = newBody
     }
     
-    private func removeExistingSignature(from body: String) -> String {
-        for sigKey in signatures.keys {
-            if let sigText = signatures[sigKey],
-               let range = body.range(of: "\n\n" + sigText, options: .backwards) {
-                return String(body[..<range.lowerBound])
-            }
-        }
-        return body
-    }
+    // MARK: - Auto-Save
     
     private func scheduleAutoSave() {
         autoSaveCancellable?.cancel()
@@ -373,6 +531,8 @@ struct EmailComposeView: View {
         DraftManager.shared.saveDraft(updatedDraft)
     }
     
+    // MARK: - Send Email
+    
     private func sendEmail() {
         Task {
             do {
@@ -392,13 +552,7 @@ struct EmailComposeView: View {
         }
     }
     
-    private static func extractEmailAddress(from: String) -> String {
-        if let emailRange = from.range(of: "<(.+?)>", options: .regularExpression) {
-            let email = String(from[emailRange]).replacingOccurrences(of: "[<>]", with: "", options: .regularExpression)
-            return email
-        }
-        return from
-    }
+    // MARK: - File Handling
     
     private func handleFileSelection(_ result: Result<[URL], Error>) {
         switch result {
@@ -477,6 +631,8 @@ struct EmailComposeView: View {
         showError = true
     }
     
+    // MARK: - Key Monitor (for QuickLook)
+    
     private func setupKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.keyCode == 49 {
@@ -497,6 +653,8 @@ struct EmailComposeView: View {
         }
     }
 }
+
+// MARK: - Attachment Chip
 
 struct AttachmentChip: View {
     let filename: String
@@ -544,6 +702,7 @@ struct AttachmentChip: View {
 #Preview {
     struct PreviewWrapper: View {
         @State private var triggerSend = false
+        @State private var showingFilePicker = false
         @State private var draft: EmailDraft? = nil
         
         var body: some View {
@@ -557,6 +716,7 @@ struct AttachmentChip: View {
                 ],
                 existingDraft: nil,
                 triggerSend: $triggerSend,
+                showingFilePicker: $showingFilePicker,
                 currentDraft: $draft,
                 onDismiss: {}
             )
@@ -564,4 +724,5 @@ struct AttachmentChip: View {
     }
     
     return PreviewWrapper()
+        .frame(width: 700, height: 600)
 }

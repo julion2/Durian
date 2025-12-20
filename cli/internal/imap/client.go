@@ -1,9 +1,11 @@
 package imap
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -412,6 +414,153 @@ func (c *Client) RemoveFlags(uid uint32, flags []string) error {
 	}
 
 	return nil
+}
+
+// Append uploads a message to a mailbox
+// Returns the UID of the appended message (if server supports UIDPLUS)
+func (c *Client) Append(mailbox string, flags []string, date time.Time, message []byte) (uint32, error) {
+	if c.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	// Create a reader for the message
+	literal := bytes.NewReader(message)
+
+	// Append the message
+	if err := c.conn.Append(mailbox, flags, date, literal); err != nil {
+		return 0, fmt.Errorf("failed to append message to %s: %w", mailbox, err)
+	}
+
+	// Try to get the UID of the appended message
+	// We need to search for it since go-imap doesn't return APPENDUID directly
+	// Select the mailbox first
+	_, err := c.conn.Select(mailbox, false)
+	if err != nil {
+		return 0, nil // Append succeeded but couldn't get UID
+	}
+
+	// Search for messages with \Recent flag (just appended)
+	// This is a best-effort approach - may not always work
+	criteria := imap.NewSearchCriteria()
+	criteria.WithFlags = []string{imap.RecentFlag}
+	uids, err := c.conn.UidSearch(criteria)
+	if err != nil || len(uids) == 0 {
+		return 0, nil // Append succeeded but couldn't determine UID
+	}
+
+	// Return the highest UID (most likely our message)
+	var maxUID uint32
+	for _, uid := range uids {
+		if uid > maxUID {
+			maxUID = uid
+		}
+	}
+
+	return maxUID, nil
+}
+
+// Delete marks a message as deleted and expunges it
+func (c *Client) Delete(uid uint32) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	// Add \Deleted flag
+	item := imap.FormatFlagsOp(imap.AddFlags, true)
+	ifaceFlags := []interface{}{imap.DeletedFlag}
+
+	messages := make(chan *imap.Message, 1)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidStore(seqSet, item, ifaceFlags, messages)
+	}()
+
+	// Drain messages
+	for range messages {
+	}
+
+	if err := <-done; err != nil {
+		return fmt.Errorf("failed to mark message %d as deleted: %w", uid, err)
+	}
+
+	// Expunge to permanently remove
+	if err := c.conn.Expunge(nil); err != nil {
+		return fmt.Errorf("failed to expunge message %d: %w", uid, err)
+	}
+
+	return nil
+}
+
+// FindDraftsMailbox finds the Drafts mailbox using SPECIAL-USE attributes
+// Falls back to common names if SPECIAL-USE is not available
+func (c *Client) FindDraftsMailbox() (string, error) {
+	if c.conn == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	mailboxes, err := c.ListMailboxes()
+	if err != nil {
+		return "", err
+	}
+
+	// First pass: look for \Drafts SPECIAL-USE attribute
+	for _, mbox := range mailboxes {
+		for _, attr := range mbox.Attributes {
+			if strings.EqualFold(attr, "\\Drafts") {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	// Second pass: look for common draft folder names
+	commonNames := []string{
+		"Drafts",
+		"Draft",
+		"INBOX.Drafts",
+		"INBOX.Draft",
+		"[Gmail]/Drafts",
+		"Entwürfe",   // German
+		"Brouillons", // French
+	}
+
+	for _, name := range commonNames {
+		for _, mbox := range mailboxes {
+			if strings.EqualFold(mbox.Name, name) {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("drafts mailbox not found")
+}
+
+// SearchByMessageID searches for a message by its Message-ID header
+// Returns the UID if found, 0 if not found
+func (c *Client) SearchByMessageID(messageID string) (uint32, error) {
+	if c.conn == nil {
+		return 0, fmt.Errorf("not connected")
+	}
+
+	// Clean up Message-ID (remove < > if present)
+	messageID = strings.Trim(messageID, "<>")
+
+	criteria := imap.NewSearchCriteria()
+	criteria.Header.Add("Message-ID", "<"+messageID+">")
+
+	uids, err := c.conn.UidSearch(criteria)
+	if err != nil {
+		return 0, fmt.Errorf("failed to search for Message-ID: %w", err)
+	}
+
+	if len(uids) == 0 {
+		return 0, nil // Not found
+	}
+
+	return uids[0], nil
 }
 
 // Close closes the IMAP connection
