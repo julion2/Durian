@@ -80,6 +80,13 @@ func (s *Service) Save(msg *smtp.Message, replaceMessageID string) (*SaveResult,
 		fmt.Printf("Warning: notmuch new failed: %v\n", err)
 	}
 
+	// Tag the draft with +draft in notmuch
+	if messageID != "" {
+		if err := tagDraft(messageID); err != nil {
+			fmt.Printf("Warning: failed to tag draft: %v\n", err)
+		}
+	}
+
 	return &SaveResult{
 		MessageID: messageID,
 		UID:       uid,
@@ -137,6 +144,13 @@ func (s *Service) deleteByMessageID(client *imapClient.Client, mailbox, messageI
 // runNotmuchNew runs notmuch new to index new messages
 func runNotmuchNew() error {
 	cmd := exec.Command("notmuch", "new")
+	return cmd.Run()
+}
+
+// tagDraft tags a message with +draft in notmuch
+func tagDraft(messageID string) error {
+	// notmuch tag +draft -- id:<message-id>
+	cmd := exec.Command("notmuch", "tag", "+draft", "--", "id:"+messageID)
 	return cmd.Run()
 }
 
