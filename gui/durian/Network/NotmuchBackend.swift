@@ -75,6 +75,16 @@ class NotmuchBackend: ObservableObject {
     // This is safe because we only set it from MainActor and read from background
     nonisolated(unsafe) private var shouldCancelPrefetch = false
     
+    // Body cache - persists loaded bodies across search/tag changes
+    private var bodyCache: [String: CachedBody] = [:]
+    private let maxCacheSize = 200
+    
+    private struct CachedBody {
+        let body: String
+        let htmlBody: String?
+        let timestamp: Date
+    }
+    
     init() {
         // Set default tags as folders
         folders = MailFolder.defaultNotmuchTags
@@ -187,6 +197,43 @@ class NotmuchBackend: ObservableObject {
             emails[index].htmlBody = mail.html
             emails[index].bodyState = .loaded(body: mail.body, attributedBody: nil)
             print("NOTMUCH Loaded body for \(id): \(mail.body.prefix(100))...")
+            
+            // Cache the body
+            cacheBody(id: id, body: mail.body, htmlBody: mail.html)
+        }
+    }
+    
+    // MARK: - Body Cache
+    
+    private func cacheBody(id: String, body: String, htmlBody: String?) {
+        // Add to cache
+        bodyCache[id] = CachedBody(body: body, htmlBody: htmlBody, timestamp: Date())
+        
+        // Cleanup if cache is too large (remove oldest entries)
+        if bodyCache.count > maxCacheSize {
+            let sortedKeys = bodyCache.keys.sorted { 
+                bodyCache[$0]!.timestamp < bodyCache[$1]!.timestamp 
+            }
+            let keysToRemove = sortedKeys.prefix(bodyCache.count - maxCacheSize)
+            for key in keysToRemove {
+                bodyCache.removeValue(forKey: key)
+            }
+            print("NOTMUCH Cache cleanup: removed \(keysToRemove.count) old entries")
+        }
+    }
+    
+    private func restoreCachedBodies() {
+        var restoredCount = 0
+        for (index, email) in emails.enumerated() {
+            if let cached = bodyCache[email.id] {
+                emails[index].body = cached.body
+                emails[index].htmlBody = cached.htmlBody
+                emails[index].bodyState = .loaded(body: cached.body, attributedBody: nil)
+                restoredCount += 1
+            }
+        }
+        if restoredCount > 0 {
+            print("NOTMUCH Restored \(restoredCount) bodies from cache")
         }
     }
     
@@ -311,6 +358,9 @@ class NotmuchBackend: ObservableObject {
                 tags: mail.tags
             )
         }
+        
+        // Restore cached bodies before UI update
+        restoreCachedBodies()
         
         print("NOTMUCH Search returned \(emails.count) emails")
         isLoadingEmails = false
