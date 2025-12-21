@@ -11,6 +11,8 @@ import UserNotifications
 @main
 struct DurianApp: App {
     @Environment(\.openWindow) private var openWindow
+    @StateObject private var profileManager = ProfileManager.shared
+    @StateObject private var accountManager = AccountManager.shared
     
     init() {
         // Setup sync manager (creates script + launchd agent if needed)
@@ -63,6 +65,25 @@ struct DurianApp: App {
                     }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            
+            // Profile Menu
+            CommandMenu("Profiles") {
+                ForEach(Array(profileManager.profiles.enumerated()), id: \.element.id) { index, profile in
+                    Button(action: {
+                        Task {
+                            await accountManager.switchProfile(profile)
+                        }
+                    }) {
+                        HStack {
+                            if profile == profileManager.currentProfile {
+                                Image(systemName: "checkmark")
+                            }
+                            Text(profile.name)
+                        }
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                }
             }
         }
         

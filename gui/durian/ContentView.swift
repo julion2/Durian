@@ -73,8 +73,15 @@ struct ContentView: View {
     @ViewBuilder
     private var notmuchView: some View {
         NavigationSplitView {
-            // Sidebar: Tags + Profile Picker at bottom
+            // Sidebar: Profile Header + Tags + Network Status
             VStack(spacing: 0) {
+                // Profile Header - just the name, switch via menubar
+                Text(profileManager.currentProfile?.name ?? "All")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                
                 List(selection: $selectedTagID) {
                     Section("Tags") {
                         ForEach(accountManager.mailFolders) { folder in
@@ -99,30 +106,8 @@ struct ContentView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 4)
                 }
-                
-                // Profile Picker - fixed at bottom
-                if profileManager.profiles.count > 1 {
-                    Picker("", selection: Binding(
-                        get: { profileManager.currentProfile },
-                        set: { newProfile in
-                            if let profile = newProfile {
-                                Task {
-                                    await accountManager.switchProfile(profile)
-                                }
-                            }
-                        }
-                    )) {
-                        ForEach(profileManager.profiles) { profile in
-                            Text(profile.name).tag(profile as Profile?)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                }
             }
-            .navigationTitle("Durian")
+            .navigationTitle("")
         } content: {
             // Email List
             VStack {
