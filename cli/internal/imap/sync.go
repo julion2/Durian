@@ -321,7 +321,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 		// Write to maildir
 		for _, msg := range messages {
-			// Get message body for writing and Message-ID extraction
+			// Read message body once (io.Reader can only be read once)
 			var msgBody []byte
 			for _, literal := range msg.Body {
 				data, err := io.ReadAll(literal)
@@ -331,7 +331,15 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				}
 			}
 
-			key, err := s.maildir.WriteMessage(mailboxName, msg)
+			if len(msgBody) == 0 {
+				debug.Log("syncMailbox: UID %d has no body data", msg.Uid)
+				fmt.Fprintf(s.output, "    Warning: failed to write message %d: message has no body\n", msg.Uid)
+				result.SkippedMsgs++
+				continue
+			}
+
+			// Pass the already-read body to WriteMessage
+			key, err := s.maildir.WriteMessage(mailboxName, msg, msgBody)
 			if err != nil {
 				fmt.Fprintf(s.output, "    Warning: failed to write message %d: %v\n", msg.Uid, err)
 				result.SkippedMsgs++
@@ -347,10 +355,8 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			mboxState.SetMessageFlags(msg.Uid, initialFlags)
 
 			// Extract and store Message-ID for flag sync
-			if len(msgBody) > 0 {
-				if messageID := extractMessageIDFromBody(msgBody); messageID != "" {
-					mboxState.SetMessageID(msg.Uid, messageID)
-				}
+			if messageID := extractMessageIDFromBody(msgBody); messageID != "" {
+				mboxState.SetMessageID(msg.Uid, messageID)
 			}
 
 			result.NewMsgs++

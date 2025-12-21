@@ -2,7 +2,6 @@ package imap
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,40 +39,22 @@ func (w *MaildirWriter) EnsureMailbox(mailboxName string) error {
 }
 
 // WriteMessage writes an IMAP message to the maildir
-func (w *MaildirWriter) WriteMessage(mailboxName string, msg *imap.Message) (string, error) {
+// The body parameter contains the raw message content (already read from msg.Body)
+// This is necessary because io.Reader can only be read once
+func (w *MaildirWriter) WriteMessage(mailboxName string, msg *imap.Message, body []byte) (string, error) {
 	if msg.Uid == 0 {
 		return "", fmt.Errorf("message has no UID")
 	}
 
-	// Debug: Log available body sections
-	debug.Log("WriteMessage UID %d: %d body sections in msg.Body map", msg.Uid, len(msg.Body))
-	for section := range msg.Body {
-		debug.Log("  Section key: %v (type: %T)", section, section)
-	}
-
-	path := w.mailboxPath(mailboxName)
-	dir := maildir.Dir(path)
-
-	// Get the message body
-	var body []byte
-	for section, literal := range msg.Body {
-		debug.Log("  Reading section: %v", section)
-		data, err := io.ReadAll(literal)
-		if err != nil {
-			debug.Log("  Error reading section: %v", err)
-			return "", fmt.Errorf("failed to read message body: %w", err)
-		}
-		debug.Log("  Read %d bytes from section", len(data))
-		body = data
-		break
-	}
-
 	if len(body) == 0 {
-		debug.Log("  ERROR: No body data found!")
+		debug.Log("WriteMessage UID %d: ERROR - empty body provided", msg.Uid)
 		return "", fmt.Errorf("message has no body")
 	}
 
-	debug.Log("  Final body size: %d bytes", len(body))
+	debug.Log("WriteMessage UID %d: writing %d bytes", msg.Uid, len(body))
+
+	path := w.mailboxPath(mailboxName)
+	dir := maildir.Dir(path)
 
 	// Convert IMAP flags to maildir flags
 	flags := imapFlagsToMaildirFlags(msg.Flags)
