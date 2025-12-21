@@ -320,22 +320,31 @@ struct ContentView: View {
                     .textSelection(.enabled)
                 
                 VStack(alignment: .leading, spacing: 4) {
+                    // From + Date (rechts)
                     HStack {
                         Text("From:")
                             .fontWeight(.medium)
                             .foregroundStyle(.secondary)
                         Text(email.from)
                             .textSelection(.enabled)
-                    }
-                    
-                    HStack {
-                        Text("Date:")
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
+                        Spacer()
                         Text(email.date)
+                            .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
                     
+                    // Cc (nur wenn vorhanden)
+                    if let cc = email.cc, !cc.isEmpty {
+                        HStack {
+                            Text("Cc:")
+                                .fontWeight(.medium)
+                                .foregroundStyle(.secondary)
+                            Text(cc)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    
+                    // Tags (nur wenn vorhanden)
                     if let tags = email.tags {
                         HStack {
                             Text("Tags:")
@@ -784,8 +793,4 @@ struct KeySequenceIndicator: View {
             }
         }
     }
-}
-
-#Preview {
-    ContentView()
 }
