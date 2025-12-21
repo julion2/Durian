@@ -68,6 +68,9 @@ class SyncManager: ObservableObject {
     private var fullSyncTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
+    // MARK: - Notification Debounce
+    private var lastFailureNotificationTime: Date?
+    
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         durianPath = home.appendingPathComponent(".local/bin/durian").path
@@ -79,12 +82,31 @@ class SyncManager: ObservableObject {
         print("SYNC: Setting up SyncManager...")
         print("SYNC: Config - guiAutoSync=\(SettingsManager.shared.guiAutoSync), autoFetchInterval=\(SettingsManager.shared.autoFetchInterval)s, fullSyncInterval=\(SettingsManager.shared.fullSyncInterval)s")
         
-        // Start timers based on config
-        startQuickSyncTimer()
-        startFullSyncTimer()
+        // Start timers based on config (if online)
+        if NetworkMonitor.shared.isConnected {
+            startQuickSyncTimer()
+            startFullSyncTimer()
+        } else {
+            print("SYNC: Offline at startup, timers not started")
+        }
         
-        // Note: Sync settings are read from [sync] TOML section
-        // Use Cmd+Shift+C to reload config after editing
+        // React to network changes
+        NetworkMonitor.shared.$isConnected
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isConnected in
+                Task { @MainActor in
+                    if isConnected {
+                        print("SYNC: Back online, restarting timers and syncing")
+                        self?.restartTimers()
+                        await self?.quickSync()
+                    } else {
+                        print("SYNC: Went offline, stopping timers")
+                        self?.stopTimers()
+                    }
+                }
+            }
+            .store(in: &cancellables)
         
         print("SYNC: Setup complete")
     }
@@ -96,6 +118,10 @@ class SyncManager: ObservableObject {
             print("SYNC: GUI auto-sync disabled, not starting quick sync timer")
             return
         }
+        guard NetworkMonitor.shared.isConnected else {
+            print("SYNC: Offline, not starting quick sync timer")
+            return
+        }
         
         let interval = SettingsManager.shared.autoFetchInterval
         print("SYNC: Starting quick sync timer with interval \(interval)s")
@@ -105,6 +131,10 @@ class SyncManager: ObservableObject {
             guard let self = self else { return }
             guard !self.syncLock else {
                 print("SYNC: Quick sync timer skipped - sync already in progress")
+                return
+            }
+            guard NetworkMonitor.shared.isConnected else {
+                print("SYNC: Quick sync timer skipped - offline")
                 return
             }
             
@@ -119,6 +149,10 @@ class SyncManager: ObservableObject {
             print("SYNC: GUI auto-sync disabled, not starting full sync timer")
             return
         }
+        guard NetworkMonitor.shared.isConnected else {
+            print("SYNC: Offline, not starting full sync timer")
+            return
+        }
         
         let interval = SettingsManager.shared.fullSyncInterval
         print("SYNC: Starting full sync timer with interval \(interval)s (\(interval/3600)h)")
@@ -128,6 +162,10 @@ class SyncManager: ObservableObject {
             guard let self = self else { return }
             guard !self.syncLock else {
                 print("SYNC: Full sync timer skipped - sync already in progress")
+                return
+            }
+            guard NetworkMonitor.shared.isConnected else {
+                print("SYNC: Full sync timer skipped - offline")
                 return
             }
             
@@ -252,6 +290,16 @@ class SyncManager: ObservableObject {
     // MARK: - Notifications
     
     private func sendNotification(title: String, body: String) {
+        // Debounce: Max 1 failure notification per 30 minutes
+        if title.contains("Failed") {
+            if let lastTime = lastFailureNotificationTime,
+               Date().timeIntervalSince(lastTime) < 1800 {
+                print("SYNC: Skipping failure notification (debounce - last was \(Int(Date().timeIntervalSince(lastTime)))s ago)")
+                return
+            }
+            lastFailureNotificationTime = Date()
+        }
+        
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body

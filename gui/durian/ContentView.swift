@@ -20,6 +20,7 @@ struct ContentView: View {
     @StateObject private var keymapHandler = KeymapHandler.shared
     @StateObject private var profileManager = ProfileManager.shared
     @StateObject private var syncManager = SyncManager.shared
+    @StateObject private var networkMonitor = NetworkMonitor.shared
     @State private var selectedTagID: String? = "inbox"
     @State private var selectedNotmuchEmails: Set<String> = []
     @State private var detailMode: DetailViewMode = .empty
@@ -83,6 +84,21 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.sidebar)
+                
+                // Network Status - only show when offline or just reconnected
+                if !networkMonitor.isConnected {
+                    Text("Offline")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                } else if networkMonitor.showReconnectedBanner {
+                    Text("Back online")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                }
                 
                 // Profile Picker - fixed at bottom
                 if profileManager.profiles.count > 1 {
