@@ -77,18 +77,14 @@ class SyncManager: ObservableObject {
     
     func setup() {
         print("SYNC: Setting up SyncManager...")
+        print("SYNC: Config - guiAutoSync=\(SettingsManager.shared.guiAutoSync), autoFetchInterval=\(SettingsManager.shared.autoFetchInterval)s, fullSyncInterval=\(SettingsManager.shared.fullSyncInterval)s")
         
         // Start timers based on config
         startQuickSyncTimer()
         startFullSyncTimer()
         
-        // Listen for settings changes to update timers
-        SettingsManager.shared.$settings
-            .dropFirst()
-            .sink { [weak self] _ in
-                self?.restartTimers()
-            }
-            .store(in: &cancellables)
+        // Note: Sync settings are read from [sync] TOML section
+        // Use Cmd+Shift+C to reload config after editing
         
         print("SYNC: Setup complete")
     }
@@ -96,13 +92,12 @@ class SyncManager: ObservableObject {
     // MARK: - Timer Management
     
     func startQuickSyncTimer() {
-        let settings = SettingsManager.shared.settings
-        guard settings.autoFetchEnabled else {
-            print("SYNC: Auto-fetch disabled, not starting quick sync timer")
+        guard SettingsManager.shared.guiAutoSync else {
+            print("SYNC: GUI auto-sync disabled, not starting quick sync timer")
             return
         }
         
-        let interval = settings.autoFetchInterval
+        let interval = SettingsManager.shared.autoFetchInterval
         print("SYNC: Starting quick sync timer with interval \(interval)s")
         
         quickSyncTimer?.invalidate()
@@ -120,13 +115,12 @@ class SyncManager: ObservableObject {
     }
     
     func startFullSyncTimer() {
-        let settings = SettingsManager.shared.settings
-        guard settings.autoFetchEnabled else {
-            print("SYNC: Auto-fetch disabled, not starting full sync timer")
+        guard SettingsManager.shared.guiAutoSync else {
+            print("SYNC: GUI auto-sync disabled, not starting full sync timer")
             return
         }
         
-        let interval = settings.fullSyncInterval
+        let interval = SettingsManager.shared.fullSyncInterval
         print("SYNC: Starting full sync timer with interval \(interval)s (\(interval/3600)h)")
         
         fullSyncTimer?.invalidate()
@@ -154,7 +148,7 @@ class SyncManager: ObservableObject {
     func restartTimers() {
         print("SYNC: Restarting timers with new settings")
         stopTimers()
-        if SettingsManager.shared.settings.autoFetchEnabled {
+        if SettingsManager.shared.guiAutoSync {
             startQuickSyncTimer()
             startFullSyncTimer()
         }

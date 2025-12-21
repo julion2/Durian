@@ -39,25 +39,54 @@ struct MailAccount: Codable {
     }
 }
 
+/// Sync settings from [sync] TOML section
+/// These control GUI auto-sync behavior and intervals
+struct SyncSettings: Codable {
+    var mode: String = "bidirectional"
+    var guiAutoSync: Bool = true
+    var autoFetchInterval: TimeInterval = 60.0
+    var fullSyncInterval: TimeInterval = 14400
+    
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case guiAutoSync = "gui_auto_sync"
+        case autoFetchInterval = "auto_fetch_interval"
+        case fullSyncInterval = "full_sync_interval"
+    }
+    
+    init() {}
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "bidirectional"
+        guiAutoSync = try container.decodeIfPresent(Bool.self, forKey: .guiAutoSync) ?? true
+        autoFetchInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .autoFetchInterval) ?? 60.0
+        fullSyncInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .fullSyncInterval) ?? 14400
+    }
+}
+
 struct AppConfig: Codable {
     let accounts: [MailAccount]
     let settings: AppSettings
+    let sync: SyncSettings
     let signatures: [String: String]
     
-    init(accounts: [MailAccount], settings: AppSettings = AppSettings(), signatures: [String: String] = [:]) {
+    init(accounts: [MailAccount], settings: AppSettings = AppSettings(), sync: SyncSettings = SyncSettings(), signatures: [String: String] = [:]) {
         self.accounts = accounts
         self.settings = settings
+        self.sync = sync
         self.signatures = signatures
     }
     
     enum CodingKeys: String, CodingKey {
-        case accounts, settings, signatures
+        case accounts, settings, sync, signatures
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         accounts = try container.decodeIfPresent([MailAccount].self, forKey: .accounts) ?? []
         settings = try container.decodeIfPresent(AppSettings.self, forKey: .settings) ?? AppSettings()
+        sync = try container.decodeIfPresent(SyncSettings.self, forKey: .sync) ?? SyncSettings()
         signatures = try container.decodeIfPresent([String: String].self, forKey: .signatures) ?? [:]
     }
 }
@@ -116,11 +145,14 @@ class ConfigManager {
         # Run 'durian auth login <email>' to set up accounts.
 
         [settings]
-        auto_fetch_enabled = true
-        auto_fetch_interval = 60.0
         notifications_enabled = true
         theme = "system"
         load_remote_images = false
+
+        [sync]
+        mode = "bidirectional"
+        gui_auto_sync = true
+        auto_fetch_interval = 60
         full_sync_interval = 7200
 
         [signatures]
@@ -162,6 +194,10 @@ class ConfigManager {
         return config?.signatures ?? [:]
     }
     
+    func getSyncSettings() -> SyncSettings {
+        return config?.sync ?? SyncSettings()
+    }
+    
     /// Reload config from disk (call after editing config.toml)
     func reloadConfig() {
         print("CONFIG: Reloading config...")
@@ -172,7 +208,7 @@ class ConfigManager {
     func updateSettings(_ newSettings: AppSettings) {
         guard let currentConfig = self.config else { return }
         
-        let updatedConfig = AppConfig(accounts: currentConfig.accounts, settings: newSettings, signatures: currentConfig.signatures)
+        let updatedConfig = AppConfig(accounts: currentConfig.accounts, settings: newSettings, sync: currentConfig.sync, signatures: currentConfig.signatures)
         self.config = updatedConfig
         
         saveConfigToFile()
@@ -197,12 +233,16 @@ class ConfigManager {
         
         // Settings section
         toml += "[settings]\n"
-        toml += "auto_fetch_enabled = \(config.settings.autoFetchEnabled)\n"
-        toml += "auto_fetch_interval = \(config.settings.autoFetchInterval)\n"
         toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
         toml += "theme = \"\(config.settings.theme)\"\n"
-        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
-        toml += "full_sync_interval = \(config.settings.fullSyncInterval)\n\n"
+        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n\n"
+        
+        // Sync section
+        toml += "[sync]\n"
+        toml += "mode = \"\(config.sync.mode)\"\n"
+        toml += "gui_auto_sync = \(config.sync.guiAutoSync)\n"
+        toml += "auto_fetch_interval = \(Int(config.sync.autoFetchInterval))\n"
+        toml += "full_sync_interval = \(Int(config.sync.fullSyncInterval))\n\n"
         
         // Signatures section
         if !config.signatures.isEmpty {

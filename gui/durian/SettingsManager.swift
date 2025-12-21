@@ -13,7 +13,6 @@ class SettingsManager: ObservableObject {
     }
     
     private func loadSettings() {
-        // Settings are loaded from the same config.json file
         settings = ConfigManager.shared.getSettings()
     }
     
@@ -32,17 +31,29 @@ class SettingsManager: ObservableObject {
         ConfigManager.shared.updateSettings(settings)
     }
     
+    // MARK: - Sync Settings (read from [sync] section)
+    
+    /// Sync settings are read-only from [sync] TOML section
+    var syncSettings: SyncSettings {
+        ConfigManager.shared.getSyncSettings()
+    }
+    
+    /// Whether GUI auto-sync is enabled
+    var guiAutoSync: Bool {
+        syncSettings.guiAutoSync
+    }
+    
+    /// Quick sync interval in seconds
+    var autoFetchInterval: TimeInterval {
+        syncSettings.autoFetchInterval
+    }
+    
+    /// Full sync interval in seconds
+    var fullSyncInterval: TimeInterval {
+        syncSettings.fullSyncInterval
+    }
+    
     // MARK: - Public API
-    
-    func setAutoFetchInterval(_ interval: TimeInterval) {
-        settings.autoFetchInterval = interval
-        print("🔧 Auto-fetch interval set to \(interval) seconds")
-    }
-    
-    func enableAutoFetch(_ enabled: Bool) {
-        settings.autoFetchEnabled = enabled
-        print("🔧 Auto-fetch \(enabled ? "enabled" : "disabled")")
-    }
     
     func resetToDefaults() {
         settings = AppSettings()
@@ -54,29 +65,24 @@ class SettingsManager: ObservableObject {
         ConfigManager.shared.reloadConfig()
         settings = ConfigManager.shared.getSettings()
         print("SETTINGS: Reloaded from config file")
+        print("SETTINGS: Sync - guiAutoSync=\(guiAutoSync), autoFetchInterval=\(autoFetchInterval)s, fullSyncInterval=\(fullSyncInterval)s")
         
         // Restart sync timers with new settings
         SyncManager.shared.restartTimers()
     }
 }
 
+/// App settings from [settings] TOML section
+/// Note: Sync-related settings are in SyncSettings (from [sync] section)
 struct AppSettings: Codable {
-    var autoFetchEnabled: Bool = true
-    var autoFetchInterval: TimeInterval = 60.0 // Quick sync interval (60 seconds)
     var notificationsEnabled: Bool = true
     var theme: String = "system"
     var loadRemoteImages: Bool = false  // Security: block tracking pixels by default
     
-    // Sync configuration
-    var fullSyncInterval: TimeInterval = 7200  // Full sync interval (2 hours)
-    
     enum CodingKeys: String, CodingKey {
-        case autoFetchEnabled = "auto_fetch_enabled"
-        case autoFetchInterval = "auto_fetch_interval"
         case notificationsEnabled = "notifications_enabled"
         case theme
         case loadRemoteImages = "load_remote_images"
-        case fullSyncInterval = "full_sync_interval"
     }
     
     // Default initializer
@@ -85,11 +91,8 @@ struct AppSettings: Codable {
     // Custom decoder that handles missing keys gracefully
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        autoFetchEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoFetchEnabled) ?? true
-        autoFetchInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .autoFetchInterval) ?? 60.0
         notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? "system"
         loadRemoteImages = try container.decodeIfPresent(Bool.self, forKey: .loadRemoteImages) ?? false
-        fullSyncInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .fullSyncInterval) ?? 7200
     }
 }
