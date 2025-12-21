@@ -726,31 +726,3 @@ struct AttachmentChip: View {
         }
     }
 }
-
-#Preview {
-    struct PreviewWrapper: View {
-        @State private var triggerSend = false
-        @State private var showingFilePicker = false
-        @State private var draft: EmailDraft?
-        
-        var body: some View {
-            ComposeForm(
-                accounts: [
-                    MailAccount(
-                        name: "Test Account",
-                        email: "test@example.com",
-                        defaultSignature: nil
-                    )
-                ],
-                existingDraft: nil,
-                triggerSend: $triggerSend,
-                showingFilePicker: $showingFilePicker,
-                currentDraft: $draft,
-                onDismiss: {}
-            )
-        }
-    }
-    
-    return PreviewWrapper()
-        .frame(width: 700, height: 600)
-}

@@ -82,26 +82,3 @@ struct AvatarView: View {
         return from
     }
 }
-
-#Preview {
-    VStack(spacing: 16) {
-        HStack(spacing: 12) {
-            AvatarView(name: "Julian Schenker")
-            AvatarView(name: "Atlassian Home")
-            AvatarView(name: "Lime Receipts")
-        }
-        
-        HStack(spacing: 12) {
-            AvatarView(name: "HubSpot Billing")
-            AvatarView(name: "Lexware")
-            AvatarView(name: "incident.io")
-        }
-        
-        HStack(spacing: 12) {
-            AvatarView(name: "info@example.com")
-            AvatarView(name: "Julian Schenker <julian@test.com>")
-            AvatarView(name: "A")
-        }
-    }
-    .padding()
-}

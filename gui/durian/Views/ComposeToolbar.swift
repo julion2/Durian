@@ -189,8 +189,3 @@ struct ToolbarIconButton: View {
 }
 
 // Color(hex:) extension is defined in ProfileManager.swift
-
-#Preview {
-    ComposeToolbar()
-        .frame(width: 700)
-}

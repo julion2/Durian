@@ -196,8 +196,3 @@ struct ComposeWindow: View {
         }
     }
 }
-
-#Preview {
-    ComposeWindow(draftId: UUID())
-        .frame(width: 700, height: 600)
-}
