@@ -112,6 +112,7 @@ enum EmailSendingError: Error, LocalizedError {
     case authenticationFailed
     case sendFailed(String)
     case invalidRecipients
+    case invalidEmailFormat([String])
     case connectionFailed
     
     var errorDescription: String? {
@@ -124,9 +125,58 @@ enum EmailSendingError: Error, LocalizedError {
             return "Failed to send email: \(message)"
         case .invalidRecipients:
             return "Please provide at least one recipient"
+        case .invalidEmailFormat(let emails):
+            return "Invalid email addresses: \(emails.joined(separator: ", "))"
         case .connectionFailed:
             return "Failed to connect to SMTP server"
         }
+    }
+    
+    /// Returns the list of invalid emails if this is an invalidEmailFormat error
+    var invalidEmails: [String]? {
+        if case .invalidEmailFormat(let emails) = self {
+            return emails
+        }
+        return nil
+    }
+}
+
+// MARK: - Email Helper
+
+enum EmailHelper {
+    /// Simple email validation
+    static func isValidEmail(_ email: String) -> Bool {
+        guard let atIndex = email.firstIndex(of: "@") else { return false }
+        let afterAt = email[email.index(after: atIndex)...]
+        return afterAt.contains(".") && !afterAt.hasPrefix(".") && !afterAt.hasSuffix(".")
+    }
+    
+    /// Clean email address - extract from "Name <email>" format if needed
+    static func cleanEmail(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        
+        // Standard format: "Name <email>"
+        if let start = trimmed.firstIndex(of: "<"),
+           let end = trimmed.firstIndex(of: ">"),
+           start < end {
+            let email = String(trimmed[trimmed.index(after: start)..<end])
+            if email.contains("@") {
+                return email.trimmingCharacters(in: .whitespaces)
+            }
+        }
+        
+        // Malformed: "<Name> email" - get last word with @
+        let parts = trimmed.components(separatedBy: .whitespaces)
+        if let lastPart = parts.last, lastPart.contains("@") {
+            return lastPart
+        }
+        
+        return trimmed
+    }
+    
+    /// Validate all recipients and return list of invalid emails
+    static func validateRecipients(_ recipients: [String]) -> [String] {
+        return recipients.filter { !isValidEmail($0) }
     }
 }
 
@@ -190,10 +240,10 @@ extension EmailDraft {
         // Add original To recipients (except sender and self)
         if let originalTo = message.to {
             let toEmails = parseEmailList(originalTo)
+            let senderEmail = extractEmail(from: message.from).lowercased()
             for email in toEmails {
-                let normalized = extractEmail(from: email).lowercased()
-                if normalized != fromAccount.lowercased() && 
-                   normalized != extractEmail(from: message.from).lowercased() {
+                let normalized = email.lowercased()
+                if normalized != fromAccount.lowercased() && normalized != senderEmail {
                     ccRecipients.append(email)
                 }
             }
@@ -203,7 +253,7 @@ extension EmailDraft {
         if let originalCC = message.cc {
             let ccEmails = parseEmailList(originalCC)
             for email in ccEmails {
-                let normalized = extractEmail(from: email).lowercased()
+                let normalized = email.lowercased()
                 if normalized != fromAccount.lowercased() {
                     ccRecipients.append(email)
                 }
@@ -245,19 +295,44 @@ extension EmailDraft {
     
     // MARK: - Private Helpers
     
-    /// Extract email address from "Name <email>" format
+    /// Extract email address from various formats:
+    /// - "Name <email>" -> "email"
+    /// - "<Name> email" -> "email"  (malformed but common)
+    /// - "email" -> "email"
     private static func extractEmail(from address: String) -> String {
-        if let start = address.firstIndex(of: "<"),
-           let end = address.firstIndex(of: ">") {
-            return String(address[address.index(after: start)..<end])
+        let trimmed = address.trimmingCharacters(in: .whitespaces)
+        
+        // Standard format: "Name <email>"
+        if let start = trimmed.firstIndex(of: "<"),
+           let end = trimmed.firstIndex(of: ">"),
+           start < end {
+            let email = String(trimmed[trimmed.index(after: start)..<end])
+            // Validate it looks like an email
+            if email.contains("@") {
+                return email.trimmingCharacters(in: .whitespaces)
+            }
         }
-        return address.trimmingCharacters(in: .whitespaces)
+        
+        // Malformed format: "<Name> email" - extract last word if it contains @
+        let parts = trimmed.components(separatedBy: .whitespaces)
+        if let lastPart = parts.last, lastPart.contains("@") {
+            return lastPart
+        }
+        
+        // Just return as-is (probably already an email)
+        return trimmed
     }
     
-    /// Parse comma-separated email list
+    /// Format email address for display - extract clean email
+    /// Handles various malformed formats and returns just the email
+    private static func cleanEmailAddress(_ address: String) -> String {
+        return extractEmail(from: address)
+    }
+    
+    /// Parse comma-separated email list and clean each address
     private static func parseEmailList(_ list: String) -> [String] {
         return list.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { cleanEmailAddress(String($0)) }
             .filter { !$0.isEmpty }
     }
     

@@ -20,6 +20,8 @@ struct ComposeWindow: View {
     @State private var saveErrorMessage: String = ""
     @State private var isSaving: Bool = false
     @State private var showingFilePicker: Bool = false
+    @State private var showInvalidEmailWarning: Bool = false
+    @State private var invalidEmails: [String] = []
     
     var body: some View {
         let accounts = ConfigManager.shared.getAccounts()
@@ -153,6 +155,14 @@ struct ComposeWindow: View {
         } message: {
             Text(saveErrorMessage)
         }
+        .alert("Invalid Email Addresses", isPresented: $showInvalidEmailWarning) {
+            Button("Cancel", role: .cancel) {}
+            Button("Send Anyway") {
+                handleSendWithSkipValidation()
+            }
+        } message: {
+            Text("The following addresses may be invalid:\n\(invalidEmails.joined(separator: "\n"))\n\nDo you want to send anyway?")
+        }
     }
     
     // MARK: - Actions
@@ -189,8 +199,36 @@ struct ComposeWindow: View {
                 await MainActor.run {
                     dismiss()
                 }
+            } catch let error as EmailSendingError {
+                // Check if it's an invalid email format error - show warning dialog
+                if let emails = error.invalidEmails {
+                    await MainActor.run {
+                        invalidEmails = emails
+                        showInvalidEmailWarning = true
+                    }
+                } else {
+                    print("COMPOSE: Send failed - \(error)")
+                }
             } catch {
-                // Error is handled by EmailSendingManager
+                print("COMPOSE: Send failed - \(error)")
+            }
+        }
+    }
+    
+    private func handleSendWithSkipValidation() {
+        guard let draft = draftService.getDraft(id: draftId) else { return }
+        
+        Task {
+            do {
+                try await sendingManager.send(draft: draft, fromAccount: draft.from, skipValidation: true)
+                
+                // Delete the draft from IMAP after successful send
+                await draftService.deleteAfterSend(id: draftId)
+                
+                await MainActor.run {
+                    dismiss()
+                }
+            } catch {
                 print("COMPOSE: Send failed - \(error)")
             }
         }

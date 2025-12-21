@@ -28,6 +28,7 @@ struct ComposeForm: View {
     @State private var keyMonitor: Any?
     @State private var showCcBcc: Bool = false
     @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
+    @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
@@ -155,16 +156,18 @@ struct ComposeForm: View {
     // MARK: - To Row
     
     private var toRow: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Text("To:")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(labelColor)
                 .frame(width: 50, alignment: .leading)
             
-            TextField("", text: toBinding)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(textColor)
+            TokenField(
+                tokens: $draft.to,
+                focusedField: $focusedField,
+                fieldIdentifier: .to,
+                onCommit: { scheduleAutoSave() }
+            )
             
             // Expand Cc/Bcc Button
             Button(action: {
@@ -188,16 +191,18 @@ struct ComposeForm: View {
     // MARK: - Cc Row
     
     private var ccRow: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Text("Cc:")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(labelColor)
                 .frame(width: 50, alignment: .leading)
             
-            TextField("", text: ccBinding)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(textColor)
+            TokenField(
+                tokens: $draft.cc,
+                focusedField: $focusedField,
+                fieldIdentifier: .cc,
+                onCommit: { scheduleAutoSave() }
+            )
             
             // Spacer to align with To row
             Color.clear
@@ -211,16 +216,18 @@ struct ComposeForm: View {
     // MARK: - Bcc Row
     
     private var bccRow: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Text("Bcc:")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(labelColor)
                 .frame(width: 50, alignment: .leading)
             
-            TextField("", text: bccBinding)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .foregroundColor(textColor)
+            TokenField(
+                tokens: $draft.bcc,
+                focusedField: $focusedField,
+                fieldIdentifier: .bcc,
+                onCommit: { scheduleAutoSave() }
+            )
             
             // Spacer to align with To row
             Color.clear
@@ -251,7 +258,7 @@ struct ComposeForm: View {
                         scheduleAutoSave()
                     }) {
                         HStack {
-                            Text(account.name)
+                            Text(account.email)
                             if account.email == draft.from {
                                 Spacer()
                                 Image(systemName: "checkmark")
@@ -261,7 +268,7 @@ struct ComposeForm: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Text(currentAccountName)
+                    Text(draft.from)
                         .font(.system(size: 14))
                         .foregroundColor(textColor)
                     Image(systemName: "chevron.down")
@@ -317,9 +324,7 @@ struct ComposeForm: View {
         .padding(.vertical, 10)
     }
     
-    private var currentAccountName: String {
-        accounts.first(where: { $0.email == draft.from })?.name ?? draft.from
-    }
+
     
     // MARK: - Subject Row
     
@@ -461,38 +466,6 @@ struct ComposeForm: View {
         .padding(.horizontal, 24)
         .frame(height: 36)
         .background(Color(NSColor.windowBackgroundColor))
-    }
-    
-    // MARK: - Bindings
-    
-    private var toBinding: Binding<String> {
-        Binding(
-            get: { draft.to.joined(separator: ", ") },
-            set: { newValue in
-                draft.to = newValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                scheduleAutoSave()
-            }
-        )
-    }
-    
-    private var ccBinding: Binding<String> {
-        Binding(
-            get: { draft.cc.joined(separator: ", ") },
-            set: { newValue in
-                draft.cc = newValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                scheduleAutoSave()
-            }
-        )
-    }
-    
-    private var bccBinding: Binding<String> {
-        Binding(
-            get: { draft.bcc.joined(separator: ", ") },
-            set: { newValue in
-                draft.bcc = newValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                scheduleAutoSave()
-            }
-        )
     }
     
     // MARK: - Signature Handling

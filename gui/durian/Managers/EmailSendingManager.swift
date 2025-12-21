@@ -24,11 +24,27 @@ class EmailSendingManager: ObservableObject {
     }
     
     /// Send email using durian CLI
-    func send(draft: EmailDraft, fromAccount accountEmail: String) async throws {
+    /// - Parameters:
+    ///   - draft: The email draft to send
+    ///   - fromAccount: The account email to send from
+    ///   - skipValidation: If true, skip email format validation (used when user confirms "Send Anyway")
+    func send(draft: EmailDraft, fromAccount accountEmail: String, skipValidation: Bool = false) async throws {
         guard draft.hasRecipients else {
             let error = EmailSendingError.invalidRecipients
             lastError = error
             throw error
+        }
+        
+        // Validate email formats (unless skipped)
+        if !skipValidation {
+            let allRecipients = draft.to + draft.cc + draft.bcc
+            let invalidEmails = EmailHelper.validateRecipients(allRecipients)
+            
+            if !invalidEmails.isEmpty {
+                let error = EmailSendingError.invalidEmailFormat(invalidEmails)
+                lastError = error
+                throw error
+            }
         }
         
         guard FileManager.default.fileExists(atPath: durianPath) else {
