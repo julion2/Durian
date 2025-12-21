@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
 )
 
@@ -226,6 +227,7 @@ func matchMailbox(name, pattern string) bool {
 // syncMailbox syncs a single mailbox
 func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	result := MailboxResult{Name: mailboxName}
+	debug.Log("syncMailbox: %s", mailboxName)
 
 	// Ensure maildir exists
 	if !s.options.DryRun {
@@ -261,9 +263,11 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		result.Error = fmt.Errorf("failed to search messages: %w", err)
 		return result
 	}
+	debug.Log("syncMailbox: %d total UIDs on server", len(allUIDs))
 
 	// Get unsynced UIDs
 	unsyncedUIDs := mboxState.GetUnsyncedUIDs(allUIDs)
+	debug.Log("syncMailbox: %d unsynced UIDs", len(unsyncedUIDs))
 
 	if len(unsyncedUIDs) == 0 {
 		fmt.Fprintf(s.output, "    (up to date)\n")

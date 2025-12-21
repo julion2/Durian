@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +16,7 @@ var version = "dev"
 var (
 	cfgFile    string
 	jsonOutput bool
+	debugMode  bool
 )
 
 // Global config (loaded at startup)
@@ -43,9 +45,10 @@ func init() {
 	// Global flags available to all commands
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.config/durian/config.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
+	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
 
 	// Load config before command execution
-	cobra.OnInitialize(initConfig)
+	cobra.OnInitialize(initConfig, initDebug)
 }
 
 // initConfig loads configuration from file
@@ -75,4 +78,9 @@ func initConfig() {
 // This is useful for subcommands that need access to config
 func GetConfig() *config.Config {
 	return cfg
+}
+
+// initDebug sets up debug mode based on the --debug flag
+func initDebug() {
+	debug.Enabled = debugMode
 }

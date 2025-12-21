@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-sasl"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/durian-dev/durian/cli/internal/keychain"
 	"github.com/durian-dev/durian/cli/internal/oauth"
 )
@@ -213,6 +214,8 @@ func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 		imap.FetchRFC822,
 	}
 
+	debug.Log("FetchMessages: fetching %d UIDs with items: %v", len(uids), items)
+
 	messages := make(chan *imap.Message, len(uids))
 	done := make(chan error, 1)
 
@@ -222,13 +225,16 @@ func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 
 	var result []*imap.Message
 	for msg := range messages {
+		debug.Log("FetchMessages: received UID %d, Body map size: %d", msg.Uid, len(msg.Body))
 		result = append(result, msg)
 	}
 
 	if err := <-done; err != nil {
+		debug.Log("FetchMessages: error: %v", err)
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
+	debug.Log("FetchMessages: completed, got %d messages", len(result))
 	return result, nil
 }
 
