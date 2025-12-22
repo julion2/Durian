@@ -5,6 +5,7 @@ type Config struct {
 	Settings   SettingsConfig    `toml:"settings"`
 	Sync       SyncConfig        `toml:"sync"`
 	Notmuch    NotmuchConfig     `toml:"notmuch"`
+	Contacts   ContactsConfig    `toml:"contacts"`
 	Signatures map[string]string `toml:"signatures"`
 	Accounts   []AccountConfig   `toml:"accounts"`
 }
@@ -27,6 +28,12 @@ type SyncConfig struct {
 // NotmuchConfig contains notmuch-specific settings
 type NotmuchConfig struct {
 	DatabasePath string `toml:"database_path"`
+}
+
+// ContactsConfig contains contacts database settings
+type ContactsConfig struct {
+	Enabled bool   `toml:"enabled"` // Enable contacts feature (default: true)
+	DBPath  string `toml:"db_path"` // Path to SQLite DB (default: ~/.config/durian/contacts.db)
 }
 
 // AccountConfig represents a single email account
