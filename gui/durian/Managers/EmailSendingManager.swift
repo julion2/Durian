@@ -166,6 +166,11 @@ class EmailSendingManager: ObservableObject {
         if result.success {
             sendingProgress = "Email sent successfully"
             print("EMAIL: Sent successfully")
+            
+            // Update contact usage statistics
+            let allRecipients = draft.to + draft.cc + draft.bcc
+            updateContactUsage(for: allRecipients)
+            
             // Note: Draft deletion is handled by the caller (ComposeWindow.handleSend)
         } else {
             let errorMessage = result.error ?? "Unknown error"
@@ -174,6 +179,39 @@ class EmailSendingManager: ObservableObject {
             lastError = sendError
             throw sendError
         }
+    }
+    
+    // MARK: - Contact Usage Tracking
+    
+    /// Update contact usage statistics for sent recipients
+    private func updateContactUsage(for recipients: [String]) {
+        guard !recipients.isEmpty else { return }
+        
+        // Run in background to not block UI
+        Task.detached(priority: .utility) {
+            for recipient in recipients {
+                // Extract email from "Name <email>" format if needed
+                let email = self.extractEmail(from: recipient)
+                ContactsManager.shared.incrementUsage(for: email)
+            }
+            print("EMAIL: Updated usage for \(recipients.count) recipients")
+        }
+    }
+    
+    /// Extract email address from string (handles "Name <email>" format)
+    private nonisolated func extractEmail(from address: String) -> String {
+        let trimmed = address.trimmingCharacters(in: .whitespaces)
+        
+        // Check for "Name <email>" format
+        if let startIdx = trimmed.lastIndex(of: "<"),
+           let endIdx = trimmed.lastIndex(of: ">"),
+           startIdx < endIdx {
+            let start = trimmed.index(after: startIdx)
+            return String(trimmed[start..<endIdx]).trimmingCharacters(in: .whitespaces)
+        }
+        
+        // Already just an email
+        return trimmed
     }
     
     // MARK: - Command Execution

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import Combine
 import UniformTypeIdentifiers
 
@@ -29,6 +30,13 @@ struct ComposeForm: View {
     @State private var showCcBcc: Bool = false
     @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
     @FocusState private var focusedField: ComposeField?  // Shared focus state
+    
+    // Contact suggestion popup state
+    @State private var contactSuggestions: [Contact] = []
+    @State private var selectedSuggestionIndex: Int = 0
+    @State private var activeTokenField: ComposeField? = nil
+    @State private var activeNSTokenField: NSTokenField? = nil  // Reference to actual NSTokenField
+    @State private var showingContactPopup = false
     
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
@@ -103,6 +111,12 @@ struct ComposeForm: View {
         .onChange(of: draft) { oldValue, newDraft in
             currentDraft = newDraft
         }
+        .onChange(of: focusedField) { _, newField in
+            // Dismiss contact suggestions when focus moves away from recipient fields
+            if newField != .to && newField != .cc && newField != .bcc {
+                dismissContactSuggestions()
+            }
+        }
         .onAppear {
             currentDraft = draft
             updateBodyWithSignature()
@@ -166,7 +180,13 @@ struct ComposeForm: View {
                 tokens: $draft.to,
                 focusedField: $focusedField,
                 fieldIdentifier: .to,
-                onCommit: { scheduleAutoSave() }
+                onCommit: { scheduleAutoSave() },
+                onPartialTextChange: { query, tokenField in
+                    handlePartialTextChange(query: query, tokenField: tokenField, field: .to)
+                },
+                onKeyCommand: { command in
+                    handleSuggestionKeyCommand(command)
+                }
             )
             
             // Expand Cc/Bcc Button
@@ -201,7 +221,13 @@ struct ComposeForm: View {
                 tokens: $draft.cc,
                 focusedField: $focusedField,
                 fieldIdentifier: .cc,
-                onCommit: { scheduleAutoSave() }
+                onCommit: { scheduleAutoSave() },
+                onPartialTextChange: { query, tokenField in
+                    handlePartialTextChange(query: query, tokenField: tokenField, field: .cc)
+                },
+                onKeyCommand: { command in
+                    handleSuggestionKeyCommand(command)
+                }
             )
             
             // Spacer to align with To row
@@ -226,7 +252,13 @@ struct ComposeForm: View {
                 tokens: $draft.bcc,
                 focusedField: $focusedField,
                 fieldIdentifier: .bcc,
-                onCommit: { scheduleAutoSave() }
+                onCommit: { scheduleAutoSave() },
+                onPartialTextChange: { query, tokenField in
+                    handlePartialTextChange(query: query, tokenField: tokenField, field: .bcc)
+                },
+                onKeyCommand: { command in
+                    handleSuggestionKeyCommand(command)
+                }
             )
             
             // Spacer to align with To row
@@ -651,6 +683,134 @@ struct ComposeForm: View {
         if let monitor = keyMonitor {
             NSEvent.removeMonitor(monitor)
             keyMonitor = nil
+        }
+    }
+    
+    // MARK: - Contact Suggestion Handling
+    
+    /// Handle partial text changes from TokenField for autocomplete
+    private func handlePartialTextChange(query: String, tokenField: NSTokenField, field: ComposeField) {
+        activeTokenField = field
+        activeNSTokenField = tokenField  // Store reference for later use
+        
+        // Require at least 2 characters to search
+        guard query.count >= 2 else {
+            dismissContactSuggestions()
+            return
+        }
+        
+        // Get existing tokens to filter out duplicates
+        let existingEmails = currentTokensForField(field)
+        
+        // Search contacts and filter out already-added ones
+        let results = ContactsManager.shared.search(query: query, limit: 8)
+            .filter { contact in
+                !existingEmails.contains { existing in
+                    // Check if email matches (case-insensitive)
+                    existing.lowercased().contains(contact.email.lowercased())
+                }
+            }
+        
+        guard !results.isEmpty else {
+            dismissContactSuggestions()
+            return
+        }
+        
+        contactSuggestions = results
+        selectedSuggestionIndex = 0
+        showingContactPopup = true
+        
+        // Show popup at cursor position
+        ContactSuggestionController.shared.show(
+            for: tokenField,
+            contacts: results,
+            selectedIndex: 0,
+            onSelect: { [self] contact in
+                selectContact(contact)
+            },
+            onDismiss: { [self] in
+                dismissContactSuggestions()
+            }
+        )
+    }
+    
+    /// Handle keyboard commands when suggestion popup is visible
+    private func handleSuggestionKeyCommand(_ command: SuggestionKeyCommand) -> Bool {
+        guard showingContactPopup, !contactSuggestions.isEmpty else {
+            return false
+        }
+        
+        switch command {
+        case .up:
+            selectedSuggestionIndex = max(0, selectedSuggestionIndex - 1)
+            ContactSuggestionController.shared.update(
+                contacts: contactSuggestions,
+                selectedIndex: selectedSuggestionIndex
+            )
+            return true
+            
+        case .down:
+            selectedSuggestionIndex = min(contactSuggestions.count - 1, selectedSuggestionIndex + 1)
+            ContactSuggestionController.shared.update(
+                contacts: contactSuggestions,
+                selectedIndex: selectedSuggestionIndex
+            )
+            return true
+            
+        case .enter, .tab:
+            selectContact(contactSuggestions[selectedSuggestionIndex])
+            return true
+            
+        case .escape:
+            dismissContactSuggestions()
+            return true
+        }
+    }
+    
+    /// Select a contact and add it to the appropriate field
+    private func selectContact(_ contact: Contact) {
+        guard let field = activeTokenField,
+              let tokenField = activeNSTokenField else { return }
+        
+        // Clear partial text and insert the token
+        TokenFieldHelper.replacePartialTextWithToken(contact.displayString, in: tokenField)
+        
+        // Update our binding to match the tokenField's new state
+        DispatchQueue.main.async {
+            if let newTokens = tokenField.objectValue as? [String] {
+                switch field {
+                case .to:
+                    self.draft.to = newTokens
+                case .cc:
+                    self.draft.cc = newTokens
+                case .bcc:
+                    self.draft.bcc = newTokens
+                default:
+                    break
+                }
+            }
+            self.dismissContactSuggestions()
+            self.scheduleAutoSave()
+        }
+    }
+    
+    /// Dismiss the contact suggestions popup
+    private func dismissContactSuggestions() {
+        showingContactPopup = false
+        contactSuggestions = []
+        selectedSuggestionIndex = 0
+        activeTokenField = nil
+        activeNSTokenField = nil
+        ContactSuggestionController.shared.dismiss()
+    }
+    
+    /// Get current tokens for a field (for duplicate filtering)
+    private func currentTokensForField(_ field: ComposeField) -> [String] {
+        switch field {
+        case .to: return draft.to
+        case .cc: return draft.cc
+        case .bcc: return draft.bcc
+        default: return []
         }
     }
 }
