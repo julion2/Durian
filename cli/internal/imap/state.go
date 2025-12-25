@@ -27,6 +27,10 @@ type MailboxState struct {
 	// UIDToMessageID maps IMAP UIDs to notmuch Message-IDs
 	// This allows us to look up the notmuch message for flag sync
 	UIDToMessageID map[uint32]string `json:"uid_to_message_id,omitempty"`
+
+	// MessageIDToUID is the reverse mapping for quick lookup
+	// Used to find UID when we only have Message-ID from notmuch
+	MessageIDToUID map[string]uint32 `json:"message_id_to_uid,omitempty"`
 }
 
 // NewState creates a new empty state
@@ -47,6 +51,7 @@ func (s *State) GetMailboxState(mailbox string) *MailboxState {
 			SyncedUIDs:     make([]uint32, 0),
 			MessageFlags:   make(map[uint32]FlagState),
 			UIDToMessageID: make(map[uint32]string),
+			MessageIDToUID: make(map[string]uint32),
 		}
 	}
 
@@ -56,6 +61,9 @@ func (s *State) GetMailboxState(mailbox string) *MailboxState {
 	}
 	if s.Mailboxes[mailbox].UIDToMessageID == nil {
 		s.Mailboxes[mailbox].UIDToMessageID = make(map[uint32]string)
+	}
+	if s.Mailboxes[mailbox].MessageIDToUID == nil {
+		s.Mailboxes[mailbox].MessageIDToUID = make(map[string]uint32)
 	}
 
 	return s.Mailboxes[mailbox]
@@ -110,6 +118,7 @@ func (ms *MailboxState) Reset(uidValidity uint32) {
 	ms.SyncedUIDs = make([]uint32, 0)
 	ms.MessageFlags = make(map[uint32]FlagState)
 	ms.UIDToMessageID = make(map[uint32]string)
+	ms.MessageIDToUID = make(map[string]uint32)
 }
 
 // GetMessageFlags returns the stored flag state for a UID
@@ -138,12 +147,48 @@ func (ms *MailboxState) GetMessageID(uid uint32) (string, bool) {
 	return id, ok
 }
 
-// SetMessageID stores the notmuch Message-ID for a UID
+// SetMessageID stores the notmuch Message-ID for a UID (both directions)
 func (ms *MailboxState) SetMessageID(uid uint32, messageID string) {
 	if ms.UIDToMessageID == nil {
 		ms.UIDToMessageID = make(map[uint32]string)
 	}
+	if ms.MessageIDToUID == nil {
+		ms.MessageIDToUID = make(map[string]uint32)
+	}
 	ms.UIDToMessageID[uid] = messageID
+	ms.MessageIDToUID[messageID] = uid
+}
+
+// GetUIDByMessageID returns the UID for a given Message-ID
+func (ms *MailboxState) GetUIDByMessageID(messageID string) (uint32, bool) {
+	if ms.MessageIDToUID == nil {
+		return 0, false
+	}
+	uid, ok := ms.MessageIDToUID[messageID]
+	return uid, ok
+}
+
+// GetMappedUIDCount returns the number of UIDs with Message-ID mapping
+func (ms *MailboxState) GetMappedUIDCount() int {
+	if ms.UIDToMessageID == nil {
+		return 0
+	}
+	return len(ms.UIDToMessageID)
+}
+
+// GetMissingMappingUIDs returns UIDs that don't have a Message-ID mapping yet
+func (ms *MailboxState) GetMissingMappingUIDs(allUIDs []uint32) []uint32 {
+	if ms.UIDToMessageID == nil {
+		return allUIDs
+	}
+
+	var missing []uint32
+	for _, uid := range allUIDs {
+		if _, ok := ms.UIDToMessageID[uid]; !ok {
+			missing = append(missing, uid)
+		}
+	}
+	return missing
 }
 
 // GetUIDsWithFlags returns all UIDs that have stored flag state
@@ -197,6 +242,20 @@ func (sm *StateManager) Load(email string) (*State, error) {
 	var state State
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("failed to parse state file: %w", err)
+	}
+
+	// Rebuild reverse maps for backwards compatibility and consistency
+	// This ensures MessageIDToUID is always in sync with UIDToMessageID
+	for _, mbox := range state.Mailboxes {
+		if mbox.UIDToMessageID != nil {
+			if mbox.MessageIDToUID == nil {
+				mbox.MessageIDToUID = make(map[string]uint32)
+			}
+			// Rebuild from UIDToMessageID
+			for uid, messageID := range mbox.UIDToMessageID {
+				mbox.MessageIDToUID[messageID] = uid
+			}
+		}
 	}
 
 	return &state, nil

@@ -64,14 +64,15 @@ type MailboxResult struct {
 
 // Syncer handles IMAP synchronization for an account
 type Syncer struct {
-	client   *Client
-	maildir  *MaildirWriter
-	notmuch  *notmuch.Client
-	state    *State
-	stateMgr *StateManager
-	account  *config.AccountConfig
-	options  *SyncOptions
-	output   io.Writer
+	client       *Client
+	maildir      *MaildirWriter
+	notmuch      *notmuch.Client
+	state        *State
+	stateMgr     *StateManager
+	account      *config.AccountConfig
+	options      *SyncOptions
+	output       io.Writer
+	trashMailbox string // Cached trash mailbox name for delete operations
 }
 
 // NewSyncer creates a new syncer for an account
@@ -272,7 +273,8 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	if len(unsyncedUIDs) == 0 {
 		fmt.Fprintf(s.output, "    (up to date)\n")
 		// Still run flag sync even if no new messages
-		if !s.options.NoFlags && !s.options.DryRun {
+		// Flag sync runs even in dry-run mode to show what would happen
+		if !s.options.NoFlags {
 			uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
 			result.FlagsUploaded = uploaded
 			result.FlagsDownload = downloaded
@@ -369,8 +371,8 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 	// Flag synchronization (after message download)
 	// Runs in all modes except when --no-flags is set
-	// The syncFlags function internally respects the sync mode for upload/download
-	if !s.options.NoFlags && !s.options.DryRun {
+	// The syncFlags function internally respects the sync mode and dry-run for upload/download
+	if !s.options.NoFlags {
 		uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
 		result.FlagsUploaded = uploaded
 		result.FlagsDownload = downloaded
@@ -387,83 +389,131 @@ func runNotmuchNew() error {
 	return cmd.Run()
 }
 
+// ensureMessageIDMapping builds the UID<->MessageID mapping for all UIDs on server
+// This is called once per mailbox and cached in state for future syncs
+func (s *Syncer) ensureMessageIDMapping(mailboxName string, mboxState *MailboxState, allUIDs []uint32) error {
+	// Check which UIDs are missing from mapping
+	missingUIDs := mboxState.GetMissingMappingUIDs(allUIDs)
+
+	if len(missingUIDs) == 0 {
+		debug.Log("ensureMessageIDMapping: all %d UIDs already mapped", len(allUIDs))
+		return nil // All mapped
+	}
+
+	debug.Log("ensureMessageIDMapping: fetching Message-IDs for %d/%d UIDs", len(missingUIDs), len(allUIDs))
+	fmt.Fprintf(s.output, "    Building Message-ID mapping for %d messages...\n", len(missingUIDs))
+
+	// Fetch ENVELOPEs for missing UIDs (in batches)
+	envelopes, err := s.client.FetchEnvelopes(missingUIDs)
+	if err != nil {
+		return fmt.Errorf("failed to fetch envelopes: %w", err)
+	}
+
+	// Store mappings
+	mappedCount := 0
+	for uid, messageID := range envelopes {
+		if messageID != "" {
+			mboxState.SetMessageID(uid, messageID)
+			mappedCount++
+		}
+	}
+
+	debug.Log("ensureMessageIDMapping: mapped %d new UIDs", mappedCount)
+	return nil
+}
+
+// buildNotmuchFolderName converts IMAP mailbox name to notmuch folder path
+// Example: Account maildir "~/.mail/habric" + mailbox "INBOX" -> "habric/INBOX"
+func (s *Syncer) buildNotmuchFolderName(mailboxName string) string {
+	maildirBase := s.account.GetIMAPMaildir()
+	// Get the account folder name (last part of maildir path)
+	accountFolder := filepath.Base(maildirBase)
+	// Combine: accountFolder/mailboxName
+	return filepath.Join(accountFolder, mailboxName)
+}
+
 // syncFlags synchronizes flags between local notmuch and IMAP server
 // Returns (flagsUploaded, flagsDownloaded)
 //
-// Current limitations:
-// - Uploading local flag changes to server requires Message-ID→UID mapping
-// - This mapping is only established for newly downloaded messages
-// - For pre-existing messages, only server→local sync works
-//
-// TODO: Add migration to build Message-ID mapping for existing messages
+// This now works for ALL messages on the server, not just those downloaded by durian.
+// It builds a UID<->Message-ID mapping on first run (cached in state).
 func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs []uint32) (int, int) {
 	var uploaded, downloaded int
 
-	// Only sync flags for messages we have in state
-	uidsWithState := mboxState.GetUIDsWithFlags()
-	if len(uidsWithState) == 0 && len(mboxState.SyncedUIDs) == 0 {
+	if len(allUIDs) == 0 {
 		return 0, 0
 	}
 
-	// Use synced UIDs if we don't have flag state yet (first run after upgrade)
-	uidsToSync := uidsWithState
-	if len(uidsToSync) == 0 {
-		uidsToSync = mboxState.SyncedUIDs
+	// 1. Ensure we have Message-ID mapping for all UIDs
+	if err := s.ensureMessageIDMapping(mailboxName, mboxState, allUIDs); err != nil {
+		debug.Log("syncFlags: warning - failed to build Message-ID mapping: %v", err)
+		// Continue anyway - we'll work with what we have
 	}
 
-	// Fetch current flags from server for all tracked UIDs
-	serverFlags, err := s.client.FetchFlags(uidsToSync)
+	// 2. Fetch current flags from server for ALL UIDs
+	serverFlags, err := s.client.FetchFlags(allUIDs)
 	if err != nil {
 		fmt.Fprintf(s.output, "    Warning: failed to fetch flags: %v\n", err)
 		return 0, 0
 	}
 
-	// Build folder path for notmuch query
-	maildirBase := s.account.GetIMAPMaildir()
-	folderPath := s.maildir.mailboxPath(mailboxName)
-	// Get relative path from maildir base for notmuch folder query
-	folderName := strings.TrimPrefix(folderPath, maildirBase)
-	folderName = strings.TrimPrefix(folderName, "/")
+	// 3. Build folder path for notmuch query
+	folderName := s.buildNotmuchFolderName(mailboxName)
+	debug.Log("syncFlags: folder=%s, %d UIDs on server, %d with mapping",
+		folderName, len(allUIDs), mboxState.GetMappedUIDCount())
 
-	for _, uid := range uidsToSync {
+	// 4. Get all local message IDs in this folder from notmuch
+	localMessageIDs, err := s.notmuch.GetAllMessageIDs(folderName)
+	if err != nil {
+		debug.Log("syncFlags: warning - failed to get local messages: %v", err)
+		// Continue - some messages might still be syncable via other means
+	}
+
+	// Build set for quick lookup
+	localMessageSet := make(map[string]bool)
+	for _, id := range localMessageIDs {
+		localMessageSet[id] = true
+	}
+	debug.Log("syncFlags: %d local messages in folder", len(localMessageIDs))
+
+	// 5. For each UID on server, sync flags
+	checkedCount := 0
+	for _, uid := range allUIDs {
+		messageID, hasMapping := mboxState.GetMessageID(uid)
+		if !hasMapping || messageID == "" {
+			continue // Can't sync without Message-ID
+		}
+
+		// Check if message exists locally
+		if !localMessageSet[messageID] {
+			continue // Message not in local folder
+		}
+
 		// Get server flags
 		serverFlagList, ok := serverFlags[uid]
 		if !ok {
-			continue // Message no longer on server
+			continue // Message not found on server (shouldn't happen)
 		}
 		serverState := FlagStateFromIMAP(serverFlagList)
 
-		// Get stored state
-		storedState, hasStoredState := mboxState.GetMessageFlags(uid)
-
 		// Get local flags from notmuch
-		messageID, hasMessageID := mboxState.GetMessageID(uid)
-		if !hasMessageID {
-			// Lazy migration: load Message-ID from maildir file
-			messageID = s.loadMessageIDFromMaildir(mailboxName, uid)
-			if messageID != "" {
-				mboxState.SetMessageID(uid, messageID)
-			}
-		}
-
-		if messageID == "" {
-			// Can't find message, just update stored state with server flags
-			mboxState.SetMessageFlags(uid, serverState)
-			continue
-		}
-
-		// Get notmuch tags
 		tags, err := s.notmuch.GetTags(messageID)
 		if err != nil {
-			continue // Message not in notmuch
+			continue // Message not in notmuch (shouldn't happen if in localMessageSet)
 		}
 		localState := FlagStateFromNotmuchTags(tags)
 
+		checkedCount++
+
+		// Get stored state (last sync baseline)
+		storedState, hasStoredState := mboxState.GetMessageFlags(uid)
+
 		if !hasStoredState {
-			// First sync - just record current state
-			// Use merged state as baseline
+			// First sync for this message - establish baseline
 			merged := localState.Merge(serverState)
-			mboxState.SetMessageFlags(uid, merged)
+			if !s.options.DryRun {
+				mboxState.SetMessageFlags(uid, merged)
+			}
 
 			// If local and server differ, sync them
 			if !localState.Equal(serverState) {
@@ -471,6 +521,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 				if s.options.Mode != SyncDownloadOnly {
 					if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
 						uploaded++
+						debug.Log("syncFlags: uploaded flags for UID %d (Message-ID: %s): %+v", uid, messageID, localState)
 					}
 				}
 				// Download server changes to local
@@ -487,8 +538,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		if NeedsUpload(localState, storedState) && s.options.Mode != SyncDownloadOnly {
 			if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
 				uploaded++
-				// Update stored state
-				mboxState.SetMessageFlags(uid, localState)
+				debug.Log("syncFlags: uploaded flags for UID %d: %+v -> %+v", uid, storedState, localState)
+				// Update stored state (skip in dry-run)
+				if !s.options.DryRun {
+					mboxState.SetMessageFlags(uid, localState)
+				}
 			}
 		}
 
@@ -501,23 +555,85 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 					downloaded++
 				}
 			}
-			// Update stored state with merged result
-			mboxState.SetMessageFlags(uid, merged)
+			// Update stored state with merged result (skip in dry-run)
+			if !s.options.DryRun {
+				mboxState.SetMessageFlags(uid, merged)
+			}
 		}
 	}
 
+	debug.Log("syncFlags: checked %d messages, uploaded %d, downloaded %d", checkedCount, uploaded, downloaded)
+
 	if uploaded > 0 || downloaded > 0 {
-		fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded\n", uploaded, downloaded)
+		if s.options.DryRun {
+			fmt.Fprintf(s.output, "    ⚑ Flags: %d would upload, %d would download (dry-run)\n", uploaded, downloaded)
+		} else {
+			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded\n", uploaded, downloaded)
+		}
 	}
 
 	return uploaded, downloaded
 }
 
 // uploadFlagChanges uploads flag changes to the IMAP server
+// For deleted messages: copies to Trash, sets \Deleted flag, and expunges
 func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
-	// Set the server flags to match local state
-	// We use the local state directly since the user changed it locally
+	// Check if this is a delete operation (deleted locally but not on server)
+	isDelete := local.Deleted && !server.Deleted
+
+	if isDelete {
+		// Find and cache trash mailbox
+		if s.trashMailbox == "" {
+			trash, err := s.client.FindTrashMailbox()
+			if err != nil {
+				debug.Log("uploadFlagChanges: could not find trash mailbox: %v", err)
+				// Continue without copy - just set flag
+			} else {
+				s.trashMailbox = trash
+				debug.Log("uploadFlagChanges: found trash mailbox: %s", trash)
+			}
+		}
+
+		if s.options.DryRun {
+			if s.trashMailbox != "" {
+				debug.Log("syncFlags: [dry-run] would copy UID %d to %s, set \\Deleted, and expunge", uid, s.trashMailbox)
+			} else {
+				debug.Log("syncFlags: [dry-run] would set \\Deleted on UID %d and expunge (no trash mailbox found)", uid)
+			}
+			return nil
+		}
+
+		// Copy to trash first (if trash mailbox found)
+		if s.trashMailbox != "" {
+			if err := s.client.CopyToMailbox(uid, s.trashMailbox); err != nil {
+				debug.Log("uploadFlagChanges: copy to trash failed: %v", err)
+				// Continue anyway - at least set the deleted flag
+			} else {
+				debug.Log("uploadFlagChanges: copied UID %d to %s", uid, s.trashMailbox)
+			}
+		}
+
+		// Set \Deleted flag
+		if err := s.client.StoreFlags(uid, local.ToIMAPFlags()); err != nil {
+			return err
+		}
+
+		// Expunge to permanently remove from current mailbox
+		if err := s.client.Expunge(); err != nil {
+			debug.Log("uploadFlagChanges: expunge failed: %v", err)
+			// Not a fatal error - message is marked deleted
+		}
+
+		return nil
+	}
+
+	// Regular flag update (not a delete)
 	newFlags := local.ToIMAPFlags()
+
+	if s.options.DryRun {
+		debug.Log("syncFlags: [dry-run] would upload flags for UID %d: %v", uid, newFlags)
+		return nil
+	}
 
 	return s.client.StoreFlags(uid, newFlags)
 }
@@ -530,6 +646,11 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	}
 
 	addTags, removeTags := target.ToNotmuchTags()
+
+	if s.options.DryRun {
+		debug.Log("syncFlags: [dry-run] would update tags for %s: add=%v remove=%v", messageID, addTags, removeTags)
+		return nil
+	}
 
 	query := "id:" + messageID
 
@@ -548,71 +669,6 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	return nil
 }
 
-// findMessageID tries to find the notmuch Message-ID for a UID
-func (s *Syncer) findMessageID(mailboxName string, uid uint32) string {
-	// Get the maildir key from our marker file
-	key, err := s.maildir.GetSyncedMessageKey(mailboxName, uid)
-	if err != nil {
-		return ""
-	}
-
-	// Search for the message in notmuch using the key
-	// The key is part of the filename
-	msg, err := s.notmuch.GetMessageByFilename(key)
-	if err != nil {
-		return ""
-	}
-
-	return msg.ID
-}
-
-// loadMessageIDFromMaildir reads a message from maildir and extracts its Message-ID
-// This is used for lazy migration of messages downloaded before Message-ID tracking
-func (s *Syncer) loadMessageIDFromMaildir(mailboxName string, uid uint32) string {
-	// Get the maildir key from our marker file
-	key, err := s.maildir.GetSyncedMessageKey(mailboxName, uid)
-	if err != nil {
-		return ""
-	}
-
-	// Build possible file paths (message could be in cur/ or new/)
-	mailboxPath := s.maildir.mailboxPath(mailboxName)
-	possiblePaths := []string{
-		filepath.Join(mailboxPath, "cur", key),
-		filepath.Join(mailboxPath, "new", key),
-	}
-
-	// Also try with common flag suffixes
-	for _, basePath := range []string{
-		filepath.Join(mailboxPath, "cur"),
-		filepath.Join(mailboxPath, "new"),
-	} {
-		entries, err := os.ReadDir(basePath)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), key) {
-				possiblePaths = append(possiblePaths, filepath.Join(basePath, entry.Name()))
-			}
-		}
-	}
-
-	// Try to read and parse Message-ID from the file
-	for _, path := range possiblePaths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-
-		if messageID := extractMessageIDFromBody(data); messageID != "" {
-			return messageID
-		}
-	}
-
-	return ""
-}
-
 // extractMessageIDFromBody extracts Message-ID from raw email body using net/mail
 func extractMessageIDFromBody(body []byte) string {
 	msg, err := mail.ReadMessage(bytes.NewReader(body))
@@ -627,23 +683,6 @@ func extractMessageIDFromBody(body []byte) string {
 
 	// Remove < and > brackets
 	return strings.Trim(messageID, "<>")
-}
-
-// extractMessageIDFromHeaders extracts Message-ID from email headers (legacy, for string input)
-func extractMessageIDFromHeaders(headers string) string {
-	// Simple regex to find Message-ID header
-	for _, line := range strings.Split(headers, "\n") {
-		line = strings.TrimSpace(line)
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "message-id:") {
-			// Extract the ID part
-			id := strings.TrimSpace(strings.TrimPrefix(line, line[:11]))
-			// Remove < and > if present
-			id = strings.Trim(id, "<>")
-			return id
-		}
-	}
-	return ""
 }
 
 // SyncAccounts syncs multiple accounts

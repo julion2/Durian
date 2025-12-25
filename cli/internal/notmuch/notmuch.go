@@ -62,8 +62,9 @@ func (c *Client) GetMessageByFilename(filename string) (*Message, error) {
 }
 
 // Search searches for messages matching the query
+// Uses --exclude=false to include messages with excluded tags (deleted, spam)
 func (c *Client) Search(query string) ([]*Message, error) {
-	args := []string{"search", "--output=messages", "--format=json", query}
+	args := []string{"search", "--exclude=false", "--output=messages", "--format=json", query}
 	if c.databasePath != "" {
 		args = append([]string{"--config=" + c.databasePath}, args...)
 	}
@@ -99,8 +100,9 @@ func (c *Client) Search(query string) ([]*Message, error) {
 }
 
 // showMessage gets full message info using notmuch show
+// Uses --exclude=false to include messages with excluded tags (deleted, spam)
 func (c *Client) showMessage(messageID string) (*Message, error) {
-	args := []string{"show", "--format=json", "--entire-thread=false", "id:" + messageID}
+	args := []string{"show", "--format=json", "--entire-thread=false", "--exclude=false", "id:" + messageID}
 	if c.databasePath != "" {
 		args = append([]string{"--config=" + c.databasePath}, args...)
 	}
@@ -243,9 +245,11 @@ func (c *Client) HasTag(messageID, tag string) (bool, error) {
 }
 
 // GetAllMessageIDs returns all message IDs in a mailbox folder
+// Uses --exclude=false to include messages with excluded tags (deleted, spam)
+// This is important for flag sync to work with deleted messages
 func (c *Client) GetAllMessageIDs(folder string) ([]string, error) {
 	query := fmt.Sprintf("folder:%s", folder)
-	args := []string{"search", "--output=messages", "--format=json", query}
+	args := []string{"search", "--exclude=false", "--output=messages", "--format=json", query}
 	if c.databasePath != "" {
 		args = append([]string{"--config=" + c.databasePath}, args...)
 	}
@@ -261,6 +265,11 @@ func (c *Client) GetAllMessageIDs(folder string) ([]string, error) {
 		if err := json.Unmarshal(output, &messageIDs); err != nil {
 			return nil, fmt.Errorf("failed to parse search results: %w", err)
 		}
+	}
+
+	// Strip "id:" prefix from message IDs for consistency with IMAP Message-IDs
+	for i, id := range messageIDs {
+		messageIDs[i] = strings.TrimPrefix(id, "id:")
 	}
 
 	return messageIDs, nil

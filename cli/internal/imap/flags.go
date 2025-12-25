@@ -148,8 +148,12 @@ func DiffFlags(local, server FlagState) (toAdd, toRemove []string) {
 		toRemove = append(toRemove, imap.AnsweredFlag)
 	}
 
-	// Deleted - we don't propagate local deletes to server for safety
-	// Server deletes are handled separately
+	// Deleted - sync bidirectionally (server may auto-move to Trash)
+	if local.Deleted && !server.Deleted {
+		toAdd = append(toAdd, imap.DeletedFlag)
+	} else if !local.Deleted && server.Deleted {
+		toRemove = append(toRemove, imap.DeletedFlag)
+	}
 
 	return toAdd, toRemove
 }
@@ -158,8 +162,8 @@ func DiffFlags(local, server FlagState) (toAdd, toRemove []string) {
 func NeedsUpload(local, stored FlagState) bool {
 	return local.Seen != stored.Seen ||
 		local.Flagged != stored.Flagged ||
-		local.Answered != stored.Answered
-	// Note: We don't upload Deleted flag changes for safety
+		local.Answered != stored.Answered ||
+		local.Deleted != stored.Deleted
 }
 
 // NeedsDownload checks if server flags differ from stored state (needs download to local)

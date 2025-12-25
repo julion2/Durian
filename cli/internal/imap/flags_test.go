@@ -303,10 +303,10 @@ func TestNeedsUpload(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "deleted changed - ignored",
+			name:     "deleted changed - now synced",
 			local:    FlagState{Deleted: true},
 			stored:   FlagState{Deleted: false},
-			expected: false, // Deleted changes are not uploaded
+			expected: true, // Deleted changes are now uploaded for trash workflow
 		},
 	}
 

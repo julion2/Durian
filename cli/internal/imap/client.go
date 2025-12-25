@@ -308,6 +308,78 @@ func (c *Client) FetchFlags(uids []uint32) (map[uint32][]string, error) {
 	return result, nil
 }
 
+// FetchEnvelopes fetches ENVELOPE data for given UIDs to extract Message-IDs
+// Returns map[UID] -> MessageID
+// This is used to build the UID <-> Message-ID mapping for flag sync
+func (c *Client) FetchEnvelopes(uids []uint32) (map[uint32]string, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	if len(uids) == 0 {
+		return make(map[uint32]string), nil
+	}
+
+	result := make(map[uint32]string)
+
+	// Process in batches to avoid timeout on large mailboxes
+	const batchSize = 500
+	for i := 0; i < len(uids); i += batchSize {
+		end := i + batchSize
+		if end > len(uids) {
+			end = len(uids)
+		}
+		batch := uids[i:end]
+
+		batchResult, err := c.fetchEnvelopesBatch(batch)
+		if err != nil {
+			return nil, err
+		}
+
+		for uid, msgID := range batchResult {
+			result[uid] = msgID
+		}
+	}
+
+	return result, nil
+}
+
+// fetchEnvelopesBatch fetches envelopes for a batch of UIDs
+func (c *Client) fetchEnvelopesBatch(uids []uint32) (map[uint32]string, error) {
+	seqSet := new(imap.SeqSet)
+	for _, uid := range uids {
+		seqSet.AddNum(uid)
+	}
+
+	// Fetch UID and ENVELOPE (contains Message-ID)
+	items := []imap.FetchItem{
+		imap.FetchUid,
+		imap.FetchEnvelope,
+	}
+
+	messages := make(chan *imap.Message, len(uids))
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidFetch(seqSet, items, messages)
+	}()
+
+	result := make(map[uint32]string)
+	for msg := range messages {
+		if msg.Envelope != nil && msg.Envelope.MessageId != "" {
+			// Clean up Message-ID (remove < > brackets if present)
+			messageID := strings.Trim(msg.Envelope.MessageId, "<>")
+			result[msg.Uid] = messageID
+		}
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch envelopes: %w", err)
+	}
+
+	return result, nil
+}
+
 // StoreFlags sets flags on a message (replaces existing flags)
 func (c *Client) StoreFlags(uid uint32, flags []string) error {
 	if c.conn == nil {
@@ -542,6 +614,79 @@ func (c *Client) FindDraftsMailbox() (string, error) {
 	}
 
 	return "", fmt.Errorf("drafts mailbox not found")
+}
+
+// FindTrashMailbox finds the Trash mailbox using SPECIAL-USE attributes
+// Falls back to common names if SPECIAL-USE is not available
+func (c *Client) FindTrashMailbox() (string, error) {
+	if c.conn == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	mailboxes, err := c.ListMailboxes()
+	if err != nil {
+		return "", err
+	}
+
+	// First pass: look for \Trash SPECIAL-USE attribute
+	for _, mbox := range mailboxes {
+		for _, attr := range mbox.Attributes {
+			if strings.EqualFold(attr, "\\Trash") {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	// Second pass: look for common trash folder names
+	commonNames := []string{
+		"Trash",
+		"[Gmail]/Trash",
+		"[Gmail]/Papierkorb", // German Gmail
+		"Deleted Items",      // Outlook
+		"Deleted Messages",   // Apple
+		"INBOX.Trash",
+		"Papierkorb", // German
+		"Corbeille",  // French
+	}
+
+	for _, name := range commonNames {
+		for _, mbox := range mailboxes {
+			if strings.EqualFold(mbox.Name, name) {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("trash mailbox not found")
+}
+
+// CopyToMailbox copies a message to another mailbox by UID
+func (c *Client) CopyToMailbox(uid uint32, destMailbox string) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	if err := c.conn.UidCopy(seqSet, destMailbox); err != nil {
+		return fmt.Errorf("failed to copy UID %d to %s: %w", uid, destMailbox, err)
+	}
+
+	return nil
+}
+
+// Expunge permanently removes messages marked as \Deleted in the current mailbox
+func (c *Client) Expunge() error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	if err := c.conn.Expunge(nil); err != nil {
+		return fmt.Errorf("failed to expunge: %w", err)
+	}
+
+	return nil
 }
 
 // SearchByMessageID searches for a message by its Message-ID header
