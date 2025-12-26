@@ -9,6 +9,13 @@ import Foundation
 import AppKit
 import Combine
 
+/// Visual mode types for multi-selection
+enum VisualModeType: Equatable {
+    case none       // Normal mode
+    case line       // v: Range selection (anchor to cursor)
+    case toggle     // V: Individual toggle selection
+}
+
 /// Main engine for processing key sequences
 /// Handles: single keys (j, k), counts (5j, 12k), sequences (gg, dd)
 @MainActor
@@ -34,8 +41,11 @@ class KeySequenceEngine: ObservableObject {
     /// Whether engine is waiting for more keys
     @Published private(set) var isWaitingForMore: Bool = false
     
-    /// Whether visual mode is active (for multi-selection)
-    @Published private(set) var isVisualMode: Bool = false
+    /// Current visual mode type (none, line, toggle)
+    @Published private(set) var visualModeType: VisualModeType = .none
+    
+    /// Convenience: whether any visual mode is active
+    var isVisualMode: Bool { visualModeType != .none }
     
     // MARK: - Init
     
@@ -119,15 +129,16 @@ class KeySequenceEngine: ObservableObject {
     }
     
     /// Enter visual mode for multi-selection
-    func enterVisualMode() {
-        guard !isVisualMode else { return }  // Ignore if already in visual mode
-        isVisualMode = true
-        print("KEYSEQ: Entered visual mode")
+    /// - Parameter type: The type of visual mode (.line or .toggle)
+    func enterVisualMode(_ type: VisualModeType = .line) {
+        guard visualModeType == .none else { return }  // Ignore if already in visual mode
+        visualModeType = type
+        print("KEYSEQ: Entered visual mode: \(type)")
     }
     
     /// Exit visual mode
     func exitVisualMode() {
-        isVisualMode = false
+        visualModeType = .none
         print("KEYSEQ: Exited visual mode")
     }
     

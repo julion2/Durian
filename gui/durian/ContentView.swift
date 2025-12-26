@@ -22,9 +22,11 @@ struct ContentView: View {
     @StateObject private var syncManager = SyncManager.shared
     @StateObject private var networkMonitor = NetworkMonitor.shared
     @State private var selectedTagID: String? = "inbox"
-    @State private var selectedNotmuchEmails: Set<String> = []
+    @State private var cursorEmailId: String? = nil       // Highlighted email (cursor position)
+    @State private var markedEmails: Set<String> = []     // Marked emails (selection for batch ops)
     @State private var detailMode: DetailViewMode = .empty
     @State private var showSearchPopup: Bool = false
+    @State private var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
 
     var body: some View {
         ZStack {
@@ -52,10 +54,10 @@ struct ContentView: View {
             SearchPopupView(
                 isPresented: $showSearchPopup,
                 selectedEmailId: Binding(
-                    get: { selectedNotmuchEmails.first },
+                    get: { markedEmails.first },
                     set: { newId in
                         if let id = newId {
-                            selectedNotmuchEmails = [id]
+                            markedEmails = [id]
                         }
                     }
                 ),
@@ -125,7 +127,8 @@ struct ContentView: View {
                 if !accountManager.mailMessages.isEmpty {
                     EmailListView(
                         emails: accountManager.mailMessages,
-                        selection: $selectedNotmuchEmails,
+                        cursorId: $cursorEmailId,
+                        selection: $markedEmails,
                         onEmailAppear: { email in
                             // Prefetch body when email becomes visible
                             switch email.bodyState {
@@ -152,7 +155,7 @@ struct ContentView: View {
                                 await accountManager.deleteNotmuchMessage(id: emailId)
                                 await MainActor.run {
                                     // Clear selection after delete
-                                    selectedNotmuchEmails = []
+                                    markedEmails = []
                                     detailMode = .empty
                                 }
                             }
@@ -190,37 +193,37 @@ struct ContentView: View {
                         Image(systemName: "arrowshape.turn.up.left")
                     }
                     .help("Reply (R)")
-                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
+                    .disabled(markedEmails.isEmpty || !selectedEmailHasBody)
                     
                     Button(action: { replyAllToSelected() }) {
                         Image(systemName: "arrowshape.turn.up.left.2")
                     }
                     .help("Reply All (Shift+R)")
-                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
+                    .disabled(markedEmails.isEmpty || !selectedEmailHasBody)
                     
                     Button(action: { forwardSelected() }) {
                         Image(systemName: "arrowshape.turn.up.right")
                     }
                     .help("Forward (F)")
-                    .disabled(selectedNotmuchEmails.isEmpty || !selectedEmailHasBody)
+                    .disabled(markedEmails.isEmpty || !selectedEmailHasBody)
                     
-                    Button(action: deleteSelectedEmail) {
+                    Button(action: deleteSelectedEmails) {
                         Image(systemName: "trash")
                     }
                     .help("Delete")
-                    .disabled(selectedNotmuchEmails.isEmpty)
+                    .disabled(markedEmails.isEmpty)
                     
                     Button(action: togglePin) {
                         Image(systemName: selectedEmailIsPinned ? "pin.fill" : "pin")
                     }
                     .help(selectedEmailIsPinned ? "Unpin (S)" : "Pin (S)")
-                    .disabled(selectedNotmuchEmails.isEmpty)
+                    .disabled(markedEmails.isEmpty)
                     
                     Button(action: toggleRead) {
                         Image(systemName: selectedEmailIsRead ? "envelope.open" : "envelope.badge")
                     }
                     .help(selectedEmailIsRead ? "Mark Unread (U)" : "Mark Read (U)")
-                    .disabled(selectedNotmuchEmails.isEmpty)
+                    .disabled(markedEmails.isEmpty)
                 }
                 
                 // Rechts: Search & Sync
@@ -253,10 +256,28 @@ struct ContentView: View {
                 }
             }
         } detail: {
-            // Detail View
-            if case .notmuchEmailDetail(let emailId) = detailMode,
+            // Detail View - always show cursor email, with badge if multi-selected
+            if let emailId = cursorEmailId,
                let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
-                notmuchEmailDetailView(email: email)
+                ZStack(alignment: .topTrailing) {
+                    notmuchEmailDetailView(email: email)
+                    
+                    // Selection badge when multiple emails marked
+                    if markedEmails.count > 1 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text("\(markedEmails.count) selected")
+                        }
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(6)
+                        .padding(16)
+                    }
+                }
             } else {
                 Text("Select an email")
                     .font(.title2)
@@ -277,8 +298,10 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: selectedNotmuchEmails) { newSelection in
+        .onChange(of: markedEmails) { newSelection in
+            // When selection changes externally (e.g., click), sync cursor
             if newSelection.count == 1, let emailId = newSelection.first {
+                cursorEmailId = emailId
                 handleNotmuchEmailSelection(emailId)
             }
         }
@@ -492,7 +515,7 @@ struct ContentView: View {
     // MARK: - Toolbar Helpers
     
     private var selectedEmailIsPinned: Bool {
-        guard let emailId = selectedNotmuchEmails.first,
+        guard let emailId = markedEmails.first,
               let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
             return false
         }
@@ -500,7 +523,7 @@ struct ContentView: View {
     }
     
     private var selectedEmailIsRead: Bool {
-        guard let emailId = selectedNotmuchEmails.first,
+        guard let emailId = markedEmails.first,
               let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
             return true
         }
@@ -508,7 +531,7 @@ struct ContentView: View {
     }
     
     private var selectedEmailHasBody: Bool {
-        guard let emailId = selectedNotmuchEmails.first,
+        guard let emailId = markedEmails.first,
               let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
             return false
         }
@@ -519,29 +542,40 @@ struct ContentView: View {
     }
     
     private var selectedEmail: MailMessage? {
-        guard let emailId = selectedNotmuchEmails.first else { return nil }
+        guard let emailId = markedEmails.first else { return nil }
         return accountManager.mailMessages.first(where: { $0.id == emailId })
     }
     
-    private func deleteSelectedEmail() {
-        guard let emailId = selectedNotmuchEmails.first else { return }
+    private func deleteSelectedEmails() {
+        guard !markedEmails.isEmpty else { return }
         Task {
-            await accountManager.deleteNotmuchMessage(id: emailId)
+            await accountManager.deleteMessages(ids: markedEmails)
             await MainActor.run {
-                selectedNotmuchEmails = []
+                markedEmails = []
+                visualModeAnchor = nil
                 detailMode = .empty
+                keymapHandler.engine.exitVisualMode()
             }
         }
     }
     
     private func togglePin() {
-        guard let emailId = selectedNotmuchEmails.first else { return }
+        guard let emailId = markedEmails.first else { return }
         Task { await accountManager.toggleNotmuchPin(id: emailId) }
     }
     
     private func toggleRead() {
-        guard let emailId = selectedNotmuchEmails.first else { return }
-        Task { await accountManager.toggleNotmuchRead(id: emailId) }
+        guard !markedEmails.isEmpty else { return }
+        Task {
+            await accountManager.toggleReadForMessages(ids: markedEmails)
+            await MainActor.run {
+                // Exit visual mode after batch action
+                if keymapHandler.engine.isVisualMode {
+                    keymapHandler.engine.exitVisualMode()
+                    visualModeAnchor = nil
+                }
+            }
+        }
     }
     
     // MARK: - Compose
@@ -607,22 +641,59 @@ struct ContentView: View {
             .map { $0.id }
     }
     
-    /// Get current email index in sorted list
+    /// Get current email index in sorted list (based on cursor position)
     private func currentEmailIndex() -> Int? {
-        guard let currentId = selectedNotmuchEmails.first else { return nil }
+        guard let currentId = cursorEmailId else { return nil }
         return sortedEmailIds.firstIndex(of: currentId)
     }
     
     /// Navigate to email at specific index (clamped to valid range)
+    /// Updates cursor position and handles visual mode selection
     private func navigateToEmail(at index: Int) {
         guard !sortedEmailIds.isEmpty else { return }
         let clampedIndex = max(0, min(index, sortedEmailIds.count - 1))
-        selectedNotmuchEmails = [sortedEmailIds[clampedIndex]]
+        let targetId = sortedEmailIds[clampedIndex]
+        
+        // Always update cursor position
+        cursorEmailId = targetId
+        
+        switch keymapHandler.engine.visualModeType {
+        case .none:
+            // Normal navigation: selection follows cursor
+            markedEmails = [targetId]
+            
+        case .line:
+            // Line mode: selection = all emails from anchor to cursor
+            if let anchor = visualModeAnchor,
+               let anchorIndex = sortedEmailIds.firstIndex(of: anchor) {
+                let start = min(anchorIndex, clampedIndex)
+                let end = max(anchorIndex, clampedIndex)
+                markedEmails = Set(sortedEmailIds[start...end])
+            } else {
+                // No anchor yet, just add cursor to selection
+                markedEmails.insert(targetId)
+            }
+            
+        case .toggle:
+            // Toggle mode: selection stays unchanged, only cursor moves
+            break
+        }
+    }
+    
+    /// Get range of email IDs between two indices
+    private func emailsInRange(from: Int, to: Int) -> Set<String> {
+        let start = min(from, to)
+        let end = max(from, to)
+        let clampedStart = max(0, start)
+        let clampedEnd = min(sortedEmailIds.count - 1, end)
+        guard clampedStart <= clampedEnd else { return [] }
+        return Set(sortedEmailIds[clampedStart...clampedEnd])
     }
     
     /// Register all keymap handlers
     private func registerKeymapHandlers() {
         // Navigation: j/k with count support (5j, 3k)
+        // In visual mode, extends selection from anchor to cursor
         keymapHandler.registerHandler(for: .nextEmail) { [self] count in
             await MainActor.run {
                 if let current = currentEmailIndex() {
@@ -713,7 +784,7 @@ struct ContentView: View {
             }
         }
         
-        // View control: q, Escape - close detail or search popup
+        // View control: q - close detail or search popup (NOT escape - that's for visual mode)
         keymapHandler.registerSimpleHandler(for: .closeDetail) { [self] in
             await MainActor.run {
                 if showSearchPopup {
@@ -727,19 +798,96 @@ struct ContentView: View {
         // Toggle Pin: s
         keymapHandler.registerSimpleHandler(for: .toggleStar) { [self] in
             await MainActor.run {
-                guard let emailId = selectedNotmuchEmails.first else { return }
+                guard let emailId = markedEmails.first else { return }
                 Task {
                     await accountManager.toggleNotmuchPin(id: emailId)
                 }
             }
         }
         
-        // Toggle Read: u
+        // Toggle Read: u - now works with multi-selection
         keymapHandler.registerSimpleHandler(for: .toggleRead) { [self] in
             await MainActor.run {
-                guard let emailId = selectedNotmuchEmails.first else { return }
-                Task {
-                    await accountManager.toggleNotmuchRead(id: emailId)
+                toggleRead()
+            }
+        }
+        
+        // Delete: dd - works with multi-selection
+        keymapHandler.registerSimpleHandler(for: .deleteEmail) { [self] in
+            await MainActor.run {
+                deleteSelectedEmails()
+            }
+        }
+        
+        // ═══════════════════════════════════════════════════════════
+        // VISUAL MODE HANDLERS
+        // ═══════════════════════════════════════════════════════════
+        
+        // v - Enter LINE visual mode (range selection: anchor to cursor)
+        keymapHandler.registerSimpleHandler(for: .enterVisualMode) { [self] in
+            await MainActor.run {
+                guard keymapHandler.engine.visualModeType == .none else { return }
+                keymapHandler.engine.enterVisualMode(.line)
+                // Set anchor to current cursor position
+                visualModeAnchor = cursorEmailId
+                print("VISUAL: Entered LINE mode, anchor: \(visualModeAnchor ?? "nil")")
+            }
+        }
+        
+        // V (Shift+v) - Enter TOGGLE visual mode (individual selection with Space)
+        keymapHandler.registerSimpleHandler(for: .enterToggleMode) { [self] in
+            await MainActor.run {
+                guard keymapHandler.engine.visualModeType == .none else { return }
+                keymapHandler.engine.enterVisualMode(.toggle)
+                // Mark current email initially
+                if let currentId = cursorEmailId {
+                    markedEmails = [currentId]
+                }
+                print("VISUAL: Entered TOGGLE mode, initial mark: \(cursorEmailId ?? "nil")")
+            }
+        }
+        
+        // Space - Toggle selection (only in TOGGLE mode)
+        keymapHandler.registerSimpleHandler(for: .toggleSelection) { [self] in
+            await MainActor.run {
+                // Only works in Toggle mode
+                guard keymapHandler.engine.visualModeType == .toggle else { return }
+                guard let currentId = cursorEmailId else { return }
+                
+                // Toggle mark on current cursor position
+                if markedEmails.contains(currentId) {
+                    // Unmark (but keep at least one)
+                    if markedEmails.count > 1 {
+                        markedEmails.remove(currentId)
+                    }
+                } else {
+                    // Mark
+                    markedEmails.insert(currentId)
+                }
+                
+                // Move cursor to next email (mutt-style)
+                if let current = currentEmailIndex(), current < sortedEmailIds.count - 1 {
+                    cursorEmailId = sortedEmailIds[current + 1]
+                    // Selection stays unchanged (toggle mode)
+                }
+            }
+        }
+        
+        // Escape - Exit visual mode (clears selection, keeps cursor)
+        keymapHandler.registerSimpleHandler(for: .exitVisualMode) { [self] in
+            await MainActor.run {
+                if keymapHandler.engine.visualModeType != .none {
+                    keymapHandler.engine.exitVisualMode()
+                    // Clear all marks, keep only cursor
+                    if let cursor = cursorEmailId {
+                        markedEmails = [cursor]
+                    }
+                    visualModeAnchor = nil
+                    print("VISUAL: Exited visual mode")
+                } else if showSearchPopup {
+                    showSearchPopup = false
+                } else {
+                    detailMode = .empty
                 }
             }
         }
@@ -758,8 +906,9 @@ struct KeySequenceIndicator: View {
     var body: some View {
         HStack(spacing: 8) {
             // Visual Mode Indicator
-            if keymapHandler.engine.isVisualMode {
-                Text("-- VISUAL --")
+            switch keymapHandler.engine.visualModeType {
+            case .line:
+                Text("-- VISUAL LINE --")
                     .font(.system(.caption, design: .monospaced))
                     .fontWeight(.bold)
                     .foregroundStyle(.orange)
@@ -769,6 +918,19 @@ struct KeySequenceIndicator: View {
                         RoundedRectangle(cornerRadius: 4)
                             .fill(Color.orange.opacity(0.15))
                     )
+            case .toggle:
+                Text("-- VISUAL --")
+                    .font(.system(.caption, design: .monospaced))
+                    .fontWeight(.bold)
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.blue.opacity(0.15))
+                    )
+            case .none:
+                EmptyView()
             }
             
             // Key Sequence Indicator

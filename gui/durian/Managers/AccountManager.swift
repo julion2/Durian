@@ -134,6 +134,40 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
+    // MARK: - Batch Operations (Multi-Selection)
+    
+    func deleteMessages(ids: Set<String>) async {
+        guard let backend = notmuchBackend else { return }
+        for id in ids {
+            try? await backend.deleteMessage(id: id)
+        }
+        syncFromNotmuch()
+    }
+    
+    func toggleReadForMessages(ids: Set<String>) async {
+        guard let backend = notmuchBackend else { return }
+        for id in ids {
+            await backend.toggleRead(id: id)
+        }
+        syncFromNotmuch()
+    }
+    
+    func markMessagesAsRead(ids: Set<String>) async {
+        guard let backend = notmuchBackend else { return }
+        for id in ids {
+            await backend.markAsRead(id: id)
+        }
+        syncFromNotmuch()
+    }
+    
+    func markMessagesAsUnread(ids: Set<String>) async {
+        guard let backend = notmuchBackend else { return }
+        for id in ids {
+            await backend.markAsUnread(id: id)
+        }
+        syncFromNotmuch()
+    }
+    
     // MARK: - Full Reload (mbsync via launchd + notmuch new)
     
     func reloadNotmuch() async {

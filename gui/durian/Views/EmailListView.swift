@@ -43,7 +43,8 @@ enum DateGrouping: Hashable, Comparable {
 
 struct EmailListView: View {
     let emails: [MailMessage]
-    @Binding var selection: Set<String>
+    @Binding var cursorId: String?           // Current cursor position (highlighted)
+    @Binding var selection: Set<String>      // Marked emails (for batch operations)
     let onEmailAppear: (MailMessage) -> Void
     
     // Context menu callbacks
@@ -62,10 +63,11 @@ struct EmailListView: View {
                     }
                 }
             }
-            .onChange(of: selection) { _, newSelection in
-                if let selectedId = newSelection.first {
+            .onChange(of: cursorId) { _, newCursorId in
+                // Scroll to cursor position when it changes
+                if let cursorId = newCursorId {
                     withAnimation(.easeInOut(duration: 0.15)) {
-                        proxy.scrollTo(selectedId, anchor: .center)
+                        proxy.scrollTo(cursorId, anchor: .center)
                     }
                 }
             }
@@ -136,18 +138,25 @@ struct EmailListView: View {
     
     @ViewBuilder
     private func emailRow(email: MailMessage) -> some View {
+        // Cursor position gets highlight, marked emails show selection indicator
+        let isCursor = cursorId == email.id
+        let isMarked = selection.contains(email.id)
+        
         EmailRowView(
             email: email,
-            isSelected: selection.contains(email.id),
+            isSelected: isCursor || isMarked,  // Highlight if cursor or marked
             onTogglePin: { 
+                cursorId = email.id
                 selection = [email.id]
                 onTogglePin?(email.id) 
             },
             onToggleRead: { 
+                cursorId = email.id
                 selection = [email.id]
                 onToggleRead?(email.id) 
             },
             onDelete: { 
+                cursorId = email.id
                 selection = [email.id]
                 onDelete?(email.id) 
             }
@@ -155,6 +164,8 @@ struct EmailListView: View {
         .id(email.id)
         .contentShape(Rectangle())
         .onTapGesture {
+            // Click sets both cursor and selection
+            cursorId = email.id
             selection = [email.id]
         }
         .onAppear {

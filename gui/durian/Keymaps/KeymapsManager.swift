@@ -39,6 +39,9 @@ class KeymapsManager: ObservableObject {
             let tomlString = try String(contentsOf: tomlURL, encoding: .utf8)
             keymaps = try TOMLDecoder().decode(KeymapConfig.self, from: tomlString)
             print("KEYMAPS: Loaded from: \(tomlURL.path)")
+            
+            // Merge missing keymaps from defaults
+            mergeWithDefaults()
         } catch {
             print("KEYMAPS_ERROR: Failed to load: \(error)")
             keymaps = KeymapConfig()
@@ -74,6 +77,71 @@ class KeymapsManager: ObservableObject {
         } catch {
             print("KEYMAPS_ERROR: Failed to save: \(error)")
         }
+    }
+    
+    /// Merge missing keymaps from defaults into loaded config
+    /// This ensures new keymaps are available after app updates
+    private func mergeWithDefaults() {
+        let defaultKeymaps = getDefaultKeymaps()
+        let existingActions = Set(keymaps.keymaps.map { $0.action + $0.key })
+        
+        var addedCount = 0
+        for defaultEntry in defaultKeymaps {
+            let key = defaultEntry.action + defaultEntry.key
+            if !existingActions.contains(key) {
+                keymaps.keymaps.append(defaultEntry)
+                addedCount += 1
+                print("KEYMAPS: Added missing keymap: \(defaultEntry.action) -> \(defaultEntry.key)")
+            }
+        }
+        
+        if addedCount > 0 {
+            print("KEYMAPS: Merged \(addedCount) missing keymaps from defaults")
+            saveKeymaps()
+        }
+    }
+    
+    /// Returns the default keymaps array
+    private func getDefaultKeymaps() -> [KeymapEntry] {
+        return [
+            // Navigation
+            KeymapEntry(action: "next_email", key: "j", modifiers: [], description: "Next email (vim j)", enabled: true, sequence: false, supportsCount: true),
+            KeymapEntry(action: "prev_email", key: "k", modifiers: [], description: "Previous email (vim k)", enabled: true, sequence: false, supportsCount: true),
+            KeymapEntry(action: "next_email", key: "Down", modifiers: [], description: "Next email (arrow)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "prev_email", key: "Up", modifiers: [], description: "Previous email (arrow)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last email (Shift+G)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First email (vim gg)", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "center_view", key: "zz", modifiers: [], description: "Center current email in view", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down (Ctrl+d)", enabled: true, sequence: false, supportsCount: true),
+            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up (Ctrl+u)", enabled: true, sequence: false, supportsCount: true),
+            // Email Actions
+            KeymapEntry(action: "open_email", key: "o", modifiers: [], description: "Open email", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "open_email", key: "Return", modifiers: [], description: "Open email (Enter)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "compose", key: "c", modifiers: [], description: "Compose new email", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply_all", key: "R", modifiers: [], description: "Reply to all (Shift+R)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "forward", key: "f", modifiers: [], description: "Forward email", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_read", key: "u", modifiers: [], description: "Toggle read/unread", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_star", key: "s", modifiers: [], description: "Toggle star", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "delete", key: "dd", modifiers: [], description: "Delete email (vim dd)", enabled: true, sequence: true, supportsCount: true),
+            // Folder Navigation
+            KeymapEntry(action: "go_inbox", key: "gi", modifiers: [], description: "Go to inbox", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_sent", key: "gs", modifiers: [], description: "Go to sent", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_drafts", key: "gd", modifiers: [], description: "Go to drafts", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_archive", key: "ga", modifiers: [], description: "Go to archive", enabled: true, sequence: true, supportsCount: false),
+            // Search
+            KeymapEntry(action: "search", key: "/", modifiers: [], description: "Search emails (vim /)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "search", key: "/", modifiers: ["cmd"], description: "Search emails (Cmd+/)", enabled: true, sequence: false, supportsCount: false),
+            // View Control
+            KeymapEntry(action: "close_detail", key: "q", modifiers: [], description: "Close/back (vim q)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Close/back (Escape)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"], description: "Reload inbox (Cmd+r)", enabled: true, sequence: false, supportsCount: false),
+            // Visual Mode
+            KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [], description: "Enter line visual mode (range select)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [], description: "Enter toggle visual mode (Shift+V)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_selection", key: " ", modifiers: [], description: "Toggle current email (only in toggle mode)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [], description: "Exit visual mode and clear selection", enabled: true, sequence: false, supportsCount: false),
+        ]
     }
     
     private func generateTOML(from config: KeymapConfig) -> String {
@@ -234,7 +302,16 @@ class KeymapsManager: ObservableObject {
             // VISUAL MODE
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [],
-                       description: "Enter visual mode for multi-select", enabled: true,
+                       description: "Enter line visual mode (range select)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [],
+                       description: "Enter toggle visual mode (Shift+V)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_selection", key: " ", modifiers: [],
+                       description: "Toggle current email (only in toggle mode)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [],
+                       description: "Exit visual mode and clear selection", enabled: true,
                        sequence: false, supportsCount: false),
         ]
         

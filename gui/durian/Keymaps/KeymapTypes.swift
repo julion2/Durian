@@ -42,7 +42,10 @@ enum KeymapAction: String, CaseIterable {
     case goArchive = "go_archive"
     
     // Visual Mode
-    case enterVisualMode = "enter_visual_mode"
+    case enterVisualMode = "enter_visual_mode"           // v - line mode (range selection)
+    case enterToggleMode = "enter_toggle_mode"           // V - toggle mode (individual selection)
+    case toggleSelection = "toggle_selection"            // Space - toggle current (only in toggle mode)
+    case exitVisualMode = "exit_visual_mode"             // Escape in visual mode
     
     // Note: supportsCount is now defined in keymaps.toml per-action
     // Use SequenceMatcher.shared.supportsCount(action) to check
