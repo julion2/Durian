@@ -73,6 +73,7 @@ struct EmailRowView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isSelected ? Color.accentColor : Color.clear)
         )
+        .padding(.horizontal, 8)
         .contextMenu {
             Button(action: { onTogglePin?() }) {
                 Label(email.isPinned ? "Unpin" : "Pin", systemImage: email.isPinned ? "pin.slash" : "pin")
