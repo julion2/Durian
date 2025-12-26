@@ -548,16 +548,28 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 		// Check for server changes (server differs from stored)
 		if NeedsDownload(serverState, storedState) && s.options.Mode != SyncUploadOnly {
-			// Merge: apply server changes that weren't overridden locally
-			merged := localState.Merge(serverState)
-			if !merged.Equal(localState) {
-				if err := s.downloadFlagChanges(messageID, localState, merged); err == nil {
+			// Check if local was also changed (conflict scenario)
+			localChanged := NeedsUpload(localState, storedState)
+
+			var targetState FlagState
+			if localChanged {
+				// Conflict: both local and server changed - merge (local wins)
+				targetState = localState.Merge(serverState)
+				debug.Log("syncFlags: conflict for UID %d - merging local and server changes", uid)
+			} else {
+				// No local change - server wins (allows server to remove flags)
+				targetState = serverState
+			}
+
+			if !targetState.Equal(localState) {
+				if err := s.downloadFlagChanges(messageID, localState, targetState); err == nil {
 					downloaded++
+					debug.Log("syncFlags: downloaded flags for UID %d: %+v -> %+v", uid, localState, targetState)
 				}
 			}
-			// Update stored state with merged result (skip in dry-run)
+			// Update stored state (skip in dry-run)
 			if !s.options.DryRun {
-				mboxState.SetMessageFlags(uid, merged)
+				mboxState.SetMessageFlags(uid, targetState)
 			}
 		}
 	}
