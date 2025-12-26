@@ -244,6 +244,58 @@ func (c *Client) HasTag(messageID, tag string) (bool, error) {
 	return false, nil
 }
 
+// GetAllMessagesWithTags returns all messages in a folder with their tags
+// Uses a single notmuch show call instead of individual queries per message
+// Returns map[messageID][]tags - much faster than calling GetTags() for each message
+func (c *Client) GetAllMessagesWithTags(folder string) (map[string][]string, error) {
+	query := fmt.Sprintf("folder:%s", folder)
+	args := []string{"show", "--format=json", "--entire-thread=false",
+		"--body=false", "--exclude=false", query}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+
+	cmd := exec.Command("notmuch", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("notmuch show failed: %w", err)
+	}
+
+	// Parse the nested JSON structure:
+	// [ [[{msg}, [replies]], ...], ... ]  (array of threads)
+	var threads [][][]json.RawMessage
+	if len(output) > 0 {
+		if err := json.Unmarshal(output, &threads); err != nil {
+			return nil, fmt.Errorf("failed to parse show results: %w", err)
+		}
+	}
+
+	result := make(map[string][]string)
+
+	// Extract message ID and tags from each message
+	for _, thread := range threads {
+		for _, msgPair := range thread {
+			if len(msgPair) == 0 {
+				continue
+			}
+
+			var msg struct {
+				ID   string   `json:"id"`
+				Tags []string `json:"tags"`
+			}
+			if err := json.Unmarshal(msgPair[0], &msg); err != nil {
+				continue // Skip malformed messages
+			}
+
+			if msg.ID != "" {
+				result[msg.ID] = msg.Tags
+			}
+		}
+	}
+
+	return result, nil
+}
+
 // GetAllMessageIDs returns all message IDs in a mailbox folder
 // Uses --exclude=false to include messages with excluded tags (deleted, spam)
 // This is important for flag sync to work with deleted messages

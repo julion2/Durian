@@ -462,19 +462,14 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 	debug.Log("syncFlags: folder=%s, %d UIDs on server, %d with mapping",
 		folderName, len(allUIDs), mboxState.GetMappedUIDCount())
 
-	// 4. Get all local message IDs in this folder from notmuch
-	localMessageIDs, err := s.notmuch.GetAllMessageIDs(folderName)
+	// 4. Get all local messages with tags in a single batch query
+	// This is much faster than calling GetTags() for each message individually
+	localMessages, err := s.notmuch.GetAllMessagesWithTags(folderName)
 	if err != nil {
 		debug.Log("syncFlags: warning - failed to get local messages: %v", err)
-		// Continue - some messages might still be syncable via other means
+		localMessages = make(map[string][]string) // Continue with empty map
 	}
-
-	// Build set for quick lookup
-	localMessageSet := make(map[string]bool)
-	for _, id := range localMessageIDs {
-		localMessageSet[id] = true
-	}
-	debug.Log("syncFlags: %d local messages in folder", len(localMessageIDs))
+	debug.Log("syncFlags: %d local messages in folder", len(localMessages))
 
 	// 5. For each UID on server, sync flags
 	checkedCount := 0
@@ -484,8 +479,9 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			continue // Can't sync without Message-ID
 		}
 
-		// Check if message exists locally
-		if !localMessageSet[messageID] {
+		// Check if message exists locally and get its tags
+		tags, existsLocally := localMessages[messageID]
+		if !existsLocally {
 			continue // Message not in local folder
 		}
 
@@ -496,11 +492,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		}
 		serverState := FlagStateFromIMAP(serverFlagList)
 
-		// Get local flags from notmuch
-		tags, err := s.notmuch.GetTags(messageID)
-		if err != nil {
-			continue // Message not in notmuch (shouldn't happen if in localMessageSet)
-		}
+		// Convert local tags to flag state
 		localState := FlagStateFromNotmuchTags(tags)
 
 		checkedCount++
