@@ -69,15 +69,12 @@ struct EmailDetailView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(email.subject)
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundColor(Color.Detail.textPrimary)
                 .textSelection(.enabled)
                 .padding(.horizontal, 32)
                 .padding(.top, 32)
-                .padding(.bottom, 32)
-            
-            Divider()
-                .background(Color.Detail.border)
+                .padding(.bottom, 8)
         }
     }
     
@@ -103,7 +100,7 @@ struct EmailDetailView: View {
         .cornerRadius(10)
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
         .padding(.horizontal, 32)
-        .padding(.top, 32)
+        .padding(.top, 24)
         .padding(.bottom, 32)
     }
     
