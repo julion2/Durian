@@ -3,6 +3,8 @@ import SwiftUI
 struct EmailRowView: View {
     let email: MailMessage
     var isSelected: Bool = false
+    var isFirstInGroup: Bool = true   // First in contiguous selection group (top corners rounded)
+    var isLastInGroup: Bool = true    // Last in contiguous selection group (bottom corners rounded)
     
     // Context menu callbacks
     var onTogglePin: (() -> Void)?
@@ -70,8 +72,13 @@ struct EmailRowView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isSelected ? Color.accentColor : Color.clear)
+            UnevenRoundedRectangle(
+                topLeadingRadius: isFirstInGroup ? 6 : 0,
+                bottomLeadingRadius: isLastInGroup ? 6 : 0,
+                bottomTrailingRadius: isLastInGroup ? 6 : 0,
+                topTrailingRadius: isFirstInGroup ? 6 : 0
+            )
+            .fill(isSelected ? Color.accentColor : Color.clear)
         )
         .padding(.horizontal, 8)
         .contextMenu {
