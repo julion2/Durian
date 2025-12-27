@@ -259,7 +259,7 @@ struct ContentView: View {
             // Detail View - always show cursor email, with badge if multi-selected
             if let emailId = cursorEmailId,
                let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
-                ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .bottomTrailing) {
                     notmuchEmailDetailView(email: email)
                     
                     // Selection badge when multiple emails marked
