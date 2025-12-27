@@ -63,6 +63,7 @@ struct EmailListView: View {
                     }
                 }
             }
+            .overlayScrollbars()
             .onChange(of: cursorId) { _, newCursorId in
                 // Scroll to cursor position when it changes
                 if let cursorId = newCursorId {

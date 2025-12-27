@@ -395,6 +395,7 @@ struct ContentView: View {
                         .padding(20)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .overlayScrollbars()
                 .onTapGesture {
                     Task {
                         await accountManager.fetchNotmuchEmailBody(id: email.id)
@@ -424,6 +425,7 @@ struct ContentView: View {
                             .padding(20)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .overlayScrollbars()
                 }
             case .failed(let message):
                 Text("Failed: \(message)")
