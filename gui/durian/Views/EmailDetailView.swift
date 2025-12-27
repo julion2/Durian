@@ -20,6 +20,19 @@ struct EmailDetailView: View {
     @State private var isDetailsExpanded: Bool = false
     @State private var isQuotedExpanded: Bool = false
     @State private var webViewHeight: CGFloat = 100
+    @State private var quotedWebViewHeight: CGFloat = 100
+    
+    /// Check if current email has quoted content (computed on demand)
+    private var hasQuotedContent: Bool {
+        if let html = email.htmlBody, !html.isEmpty {
+            let (_, quoted) = splitHTMLQuotedContent(html)
+            return quoted != nil
+        } else if case .loaded(let body, _) = email.bodyState {
+            let (_, quoted) = splitQuotedContent(body)
+            return quoted != nil && !quoted!.isEmpty
+        }
+        return false
+    }
     
     // MARK: - Body
     
@@ -46,6 +59,7 @@ struct EmailDetailView: View {
             isDetailsExpanded = false
             isQuotedExpanded = false
             webViewHeight = 100
+            quotedWebViewHeight = 100
         }
     }
     
@@ -221,72 +235,66 @@ struct EmailDetailView: View {
     
     @ViewBuilder
     private func loadedBodyContent(body: String) -> some View {
-        let (primary, quoted) = splitQuotedContent(body)
-        
         VStack(alignment: .leading, spacing: 12) {
             // Primary content (always visible)
             if let html = email.htmlBody, !html.isEmpty {
-                // HTML emails: show WebView sized to content
+                // HTML emails: split into primary + quoted
+                let (primaryHTML, quotedHTML) = splitHTMLQuotedContent(html)
+                
+                // Primary HTML (always visible)
                 NonScrollingWebView(
-                    html: html,
+                    html: primaryHTML,
                     theme: SettingsManager.shared.settings.theme,
                     loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
                     contentHeight: $webViewHeight
                 )
                 .frame(height: max(webViewHeight, 50))
+                
+                // Quoted HTML (only when expanded)
+                if let quoted = quotedHTML, isQuotedExpanded {
+                    quotedHTMLSection(html: quoted)
+                }
             } else {
-                // Plain text: show primary part
+                // Plain text: split into primary + quoted
+                let (primary, quoted) = splitQuotedContent(body)
+                
                 Text(makeLinksClickable(primary))
                     .font(.system(size: 16))
                     .foregroundColor(Color.Detail.textBody)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
-                // Quoted content (collapsed by default)
-                if let quoted = quoted, !quoted.isEmpty {
+                // Quoted content (only when expanded)
+                if let quoted = quoted, !quoted.isEmpty, isQuotedExpanded {
                     quotedContentSection(quoted: quoted)
                 }
             }
         }
     }
     
-    // MARK: - Quoted Content Section
+    // MARK: - Quoted Content Section (Plain Text)
     
     @ViewBuilder
     private func quotedContentSection(quoted: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Toggle button
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isQuotedExpanded.toggle()
-                }
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: isQuotedExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 11, weight: .medium))
-                    Text(isQuotedExpanded ? "Hide quoted content" : "Show quoted content")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .foregroundColor(Color.Detail.linkBlue)
-            }
-            .buttonStyle(.plain)
-            
-            // Quoted text (when expanded)
-            if isQuotedExpanded {
-                Text(makeLinksClickable(quoted))
-                    .font(.system(size: 14))
-                    .foregroundColor(Color.Detail.textSecondary)
-                    .textSelection(.enabled)
-                    .padding(.leading, 12)
-                    .overlay(
-                        Rectangle()
-                            .fill(Color.Detail.border)
-                            .frame(width: 3),
-                        alignment: .leading
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
+        Text(makeLinksClickable(quoted))
+            .font(.system(size: 14))
+            .foregroundColor(Color.Detail.textSecondary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+    }
+    
+    // MARK: - Quoted Content Section (HTML)
+    
+    @ViewBuilder
+    private func quotedHTMLSection(html: String) -> some View {
+        NonScrollingWebView(
+            html: html,
+            theme: SettingsManager.shared.settings.theme,
+            loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
+            contentHeight: $quotedWebViewHeight
+        )
+        .frame(height: max(quotedWebViewHeight, 50))
         .padding(.top, 8)
     }
     
@@ -295,6 +303,18 @@ struct EmailDetailView: View {
     @ViewBuilder
     private var actionFooter: some View {
         HStack {
+            // "See more" / "See less" button (left side)
+            if hasQuotedContent {
+                Button(action: {
+                    isQuotedExpanded.toggle()
+                }) {
+                    Text(isQuotedExpanded ? "See less" : "See more")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color.Detail.linkBlue)
+                }
+                .buttonStyle(.plain)
+            }
+            
             Spacer()
             
             HStack(spacing: 8) {
@@ -358,7 +378,88 @@ struct EmailDetailView: View {
         return dateString
     }
     
-    /// Split body into primary message and quoted content
+    /// Split HTML into primary content and quoted content
+    /// Uses 7 generic patterns that cover most email clients (Gmail, Outlook, Apple Mail, etc.)
+    private func splitHTMLQuotedContent(_ html: String) -> (primary: String, quoted: String?) {
+        // Helper to split at a given range
+        func splitAt(_ range: Range<String.Index>) -> (primary: String, quoted: String?) {
+            let primary = String(html[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let quoted = String(html[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // If primary is too short, show everything as primary (no collapsing)
+            if primary.isEmpty || primary.count < 50 {
+                return (html, nil)
+            }
+            
+            return (primary, quoted.isEmpty ? nil : quoted)
+        }
+        
+        // 1. Bekannte Quote-Classes (Gmail, Yahoo, Outlook Mobile)
+        if let range = html.range(of: #"<div[^>]*class="[^"]*(gmail_quote|gmail_extra|yahoo_quoted|ms-outlook-mobile-reference-message)[^"]*"[^>]*>"#, 
+                                   options: .regularExpression) {
+            return splitAt(range)
+        }
+        
+        // 2. Blockquote (Standard HTML - Apple Mail, Thunderbird, etc.)
+        if let range = html.range(of: "<blockquote", options: .caseInsensitive) {
+            return splitAt(range)
+        }
+        
+        // 3. Border-top divider (Outlook) - MIT Kontext-Check
+        if let range = html.range(of: #"<div[^>]*style="[^"]*border-top:\s*solid[^"]*"[^>]*>"#, 
+                                   options: .regularExpression),
+           hasQuoteHeaderAfter(html, from: range.lowerBound) {
+            return splitAt(range)
+        }
+        
+        // 4. <hr> horizontal rule - MIT Kontext-Check
+        if let range = html.range(of: "<hr", options: .caseInsensitive),
+           hasQuoteHeaderAfter(html, from: range.lowerBound) {
+            return splitAt(range)
+        }
+        
+        // 5. HTML Header-Block (<b>From:</b>...<b>Sent:</b>)
+        if let range = html.range(of: #"<b>(From|Von):</b>[^<]{0,300}<b>(Sent|Date|Gesendet|Datum):</b>"#, 
+                                   options: .regularExpression) {
+            return splitAt(range)
+        }
+        
+        // 6. Text-Patterns (EN + DE)
+        if let range = html.range(of: #"On [^<]{10,100} wrote:|Am [^<]{10,100} schrieb"#, 
+                                   options: .regularExpression) {
+            return splitAt(range)
+        }
+        
+        // 7. Forwarded/Original Message (EN + DE)
+        if let range = html.range(of: #"-{3,}\s*(Forwarded|Original|Weitergeleitet)\s*[Mm]essage\s*-{3,}"#, 
+                                   options: .regularExpression) {
+            return splitAt(range)
+        }
+        
+        // Kein Quote gefunden
+        return (html, nil)
+    }
+    
+    /// Prüft ob nach einem Divider (hr, border) ein Quote-Header kommt
+    /// Verhindert false positives bei Newslettern mit <hr> für Styling
+    private func hasQuoteHeaderAfter(_ html: String, from index: String.Index) -> Bool {
+        let searchRange = String(html[index...].prefix(1000))
+        
+        let headerPatterns = [
+            #"<b>(From|Von):</b>"#,
+            #"<span[^>]*>(From|Von):</span>"#,
+            #">\s*(From|Von):\s*"#,
+        ]
+        
+        for pattern in headerPatterns {
+            if searchRange.range(of: pattern, options: .regularExpression) != nil {
+                return true
+            }
+        }
+        return false
+    }
+    
+    /// Split plain text body into primary message and quoted content
     private func splitQuotedContent(_ body: String) -> (primary: String, quoted: String?) {
         let lines = body.components(separatedBy: .newlines)
         var primaryLines: [String] = []
