@@ -24,26 +24,34 @@ class ScrollPassthroughWebView: WKWebView {
 /// A WebView that sizes itself to fit its HTML content without internal scrolling
 struct NonScrollingWebView: NSViewRepresentable {
     let html: String
+    let theme: String              // "light", "dark", "system" (default)
+    let loadRemoteImages: Bool     // Security: block tracking pixels by default
     @Binding var contentHeight: CGFloat
     
-    init(html: String, contentHeight: Binding<CGFloat>) {
+    init(html: String, theme: String = "system", loadRemoteImages: Bool = false, contentHeight: Binding<CGFloat>) {
         self.html = html
+        self.theme = theme
+        self.loadRemoteImages = loadRemoteImages
         self._contentHeight = contentHeight
     }
     
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         
-        // Enable JavaScript for height measurement
+        // Enable JavaScript for height measurement only
+        // Note: We need JS enabled to measure content height, but CSP blocks external scripts
         config.defaultWebpagePreferences.allowsContentJavaScript = true
+        
+        // SECURITY: Disable auto-opening windows
+        config.preferences.javaScriptCanOpenWindowsAutomatically = false
         
         // Use custom WebView that passes scroll events to parent
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         
-        // White background
+        // Transparent background (let parent handle background color)
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = NSColor.white.cgColor
+        webView.layer?.backgroundColor = NSColor.clear.cgColor
         
         context.coordinator.webView = webView
         context.coordinator.parent = self
@@ -52,35 +60,84 @@ struct NonScrollingWebView: NSViewRepresentable {
     }
     
     func updateNSView(_ webView: WKWebView, context: Context) {
-        let styledHTML = buildHTML(html: html)
+        // Update parent reference for height binding
+        context.coordinator.parent = self
+        
+        let styledHTML = buildSecureHTML(html: html, theme: theme, loadRemoteImages: loadRemoteImages)
         webView.loadHTMLString(styledHTML, baseURL: nil)
     }
     
-    private func buildHTML(html: String) -> String {
+    private func buildSecureHTML(html: String, theme: String, loadRemoteImages: Bool) -> String {
+        // Dynamic CSP based on loadRemoteImages setting
+        // Note: script-src 'unsafe-inline' needed for height measurement
+        let csp: String
+        if loadRemoteImages {
+            csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: cid: https: http:;"
+        } else {
+            csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: cid:;"
+        }
+        
+        // Theme CSS with robust dark mode (CSS filter invert)
+        let themeCSS: String
+        switch theme {
+        case "light":
+            themeCSS = """
+                body { background-color: transparent; color: #000000; }
+                a { color: #0066cc; }
+            """
+        case "dark":
+            themeCSS = """
+                html {
+                    filter: invert(1) hue-rotate(180deg);
+                    background-color: transparent;
+                }
+                img, video, iframe, [style*="background-image"] {
+                    filter: invert(1) hue-rotate(180deg);
+                }
+            """
+        default: // "system" - follow system preference via @media query
+            themeCSS = """
+                @media (prefers-color-scheme: dark) {
+                    html {
+                        filter: invert(1) hue-rotate(180deg);
+                        background-color: transparent;
+                    }
+                    img, video, iframe, [style*="background-image"] {
+                        filter: invert(1) hue-rotate(180deg);
+                    }
+                }
+                @media (prefers-color-scheme: light) {
+                    body { background-color: transparent; color: #000000; }
+                    a { color: #0066cc; }
+                }
+            """
+        }
+        
         return """
         <!DOCTYPE html>
-        <html style="background-color: white !important;">
+        <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta http-equiv="Content-Security-Policy" content="\(csp)">
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 html, body {
-                    background-color: white !important;
+                    background-color: transparent;
                     overflow: hidden;
                 }
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
                     font-size: 14px;
                     line-height: 1.5;
-                    padding: 12px;
-                    color: #555;
+                    padding: 0;
+                    color-scheme: light dark;
                 }
                 img { max-width: 100%; height: auto; }
-                a { color: #0066cc; }
+                \(themeCSS)
             </style>
         </head>
-        <body style="background-color: white !important;">\(html)</body>
+        <body>\(html)</body>
         </html>
         """
     }

@@ -260,7 +260,17 @@ struct ContentView: View {
             if let emailId = cursorEmailId,
                let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
                 ZStack(alignment: .bottomTrailing) {
-                    notmuchEmailDetailView(email: email)
+                    EmailDetailView(
+                        email: email,
+                        onReply: replyToSelected,
+                        onReplyAll: replyAllToSelected,
+                        onForward: forwardSelected,
+                        onLoadBody: {
+                            Task {
+                                await accountManager.fetchNotmuchEmailBody(id: email.id)
+                            }
+                        }
+                    )
                     
                     // Selection badge when multiple emails marked
                     if markedEmails.count > 1 {
@@ -331,165 +341,7 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Email Detail View
-    
-    @ViewBuilder
-    private func notmuchEmailDetailView(email: MailMessage) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Fixed Header
-            VStack(alignment: .leading, spacing: 8) {
-                Text(email.subject)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .textSelection(.enabled)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    // From + Date (rechts)
-                    HStack {
-                        Text("From:")
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-                        Text(email.from)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Text(email.date)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                    
-                    // Cc (nur wenn vorhanden)
-                    if let cc = email.cc, !cc.isEmpty {
-                        HStack {
-                            Text("Cc:")
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-                            Text(cc)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    
-                    // Tags (nur wenn vorhanden)
-                    if let tags = email.tags {
-                        HStack {
-                            Text("Tags:")
-                                .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-                            Text(tags)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .font(.callout)
-            }
-            .padding(20)
-            .padding(.bottom, 12)
-            
-            Divider()
-            
-            // Body - WebView hat eigenes Scrolling, Text braucht ScrollView
-            switch email.bodyState {
-            case .notLoaded:
-                ScrollView {
-                    Text("Click to load")
-                        .foregroundStyle(.secondary)
-                        .padding(20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .overlayScrollbars()
-                .onTapGesture {
-                    Task {
-                        await accountManager.fetchNotmuchEmailBody(id: email.id)
-                    }
-                }
-            case .loading:
-                HStack {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                    Text("Loading...")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .loaded(let body, _):
-                if let html = email.htmlBody, !html.isEmpty {
-                    // WebView hat eigenes Scrolling - keine ScrollView nötig
-                    EmailWebView(
-                                        html: html,
-                                        theme: SettingsManager.shared.settings.theme,
-                                        loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages
-                                    )
-                } else {
-                    // Text braucht ScrollView
-                    ScrollView {
-                        Text(makeLinksClickable(body))
-                            .textSelection(.enabled)
-                            .padding(20)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .overlayScrollbars()
-                }
-            case .failed(let message):
-                Text("Failed: \(message)")
-                    .foregroundStyle(.red)
-                    .padding(20)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(Color(NSColor.controlBackgroundColor))
-        .navigationTitle("Email")
-        .onAppear {
-            // Auto-load body if not loaded or previously failed
-            switch email.bodyState {
-            case .notLoaded, .failed:
-                Task {
-                    await accountManager.fetchNotmuchEmailBody(id: email.id)
-                }
-            case .loading, .loaded:
-                break // Already loading or loaded
-            }
-        }
-    }
-    
     // MARK: - Helper Methods
-    
-    private func makeLinksClickable(_ text: String) -> AttributedString {
-        var attributedString = AttributedString(text)
-        
-        // HTTP/HTTPS URLs - clickable, opens in browser
-        let urlPattern = #"https?://[^\s<>\"'\]\)]+"#
-        if let regex = try? NSRegularExpression(pattern: urlPattern) {
-            let range = NSRange(text.startIndex..., in: text)
-            let matches = regex.matches(in: text, range: range)
-            
-            for match in matches {
-                if let swiftRange = Range(match.range, in: text),
-                   let attrRange = Range(swiftRange, in: attributedString) {
-                    let urlString = String(text[swiftRange])
-                    if let url = URL(string: urlString) {
-                        attributedString[attrRange].link = url
-                        attributedString[attrRange].foregroundColor = .blue
-                        attributedString[attrRange].underlineStyle = .single
-                    }
-                }
-            }
-        }
-        
-        // Mailto links - just styled blue, not clickable (for now)
-        let mailtoPattern = #"mailto:[^\s<>\"'\]\)]+"#
-        if let regex = try? NSRegularExpression(pattern: mailtoPattern) {
-            let range = NSRange(text.startIndex..., in: text)
-            let matches = regex.matches(in: text, range: range)
-            
-            for match in matches {
-                if let swiftRange = Range(match.range, in: text),
-                   let attrRange = Range(swiftRange, in: attributedString) {
-                    attributedString[attrRange].foregroundColor = .blue
-                    attributedString[attrRange].underlineStyle = .single
-                }
-            }
-        }
-        
-        return attributedString
-    }
     
     private func handleNotmuchEmailSelection(_ emailId: String) {
         detailMode = .notmuchEmailDetail(emailId: emailId)
