@@ -2,11 +2,31 @@
 //  EmailDetailView.swift
 //  Durian
 //
-//  Modern email detail view with card layout, quote collapsing, and inline actions
+//  Modern email detail view with chat-style cards for reply threads
 //  Based on Figma design
 //
 
 import SwiftUI
+
+// MARK: - Email Message Model
+
+/// Represents a single message in a thread (extracted from quoted content)
+struct EmailMessage: Identifiable, Equatable {
+    let id: String  // Stable ID based on content hash
+    let from: String
+    let date: String
+    let htmlContent: String
+    
+    init(from: String, date: String, htmlContent: String) {
+        // Create stable ID from content - same content = same ID
+        self.id = "\(from.hashValue)-\(date.hashValue)-\(htmlContent.hashValue)"
+        self.from = from
+        self.date = date
+        self.htmlContent = htmlContent
+    }
+}
+
+// MARK: - Email Detail View
 
 struct EmailDetailView: View {
     let email: MailMessage
@@ -18,29 +38,25 @@ struct EmailDetailView: View {
     // MARK: - State
     
     @State private var isDetailsExpanded: Bool = false
-    @State private var isQuotedExpanded: Bool = false
-    @State private var webViewHeight: CGFloat = 100
-    @State private var quotedWebViewHeight: CGFloat = 100
+    @State private var messageHeights: [Int: CGFloat] = [:]  // Use index as key for stable IDs
+    @State private var parsedMessages: [EmailMessage] = []
     
-    /// Check if current email has quoted content (computed on demand)
-    private var hasQuotedContent: Bool {
+    private func parseAndCacheMessages() {
         if let html = email.htmlBody, !html.isEmpty {
-            let (_, quoted) = splitHTMLQuotedContent(html)
-            return quoted != nil
-        } else if case .loaded(let body, _) = email.bodyState {
-            let (_, quoted) = splitQuotedContent(body)
-            return quoted != nil && !quoted!.isEmpty
+            parsedMessages = splitIntoMessages(html)
+        } else {
+            // Plain text fallback: single message with empty HTML (will show nothing)
+            parsedMessages = [EmailMessage(from: email.from, date: email.date, htmlContent: "")]
         }
-        return false
     }
     
     // MARK: - Body
     
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
                 headerSection
-                bodyCard
+                messageCards
             }
         }
         .overlayScrollbars()
@@ -57,10 +73,100 @@ struct EmailDetailView: View {
         // Reset state when email changes
         .onChange(of: email.id) { _ in
             isDetailsExpanded = false
-            isQuotedExpanded = false
-            webViewHeight = 100
-            quotedWebViewHeight = 100
+            messageHeights = [:]
+            parseAndCacheMessages()
         }
+        .onAppear {
+            // Initial parse
+            if parsedMessages.isEmpty {
+                parseAndCacheMessages()
+            }
+        }
+    }
+    
+    // MARK: - Message Cards (Chat-Style Thread View)
+    
+    @ViewBuilder
+    private var messageCards: some View {
+        switch email.bodyState {
+        case .notLoaded:
+            loadingCard(text: "Click to load") {
+                onLoadBody()
+            }
+            
+        case .loading:
+            loadingCard(text: nil, action: nil)
+            
+        case .loaded:
+            ForEach(Array(parsedMessages.enumerated()), id: \.element.id) { index, message in
+                MessageCardView(
+                    message: message,
+                    isFirst: index == 0,
+                    isDetailsExpanded: index == 0 ? $isDetailsExpanded : .constant(false),
+                    showExpandableDetails: index == 0,
+                    email: email,
+                    contentHeight: bindingForMessageIndex(index),
+                    onReply: onReply,
+                    onReplyAll: onReplyAll,
+                    onForward: onForward
+                )
+            }
+            
+        case .failed(let errorMessage):
+            errorCard(message: errorMessage)
+        }
+    }
+    
+    private func bindingForMessageIndex(_ index: Int) -> Binding<CGFloat> {
+        Binding(
+            get: { messageHeights[index] ?? 100 },
+            set: { messageHeights[index] = $0 }
+        )
+    }
+    
+    @ViewBuilder
+    private func loadingCard(text: String?, action: (() -> Void)?) -> some View {
+        VStack {
+            if let text = text {
+                Text(text)
+                    .foregroundColor(Color.Detail.textTertiary)
+                    .padding(.vertical, 20)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        action?()
+                    }
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Loading...")
+                        .foregroundColor(Color.Detail.textTertiary)
+                }
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
+        .padding(.horizontal, 32)
+        .padding(.top, 24)
+        .padding(.bottom, 32)
+    }
+    
+    @ViewBuilder
+    private func errorCard(message: String) -> some View {
+        Text("Failed: \(message)")
+            .foregroundColor(.red)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .background(Color.white)
+            .cornerRadius(10)
+            .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
+            .padding(.horizontal, 32)
+            .padding(.top, 24)
+            .padding(.bottom, 32)
     }
     
     // MARK: - Header Section
@@ -78,267 +184,7 @@ struct EmailDetailView: View {
         }
     }
     
-    // MARK: - Body Card
-    
-    @ViewBuilder
-    private var bodyCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            senderRow
-            
-            if isDetailsExpanded {
-                expandedDetails
-            }
-            
-            bodyContent
-            
-            actionFooter
-        }
-        .padding(.top, 24)
-        .padding(.horizontal, 24)
-        .padding(.bottom, 16)
-        .background(Color.white)
-        .cornerRadius(10)
-        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
-        .padding(.horizontal, 32)
-        .padding(.top, 24)
-        .padding(.bottom, 32)
-    }
-    
-    // MARK: - Sender Row
-    
-    @ViewBuilder
-    private var senderRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            AvatarView(name: email.from, size: 40)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(extractName(from: email.from))
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color.Detail.textPrimary)
-                
-                // "To: X" with chevron
-                HStack(spacing: 4) {
-                    Text("To: \(formatRecipients(email.to))")
-                        .font(.system(size: 14))
-                        .foregroundColor(Color.Detail.textSecondary)
-                        .lineLimit(1)
-                    
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.Detail.textSecondary)
-                        .rotationEffect(.degrees(isDetailsExpanded ? 90 : 0))
-                        .animation(.easeInOut(duration: 0.2), value: isDetailsExpanded)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isDetailsExpanded.toggle()
-                    }
-                }
-            }
-            
-            Spacer()
-            
-            Text(formatDate(email.date))
-                .font(.system(size: 14))
-                .foregroundColor(Color.Detail.textTertiary)
-        }
-    }
-    
-    // MARK: - Expanded Details
-    
-    @ViewBuilder
-    private var expandedDetails: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // From (full email)
-            if email.from.contains("<") || email.from.contains("@") {
-                detailRow(label: "From", value: email.from)
-            }
-            
-            // To (full)
-            if let to = email.to, !to.isEmpty {
-                detailRow(label: "To", value: to)
-            }
-            
-            // Cc
-            if let cc = email.cc, !cc.isEmpty {
-                detailRow(label: "Cc", value: cc)
-            }
-            
-            // Tags
-            if let tags = email.tags, !tags.isEmpty {
-                detailRow(label: "Tags", value: tags)
-            }
-            
-            // Message-ID (for debugging/power users)
-            if let messageId = email.messageId {
-                detailRow(label: "Message-ID", value: messageId)
-            }
-        }
-        .padding(.leading, 52) // Align with text after avatar (40 + 12)
-        .padding(.top, 8)
-        .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-    
-    @ViewBuilder
-    private func detailRow(label: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("\(label):")
-                .font(.system(size: 13))
-                .foregroundColor(Color.Detail.textTertiary)
-                .frame(width: 70, alignment: .trailing)
-            
-            Text(value)
-                .font(.system(size: 13))
-                .foregroundColor(Color.Detail.textSecondary)
-                .textSelection(.enabled)
-        }
-    }
-    
-    // MARK: - Body Content
-    
-    @ViewBuilder
-    private var bodyContent: some View {
-        switch email.bodyState {
-        case .notLoaded:
-            Text("Click to load")
-                .foregroundColor(Color.Detail.textTertiary)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    onLoadBody()
-                }
-            
-        case .loading:
-            HStack(spacing: 8) {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text("Loading...")
-                    .foregroundColor(Color.Detail.textTertiary)
-            }
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity, alignment: .center)
-            
-        case .loaded(let body, _):
-            loadedBodyContent(body: body)
-            
-        case .failed(let message):
-            Text("Failed: \(message)")
-                .foregroundColor(.red)
-                .padding(.vertical, 20)
-        }
-    }
-    
-    @ViewBuilder
-    private func loadedBodyContent(body: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Primary content (always visible)
-            if let html = email.htmlBody, !html.isEmpty {
-                // HTML emails: split into primary + quoted
-                let (primaryHTML, quotedHTML) = splitHTMLQuotedContent(html)
-                
-                // Primary HTML (always visible)
-                NonScrollingWebView(
-                    html: primaryHTML,
-                    theme: SettingsManager.shared.settings.theme,
-                    loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
-                    contentHeight: $webViewHeight
-                )
-                .frame(height: max(webViewHeight, 50))
-                
-                // Quoted HTML (only when expanded)
-                if let quoted = quotedHTML, isQuotedExpanded {
-                    quotedHTMLSection(html: quoted)
-                }
-            } else {
-                // Plain text: split into primary + quoted
-                let (primary, quoted) = splitQuotedContent(body)
-                
-                Text(makeLinksClickable(primary))
-                    .font(.system(size: 16))
-                    .foregroundColor(Color.Detail.textBody)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                // Quoted content (only when expanded)
-                if let quoted = quoted, !quoted.isEmpty, isQuotedExpanded {
-                    quotedContentSection(quoted: quoted)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Quoted Content Section (Plain Text)
-    
-    @ViewBuilder
-    private func quotedContentSection(quoted: String) -> some View {
-        Text(makeLinksClickable(quoted))
-            .font(.system(size: 14))
-            .foregroundColor(Color.Detail.textSecondary)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 8)
-    }
-    
-    // MARK: - Quoted Content Section (HTML)
-    
-    @ViewBuilder
-    private func quotedHTMLSection(html: String) -> some View {
-        NonScrollingWebView(
-            html: html,
-            theme: SettingsManager.shared.settings.theme,
-            loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
-            contentHeight: $quotedWebViewHeight
-        )
-        .frame(height: max(quotedWebViewHeight, 50))
-        .padding(.top, 8)
-    }
-    
-    // MARK: - Action Footer
-    
-    @ViewBuilder
-    private var actionFooter: some View {
-        HStack {
-            // "See more" / "See less" button (left side)
-            if hasQuotedContent {
-                Button(action: {
-                    isQuotedExpanded.toggle()
-                }) {
-                    Text(isQuotedExpanded ? "See less" : "See more")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color.Detail.linkBlue)
-                }
-                .buttonStyle(.plain)
-            }
-            
-            Spacer()
-            
-            HStack(spacing: 8) {
-                // Reply button
-                Button(action: onReply) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary)
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .help("Reply")
-                
-                // React button (placeholder, disabled)
-                Button(action: {}) {
-                    Image(systemName: "face.smiling")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
-                        .frame(width: 36, height: 36)
-                }
-                .buttonStyle(.plain)
-                .disabled(true)
-                .help("React (coming soon)")
-            }
-        }
-        .padding(.top, 8)
-    }
+
     
     // MARK: - Helper Methods
     
@@ -375,70 +221,156 @@ struct EmailDetailView: View {
         return dateString
     }
     
-    /// Split HTML into primary content and quoted content
-    /// Uses 7 generic patterns that cover most email clients (Gmail, Outlook, Apple Mail, etc.)
-    private func splitHTMLQuotedContent(_ html: String) -> (primary: String, quoted: String?) {
-        // Helper to split at a given range
-        func splitAt(_ range: Range<String.Index>) -> (primary: String, quoted: String?) {
-            let primary = String(html[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-            let quoted = String(html[range.lowerBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            // If primary is too short, show everything as primary (no collapsing)
-            if primary.isEmpty || primary.count < 50 {
-                return (html, nil)
+    /// Split HTML into individual messages for chat-style thread view
+    /// Returns array of EmailMessage with newest first (primary message at index 0)
+    private func splitIntoMessages(_ html: String) -> [EmailMessage] {
+        var messages: [EmailMessage] = []
+        var remainingHTML = html
+        
+        // First message is always from the email itself
+        if let firstSplitIndex = findFirstQuoteSplit(in: remainingHTML) {
+            let primaryContent = String(remainingHTML[..<firstSplitIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Only add if content has actual text (not just HTML tags)
+            if hasVisibleContent(primaryContent) {
+                messages.append(EmailMessage(from: email.from, date: email.date, htmlContent: primaryContent))
             }
+            remainingHTML = String(remainingHTML[firstSplitIndex...])
+        } else {
+            // No quotes found - single message
+            messages.append(EmailMessage(from: email.from, date: email.date, htmlContent: html))
+            return messages
+        }
+        
+        // Parse remaining quoted messages (limit to 20 to prevent infinite loops)
+        var iterations = 0
+        while !remainingHTML.isEmpty && iterations < 20 {
+            iterations += 1
             
-            return (primary, quoted.isEmpty ? nil : quoted)
+            // Extract From and Date from quote header
+            let (from, date) = extractQuoteHeader(from: remainingHTML)
+            
+            // Find next quote split or use rest of content
+            if let nextSplit = findFirstQuoteSplit(in: remainingHTML, skipFirst: true) {
+                let content = String(remainingHTML[..<nextSplit]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if hasVisibleContent(content) {
+                    messages.append(EmailMessage(from: from, date: date, htmlContent: content))
+                }
+                remainingHTML = String(remainingHTML[nextSplit...])
+            } else {
+                // Last message
+                let finalContent = remainingHTML.trimmingCharacters(in: .whitespacesAndNewlines)
+                if hasVisibleContent(finalContent) {
+                    messages.append(EmailMessage(from: from, date: date, htmlContent: finalContent))
+                }
+                break
+            }
         }
         
-        // 1. Bekannte Quote-Classes (Gmail, Yahoo, Outlook Mobile)
-        if let range = html.range(of: #"<div[^>]*class="[^"]*(gmail_quote|gmail_extra|yahoo_quoted|ms-outlook-mobile-reference-message)[^"]*"[^>]*>"#, 
-                                   options: .regularExpression) {
-            return splitAt(range)
+        // If no messages were created (all empty), return the original as single message
+        if messages.isEmpty {
+            messages.append(EmailMessage(from: email.from, date: email.date, htmlContent: html))
         }
         
-        // 2. Blockquote (Standard HTML - Apple Mail, Thunderbird, etc.)
-        if let range = html.range(of: "<blockquote", options: .caseInsensitive) {
-            return splitAt(range)
-        }
-        
-        // 3. Border-top divider (Outlook) - MIT Kontext-Check
-        if let range = html.range(of: #"<div[^>]*style="[^"]*border-top:\s*solid[^"]*"[^>]*>"#, 
-                                   options: .regularExpression),
-           hasQuoteHeaderAfter(html, from: range.lowerBound) {
-            return splitAt(range)
-        }
-        
-        // 4. <hr> horizontal rule - MIT Kontext-Check
-        if let range = html.range(of: "<hr", options: .caseInsensitive),
-           hasQuoteHeaderAfter(html, from: range.lowerBound) {
-            return splitAt(range)
-        }
-        
-        // 5. HTML Header-Block (<b>From:</b>...<b>Sent:</b>)
-        if let range = html.range(of: #"<b>(From|Von):</b>[^<]{0,300}<b>(Sent|Date|Gesendet|Datum):</b>"#, 
-                                   options: .regularExpression) {
-            return splitAt(range)
-        }
-        
-        // 6. Text-Patterns (EN + DE)
-        if let range = html.range(of: #"On [^<]{10,100} wrote:|Am [^<]{10,100} schrieb"#, 
-                                   options: .regularExpression) {
-            return splitAt(range)
-        }
-        
-        // 7. Forwarded/Original Message (EN + DE)
-        if let range = html.range(of: #"-{3,}\s*(Forwarded|Original|Weitergeleitet)\s*[Mm]essage\s*-{3,}"#, 
-                                   options: .regularExpression) {
-            return splitAt(range)
-        }
-        
-        // Kein Quote gefunden
-        return (html, nil)
+        return messages
     }
     
-    /// Prüft ob nach einem Divider (hr, border) ein Quote-Header kommt
-    /// Verhindert false positives bei Newslettern mit <hr> für Styling
+    /// Check if HTML content has visible text (not just empty tags)
+    private func hasVisibleContent(_ html: String) -> Bool {
+        // Strip HTML tags and check if there's actual content
+        let stripped = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return stripped.count > 10  // Need at least 10 chars of actual content
+    }
+    
+    /// Find the first quote marker position in HTML
+    private func findFirstQuoteSplit(in html: String, skipFirst: Bool = false) -> String.Index? {
+        let searchStart: String.Index
+        
+        // If skipping first, move past initial content to avoid matching the current header
+        if skipFirst {
+            guard html.count > 100 else { return nil }
+            searchStart = html.index(html.startIndex, offsetBy: 100)
+        } else {
+            searchStart = html.startIndex
+        }
+        
+        // Quote patterns in order of priority: (pattern, needsContextCheck)
+        let patterns: [(String, Bool)] = [
+            (#"<div[^>]*class="[^"]*(gmail_quote|gmail_extra|yahoo_quoted|ms-outlook-mobile-reference-message)[^"]*"[^>]*>"#, false),
+            ("<blockquote", false),
+            (#"<div[^>]*style="[^"]*border-top:\s*solid[^"]*"[^>]*>"#, true),
+            (#"<div[^>]*style="[^"]*border-style:\s*solid\s+none\s+none[^"]*"[^>]*>"#, true),
+            ("<hr", true),
+        ]
+        
+        // Find earliest match across all patterns
+        var earliestMatch: String.Index? = nil
+        
+        for (pattern, needsContext) in patterns {
+            if let range = html.range(of: pattern, options: [.regularExpression, .caseInsensitive], range: searchStart..<html.endIndex) {
+                // Check context if needed
+                if needsContext && !hasQuoteHeaderAfter(html, from: range.lowerBound) {
+                    continue
+                }
+                
+                // Track earliest match
+                if earliestMatch == nil || range.lowerBound < earliestMatch! {
+                    earliestMatch = range.lowerBound
+                }
+            }
+        }
+        
+        return earliestMatch
+    }
+    
+    /// Extract From and Date from quote header HTML
+    private func extractQuoteHeader(from html: String) -> (from: String, date: String) {
+        var extractedFrom = "Unknown"
+        var extractedDate = ""
+        
+        // Look for "From:" or "Von:" pattern with email
+        // Pattern: <b>From:</b> Name <email> or plain text
+        let fromPatterns = [
+            #"<b>(?:From|Von):\s*</b>\s*([^<]+(?:<[^>]+>[^<]*)?)"#,
+            #"<span[^>]*>(?:From|Von):\s*</span>\s*([^<]+)"#,
+            #">(?:From|Von):\s*</?\w*>?\s*([^<]+<[^>]+>)"#,
+        ]
+        
+        for pattern in fromPatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+               let match = regex.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                extractedFrom = String(html[range])
+                    .replacingOccurrences(of: "&lt;", with: "<")
+                    .replacingOccurrences(of: "&gt;", with: ">")
+                    .replacingOccurrences(of: "&amp;", with: "&")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
+        
+        // Look for "Date:", "Sent:", "Gesendet:", "Datum:" pattern
+        let datePatterns = [
+            #"<b>(?:Date|Sent|Gesendet|Datum):\s*</b>\s*([^<]+)"#,
+            #"<span[^>]*>(?:Date|Sent|Gesendet|Datum):\s*</span>\s*([^<]+)"#,
+            #">(?:Date|Sent|Gesendet|Datum):\s*([^<]+)<"#,
+        ]
+        
+        for pattern in datePatterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+               let match = regex.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
+               let range = Range(match.range(at: 1), in: html) {
+                extractedDate = String(html[range])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
+        
+        return (extractedFrom, extractedDate)
+    }
+    
+    /// Check if quote header (From:/Von:) appears after a divider
     private func hasQuoteHeaderAfter(_ html: String, from index: String.Index) -> Bool {
         let searchRange = String(html[index...].prefix(1000))
         
@@ -454,63 +386,6 @@ struct EmailDetailView: View {
             }
         }
         return false
-    }
-    
-    /// Split plain text body into primary message and quoted content
-    private func splitQuotedContent(_ body: String) -> (primary: String, quoted: String?) {
-        let lines = body.components(separatedBy: .newlines)
-        var primaryLines: [String] = []
-        var quotedLines: [String] = []
-        var inQuotedSection = false
-        
-        for (index, line) in lines.enumerated() {
-            // Check for quote markers
-            if !inQuotedSection {
-                // "On ... wrote:" pattern
-                if line.matches(pattern: "^On .+ wrote:$") {
-                    inQuotedSection = true
-                    quotedLines.append(line)
-                    continue
-                }
-                
-                // "---------- Forwarded message ----------"
-                if line.contains("---------- Forwarded message ----------") ||
-                   line.contains("----- Original Message -----") {
-                    inQuotedSection = true
-                    quotedLines.append(line)
-                    continue
-                }
-                
-                // Outlook style: "From: ... Sent: ..."
-                if line.matches(pattern: "^From: .+") && index + 1 < lines.count &&
-                   lines[index + 1].matches(pattern: "^Sent: .+") {
-                    inQuotedSection = true
-                    quotedLines.append(line)
-                    continue
-                }
-                
-                // Line starting with ">" (classic quoting)
-                if line.hasPrefix(">") {
-                    // Check if this is start of a quoted block (multiple lines)
-                    let remainingLines = lines.dropFirst(index)
-                    let quotedCount = remainingLines.prefix(3).filter { $0.hasPrefix(">") }.count
-                    if quotedCount >= 2 {
-                        inQuotedSection = true
-                        quotedLines.append(line)
-                        continue
-                    }
-                }
-                
-                primaryLines.append(line)
-            } else {
-                quotedLines.append(line)
-            }
-        }
-        
-        let primary = primaryLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        let quoted = quotedLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        return (primary, quoted.isEmpty ? nil : quoted)
     }
     
     /// Convert URLs in text to clickable links
@@ -549,5 +424,191 @@ private extension String {
         }
         let range = NSRange(self.startIndex..., in: self)
         return regex.firstMatch(in: self, options: [], range: range) != nil
+    }
+}
+
+// MARK: - Message Card View
+
+/// A single message card in the thread view
+struct MessageCardView: View {
+    let message: EmailMessage
+    let isFirst: Bool
+    @Binding var isDetailsExpanded: Bool
+    let showExpandableDetails: Bool
+    let email: MailMessage
+    @Binding var contentHeight: CGFloat
+    let onReply: () -> Void
+    let onReplyAll: () -> Void
+    let onForward: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            senderRow
+            
+            if showExpandableDetails && isDetailsExpanded {
+                expandedDetails
+            }
+            
+            // HTML Content (only render if not empty)
+            if !message.htmlContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                NonScrollingWebView(
+                    html: message.htmlContent,
+                    theme: SettingsManager.shared.settings.theme,
+                    loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
+                    contentHeight: $contentHeight
+                )
+                .frame(height: max(contentHeight, 50))
+            }
+            
+            // Action footer only on first card
+            if isFirst {
+                actionFooter
+            }
+        }
+        .padding(.top, 24)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 16)
+        .background(Color.white)
+        .cornerRadius(10)
+        .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
+        .padding(.horizontal, 32)
+        .padding(.top, isFirst ? 24 : 0)
+        .padding(.bottom, 16)
+    }
+    
+    // MARK: - Sender Row
+    
+    @ViewBuilder
+    private var senderRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            AvatarView(name: message.from, size: 40)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(extractName(from: message.from))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color.Detail.textPrimary)
+                
+                // Expandable details chevron only on first card
+                if showExpandableDetails {
+                    HStack(spacing: 4) {
+                        Text("Details")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color.Detail.textSecondary)
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color.Detail.textSecondary)
+                            .rotationEffect(.degrees(isDetailsExpanded ? 90 : 0))
+                            .animation(.easeInOut(duration: 0.2), value: isDetailsExpanded)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isDetailsExpanded.toggle()
+                        }
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            Text(message.date)
+                .font(.system(size: 14))
+                .foregroundColor(Color.Detail.textTertiary)
+                .lineLimit(1)
+        }
+    }
+    
+    // MARK: - Expanded Details (only for first card)
+    
+    @ViewBuilder
+    private var expandedDetails: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if email.from.contains("<") || email.from.contains("@") {
+                detailRow(label: "From", value: email.from)
+            }
+            
+            if let to = email.to, !to.isEmpty {
+                detailRow(label: "To", value: to)
+            }
+            
+            if let cc = email.cc, !cc.isEmpty {
+                detailRow(label: "Cc", value: cc)
+            }
+            
+            if let tags = email.tags, !tags.isEmpty {
+                detailRow(label: "Tags", value: tags)
+            }
+            
+            if let messageId = email.messageId {
+                detailRow(label: "Message-ID", value: messageId)
+            }
+        }
+        .padding(.leading, 52)
+        .padding(.top, 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+    
+    @ViewBuilder
+    private func detailRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(label):")
+                .font(.system(size: 13))
+                .foregroundColor(Color.Detail.textTertiary)
+                .frame(width: 70, alignment: .trailing)
+            
+            Text(value)
+                .font(.system(size: 13))
+                .foregroundColor(Color.Detail.textSecondary)
+                .textSelection(.enabled)
+        }
+    }
+    
+    // MARK: - Action Footer
+    
+    @ViewBuilder
+    private var actionFooter: some View {
+        HStack {
+            Spacer()
+            
+            HStack(spacing: 8) {
+                Button(action: onReply) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.Detail.textTertiary)
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .help("Reply")
+                
+                Button(action: {}) {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.plain)
+                .disabled(true)
+                .help("React (coming soon)")
+            }
+        }
+        .padding(.top, 8)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func extractName(from: String) -> String {
+        if let range = from.range(of: "<") {
+            let namePart = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            if !namePart.isEmpty {
+                return namePart
+            }
+        }
+        if from.contains("@") {
+            if let atIndex = from.firstIndex(of: "@") {
+                return String(from[..<atIndex])
+            }
+        }
+        return from
     }
 }

@@ -64,7 +64,13 @@ struct NonScrollingWebView: NSViewRepresentable {
         context.coordinator.parent = self
         
         let styledHTML = buildSecureHTML(html: html, theme: theme, loadRemoteImages: loadRemoteImages)
-        webView.loadHTMLString(styledHTML, baseURL: nil)
+        
+        // Only reload if HTML actually changed - prevents infinite loop
+        // (contentHeight binding triggers re-render → updateNSView → reload → didFinish → height update → loop)
+        if context.coordinator.lastLoadedHTML != styledHTML {
+            context.coordinator.lastLoadedHTML = styledHTML
+            webView.loadHTMLString(styledHTML, baseURL: nil)
+        }
     }
     
     private func buildSecureHTML(html: String, theme: String, loadRemoteImages: Bool) -> String {
@@ -149,6 +155,7 @@ struct NonScrollingWebView: NSViewRepresentable {
     class Coordinator: NSObject, WKNavigationDelegate {
         weak var webView: WKWebView?
         var parent: NonScrollingWebView?
+        var lastLoadedHTML: String?  // Track to prevent reload loops
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Measure content height after page loads
