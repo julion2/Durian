@@ -25,3 +25,24 @@ type MailContent struct {
 	HTML        string   `json:"html,omitempty"`
 	Attachments []string `json:"attachments,omitempty"`
 }
+
+// ThreadContent represents a complete email thread with all messages
+type ThreadContent struct {
+	ThreadID string        `json:"thread_id"`
+	Subject  string        `json:"subject"`
+	Messages []MessageInfo `json:"messages"`
+}
+
+// MessageInfo represents a single message within a thread
+type MessageInfo struct {
+	ID          string   `json:"id"`
+	From        string   `json:"from"`
+	To          string   `json:"to,omitempty"`
+	CC          string   `json:"cc,omitempty"`
+	Date        string   `json:"date"`
+	Timestamp   int64    `json:"timestamp"`
+	Body        string   `json:"body"`
+	HTML        string   `json:"html,omitempty"`
+	Attachments []string `json:"attachments,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+}

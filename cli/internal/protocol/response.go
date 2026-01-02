@@ -17,11 +17,12 @@ const (
 
 // Response represents a JSON response sent to the client
 type Response struct {
-	OK        bool              `json:"ok"`
-	ErrorCode ErrorCode         `json:"error_code,omitempty"`
-	Error     string            `json:"error,omitempty"`
-	Results   []mail.Mail       `json:"results,omitempty"`
-	Mail      *mail.MailContent `json:"mail,omitempty"`
+	OK        bool                `json:"ok"`
+	ErrorCode ErrorCode           `json:"error_code,omitempty"`
+	Error     string              `json:"error,omitempty"`
+	Results   []mail.Mail         `json:"results,omitempty"`
+	Mail      *mail.MailContent   `json:"mail,omitempty"`
+	Thread    *mail.ThreadContent `json:"thread,omitempty"`
 }
 
 // Success returns a successful response with no data
@@ -37,6 +38,11 @@ func SuccessWithResults(results []mail.Mail) Response {
 // SuccessWithMail returns a successful response with mail content
 func SuccessWithMail(m *mail.MailContent) Response {
 	return Response{OK: true, Mail: m}
+}
+
+// SuccessWithThread returns a successful response with thread content
+func SuccessWithThread(t *mail.ThreadContent) Response {
+	return Response{OK: true, Thread: t}
 }
 
 // Fail returns a failed response with an error code and message

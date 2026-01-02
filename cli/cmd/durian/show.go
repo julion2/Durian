@@ -16,10 +16,12 @@ var showHTML bool
 
 var showCmd = &cobra.Command{
 	Use:   "show <thread-id>",
-	Short: "Display email content",
-	Long: `Display the content of an email by its thread ID.
+	Short: "Display email thread content",
+	Long: `Display the content of an email thread by its thread ID.
 
-By default, the plain text body is shown. Use --html to show the HTML body instead.`,
+By default, shows all messages in the thread with plain text bodies.
+Use --html to show HTML bodies instead.
+Use --json to get structured output with all messages.`,
 	Example: `  durian show 00000000000022ca
   durian show 00000000000022ca --html
   durian show 00000000000022ca --json`,
@@ -38,43 +40,58 @@ func runShow(cmd *cobra.Command, args []string) error {
 	nmClient := notmuch.NewExecClient()
 	h := handler.New(nmClient)
 
-	resp := h.ShowByThread(threadID)
+	// Use new ShowThread for full thread support
+	resp := h.ShowThread(threadID)
 
 	if !resp.OK {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
 		os.Exit(1)
 	}
 
-	if resp.Mail == nil {
-		fmt.Fprintln(os.Stderr, "Error: no mail content returned")
+	if resp.Thread == nil {
+		fmt.Fprintln(os.Stderr, "Error: no thread content returned")
 		os.Exit(1)
 	}
 
 	if jsonOutput {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(resp.Mail)
+		return enc.Encode(resp.Thread)
 	}
 
-	return outputShowFormatted(resp.Mail)
+	return outputThreadFormatted(resp.Thread)
 }
 
-func outputShowFormatted(m *mail.MailContent) error {
-	fmt.Printf("From:    %s\n", m.From)
-	fmt.Printf("To:      %s\n", m.To)
-	fmt.Printf("Subject: %s\n", m.Subject)
-	fmt.Printf("Date:    %s\n", m.Date)
+func outputThreadFormatted(t *mail.ThreadContent) error {
+	fmt.Printf("Thread: %s\n", t.ThreadID)
+	fmt.Printf("Subject: %s\n", t.Subject)
+	fmt.Printf("Messages: %d\n", len(t.Messages))
+	fmt.Println(strings.Repeat("=", 60))
 
-	if len(m.Attachments) > 0 {
-		fmt.Printf("Attachments: %s\n", strings.Join(m.Attachments, ", "))
-	}
+	for i, msg := range t.Messages {
+		fmt.Printf("\n[%d/%d] %s\n", i+1, len(t.Messages), msg.Date)
+		fmt.Printf("From: %s\n", msg.From)
+		if msg.To != "" {
+			fmt.Printf("To:   %s\n", msg.To)
+		}
+		if len(msg.Attachments) > 0 {
+			fmt.Printf("Attachments: %s\n", strings.Join(msg.Attachments, ", "))
+		}
+		fmt.Println(strings.Repeat("-", 40))
 
-	fmt.Println()
+		if showHTML && msg.HTML != "" {
+			fmt.Println(msg.HTML)
+		} else if msg.Body != "" {
+			fmt.Println(msg.Body)
+		} else if msg.HTML != "" {
+			fmt.Println("[HTML-only message - use --html to view]")
+		} else {
+			fmt.Println("[No content]")
+		}
 
-	if showHTML && m.HTML != "" {
-		fmt.Println(m.HTML)
-	} else {
-		fmt.Println(m.Body)
+		if i < len(t.Messages)-1 {
+			fmt.Println()
+		}
 	}
 
 	return nil

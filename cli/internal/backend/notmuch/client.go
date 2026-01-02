@@ -17,6 +17,74 @@ type SearchResult struct {
 	Tags         []string `json:"tags"`
 }
 
+// ThreadMessage represents a single message from notmuch show
+type ThreadMessage struct {
+	ID        string            `json:"id"`
+	Timestamp int64             `json:"timestamp"`
+	Headers   map[string]string `json:"headers"`
+	Body      []json.RawMessage `json:"body"`
+	Tags      []string          `json:"tags"`
+	Filename  []string          `json:"filename"`
+}
+
+// BodyPart represents a part of the message body (for parsing)
+type BodyPart struct {
+	ID                 int             `json:"id"`
+	ContentType        string          `json:"content-type"`
+	Content            json.RawMessage `json:"content,omitempty"` // Can be string or array
+	ContentDisposition string          `json:"content-disposition,omitempty"`
+	Filename           string          `json:"filename,omitempty"`
+}
+
+// ExtractBodyContent extracts text/plain, text/html and attachments from a message
+func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments []string) {
+	for _, raw := range body {
+		extractFromRaw(raw, &text, &html, &attachments)
+	}
+	return
+}
+
+func extractFromRaw(raw json.RawMessage, text, html *string, attachments *[]string) {
+	var part BodyPart
+	if err := json.Unmarshal(raw, &part); err != nil {
+		return
+	}
+
+	// Check for attachment
+	if part.ContentDisposition == "attachment" && part.Filename != "" {
+		*attachments = append(*attachments, part.Filename)
+		return
+	}
+
+	// Handle multipart: content is an array of parts
+	if strings.HasPrefix(part.ContentType, "multipart/") {
+		var subParts []json.RawMessage
+		if err := json.Unmarshal(part.Content, &subParts); err == nil {
+			for _, sub := range subParts {
+				extractFromRaw(sub, text, html, attachments)
+			}
+		}
+		return
+	}
+
+	// Extract text content
+	var content string
+	if err := json.Unmarshal(part.Content, &content); err != nil {
+		return
+	}
+
+	switch part.ContentType {
+	case "text/plain":
+		if *text == "" {
+			*text = content
+		}
+	case "text/html":
+		if *html == "" {
+			*html = content
+		}
+	}
+}
+
 // Client defines the interface for notmuch operations
 type Client interface {
 	// Search searches for messages matching the query
@@ -27,6 +95,9 @@ type Client interface {
 
 	// Tag applies tag changes to messages matching the query
 	Tag(query string, tags []string) error
+
+	// ShowThread returns all messages in a thread
+	ShowThread(threadID string) ([]ThreadMessage, error)
 }
 
 // ExecClient implements Client using exec.Command
@@ -86,4 +157,45 @@ func (c *ExecClient) Tag(query string, tags []string) error {
 
 	cmd := exec.Command("notmuch", args...)
 	return cmd.Run()
+}
+
+// ShowThread returns all messages in a thread using notmuch show
+func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
+	cmd := exec.Command("notmuch", "show", "--format=json", "--entire-thread=true", "thread:"+threadID)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// notmuch show returns a deeply nested structure: [[[msg, [replies]], ...]]
+	// We need to flatten this into a simple list of messages
+	var raw json.RawMessage
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, err
+	}
+
+	var messages []ThreadMessage
+	flattenThread(raw, &messages)
+	return messages, nil
+}
+
+// flattenThread recursively extracts messages from notmuch's nested thread structure
+func flattenThread(data json.RawMessage, messages *[]ThreadMessage) {
+	// Try to parse as array first
+	var arr []json.RawMessage
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return
+	}
+
+	for _, item := range arr {
+		// Try to parse as message (has "id" field)
+		var msg ThreadMessage
+		if err := json.Unmarshal(item, &msg); err == nil && msg.ID != "" {
+			*messages = append(*messages, msg)
+			continue
+		}
+
+		// Otherwise recurse into nested arrays
+		flattenThread(item, messages)
+	}
 }

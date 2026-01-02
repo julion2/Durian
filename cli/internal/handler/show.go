@@ -4,7 +4,10 @@ import (
 	"errors"
 	"net/mail"
 	"os"
+	"sort"
 
+	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	internmail "github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )
 
@@ -25,7 +28,7 @@ func (h *Handler) Show(file string) protocol.Response {
 	return protocol.SuccessWithMail(content)
 }
 
-// ShowByThread handles the "show" command for a thread ID
+// ShowByThread handles the "show" command for a thread ID (single message - legacy)
 func (h *Handler) ShowByThread(thread string) protocol.Response {
 	files, err := h.notmuch.GetFiles("thread:"+thread, 1)
 	if err != nil {
@@ -37,4 +40,55 @@ func (h *Handler) ShowByThread(thread string) protocol.Response {
 	}
 
 	return h.Show(files[0])
+}
+
+// ShowThread returns all messages in a thread
+func (h *Handler) ShowThread(threadID string) protocol.Response {
+	threadMsgs, err := h.notmuch.ShowThread(threadID)
+	if err != nil {
+		return protocol.Fail(protocol.ErrBackendError, err)
+	}
+
+	if len(threadMsgs) == 0 {
+		return protocol.Fail(protocol.ErrNotFound, errors.New("no messages found for thread"))
+	}
+
+	// Convert notmuch messages to our format
+	messages := make([]internmail.MessageInfo, 0, len(threadMsgs))
+	var subject string
+
+	for _, msg := range threadMsgs {
+		info := internmail.MessageInfo{
+			ID:        msg.ID,
+			From:      msg.Headers["From"],
+			To:        msg.Headers["To"],
+			CC:        msg.Headers["Cc"],
+			Date:      msg.Headers["Date"],
+			Timestamp: msg.Timestamp,
+			Tags:      msg.Tags,
+		}
+
+		// Get subject from first message
+		if subject == "" {
+			subject = msg.Headers["Subject"]
+		}
+
+		// Extract body content (text/plain and text/html)
+		info.Body, info.HTML, info.Attachments = notmuch.ExtractBodyContent(msg.Body)
+
+		messages = append(messages, info)
+	}
+
+	// Sort by timestamp (oldest first for chronological display)
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp < messages[j].Timestamp
+	})
+
+	thread := &internmail.ThreadContent{
+		ThreadID: threadID,
+		Subject:  subject,
+		Messages: messages,
+	}
+
+	return protocol.SuccessWithThread(thread)
 }
