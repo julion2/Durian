@@ -376,9 +376,27 @@ struct ThreadMessageCardView: View {
         .background(Color.white)
         .cornerRadius(10)
         .shadow(color: Color.black.opacity(0.1), radius: 3, x: 0, y: 1)
-        .padding(.horizontal, 32)
+        .padding(.leading, isOwnMessage() ? 56 : 32)  // Indent own messages (24pt extra)
+        .padding(.trailing, 32)
         .padding(.top, isFirst ? 24 : 0)
         .padding(.bottom, isLast ? 32 : 16)
+    }
+    
+    // MARK: - Own Message Detection
+    
+    /// Check if message is from one of the configured accounts
+    private func isOwnMessage() -> Bool {
+        let fromEmail = extractEmail(from: message.from).lowercased()
+        let ownEmails = ConfigManager.shared.getAccounts().map { $0.email.lowercased() }
+        return ownEmails.contains(fromEmail)
+    }
+    
+    /// Extract email address from "Name <email>" format
+    private func extractEmail(from: String) -> String {
+        if let start = from.range(of: "<"), let end = from.range(of: ">") {
+            return String(from[start.upperBound..<end.lowerBound])
+        }
+        return from
     }
     
     // MARK: - Sender Row
