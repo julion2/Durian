@@ -119,11 +119,34 @@ struct EmailRowView: View {
     }
 
     private var senderName: String {
-        let from = email.from
-        if let range = from.range(of: "<") {
-            let namePart = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+        // Extract first author from notmuch authors string
+        // Separators: ", " (comma) or "|" without leading space
+        // " | " (space-pipe-space) is part of name, don't split
+        let firstAuthor: String
+        if email.from.contains("<") {
+            // Has email address - don't split, use as-is
+            firstAuthor = email.from
+        } else {
+            // Split by comma first (primary separator)
+            let byComma = email.from.components(separatedBy: ",").first?
+                .trimmingCharacters(in: .whitespaces) ?? email.from
+            
+            // Check for "|" without leading space (author separator)
+            if let pipeRange = byComma.range(of: "|"),
+               pipeRange.lowerBound > byComma.startIndex,
+               byComma[byComma.index(before: pipeRange.lowerBound)] != " " {
+                firstAuthor = String(byComma[..<pipeRange.lowerBound])
+                    .trimmingCharacters(in: .whitespaces)
+            } else {
+                firstAuthor = byComma
+            }
+        }
+        
+        // Extract name from "Name <email>" format
+        if let range = firstAuthor.range(of: "<") {
+            let namePart = String(firstAuthor[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
             if !namePart.isEmpty { return namePart }
         }
-        return from
+        return firstAuthor
     }
 }

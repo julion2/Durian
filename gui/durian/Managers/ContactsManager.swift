@@ -132,6 +132,36 @@ class ContactsManager {
         return contacts
     }
     
+    /// Find contact by exact name match (case-insensitive)
+    /// Used for avatar lookup when only author name is available (mail list view)
+    /// Returns the most frequently used contact with that name
+    func findByExactName(_ name: String) -> Contact? {
+        guard isAvailable, !name.isEmpty else { return nil }
+        
+        let sql = """
+            SELECT id, email, name, last_used, usage_count, source, created_at
+            FROM contacts
+            WHERE LOWER(name) = LOWER(?)
+            ORDER BY usage_count DESC
+            LIMIT 1
+        """
+        
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            print("CONTACTS_ERROR: Failed to prepare findByExactName query")
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+        
+        sqlite3_bind_text(statement, 1, name, -1, SQLITE_TRANSIENT)
+        
+        if sqlite3_step(statement) == SQLITE_ROW {
+            return parseContact(from: statement)
+        }
+        
+        return nil
+    }
+    
     /// Get all contacts ordered by usage
     func list(limit: Int = 100) -> [Contact] {
         guard isAvailable else { return [] }

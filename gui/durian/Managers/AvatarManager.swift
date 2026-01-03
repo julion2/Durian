@@ -58,8 +58,31 @@ class AvatarManager: ObservableObject {
     ///   - size: Desired image size in pixels
     /// - Returns: NSImage if found, nil otherwise (fallback to initials)
     func loadAvatar(for email: String, size: Int = 128) async -> NSImage? {
+        // Extract first author from notmuch authors string
+        // Separators: ", " (comma) or "|" without leading space
+        // " | " (space-pipe-space) is part of name, don't split
+        let firstAuthor: String
+        if email.contains("<") {
+            // Has email address - don't split, use as-is
+            firstAuthor = email
+        } else {
+            // Split by comma first (primary separator)
+            let byComma = email.components(separatedBy: ",").first?
+                .trimmingCharacters(in: .whitespaces) ?? email
+            
+            // Check for "|" without leading space (author separator)
+            if let pipeRange = byComma.range(of: "|"),
+               pipeRange.lowerBound > byComma.startIndex,
+               byComma[byComma.index(before: pipeRange.lowerBound)] != " " {
+                firstAuthor = String(byComma[..<pipeRange.lowerBound])
+                    .trimmingCharacters(in: .whitespaces)
+            } else {
+                firstAuthor = byComma
+            }
+        }
+        
         // Extract clean email from "Name <email>" format
-        let cleanEmail = extractEmail(from: email).lowercased()
+        let cleanEmail = extractEmail(from: firstAuthor).lowercased()
         let cacheKey = cleanEmail as NSString
         
         // Check memory cache
@@ -74,12 +97,23 @@ class AvatarManager: ObservableObject {
         }
         
         // Extract domain - either from email or guess from name
-        let domain: String?
+        var domain: String?
+        var emailForGravatar = cleanEmail  // Track actual email for Gravatar lookup
+        
         if cleanEmail.contains("@") {
             domain = extractDomain(from: cleanEmail)
         } else {
-            // No email address - try to guess domain from name (for list view)
-            domain = guessDomainFromName(cleanEmail)
+            // No email address (list view) - try contacts DB lookup first
+            if let contact = ContactsManager.shared.findByExactName(cleanEmail),
+               !contact.email.isEmpty {
+                // Found contact! Use their email for avatar lookup
+                emailForGravatar = contact.email.lowercased()
+                domain = extractDomain(from: contact.email)
+                print("AVATAR: Contacts lookup '\(cleanEmail)' → \(contact.email)")
+            } else {
+                // Fallback: guess domain from name (e.g., "Amazon.de" → "amazon.de")
+                domain = guessDomainFromName(cleanEmail)
+            }
         }
         
         guard let domain = domain else {
@@ -90,7 +124,7 @@ class AvatarManager: ObservableObject {
         let image: NSImage?
         if personalDomains.contains(domain) {
             // Personal email → try Gravatar
-            image = await fetchGravatar(email: cleanEmail, size: size)
+            image = await fetchGravatar(email: emailForGravatar, size: size)
         } else {
             // Company email → try Brandfetch
             image = await fetchBrandfetch(domain: domain)
