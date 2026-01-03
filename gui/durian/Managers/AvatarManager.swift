@@ -2,7 +2,7 @@
 //  AvatarManager.swift
 //  Durian
 //
-//  Manages avatar loading from Gravatar and Google Favicon with caching
+//  Manages avatar loading from Gravatar and Brandfetch with caching
 //
 
 import Foundation
@@ -19,7 +19,10 @@ class AvatarManager: ObservableObject {
     // Failed lookups - don't retry for 24h
     private var failedLookups: [String: Date] = [:]
     
-    // Personal domains → Gravatar
+    // Brandfetch token for company logos
+    private let brandfetchToken = "1idWonATCJFIseiVHIH"
+    
+    // Personal domains → Gravatar (company domains → Brandfetch)
     private let personalDomains: Set<String> = [
         // Google
         "gmail.com", "googlemail.com",
@@ -81,8 +84,8 @@ class AvatarManager: ObservableObject {
             // Personal email → try Gravatar
             image = await fetchGravatar(email: cleanEmail, size: size)
         } else {
-            // Company email → try Google Favicon
-            image = await fetchGoogleFavicon(domain: domain, size: size)
+            // Company email → try Brandfetch
+            image = await fetchBrandfetch(domain: domain)
         }
         
         // Cache result
@@ -133,19 +136,29 @@ class AvatarManager: ObservableObject {
         return await fetchImage(from: url)
     }
     
-    /// Fetch favicon from Google's favicon service
-    private func fetchGoogleFavicon(domain: String, size: Int) async -> NSImage? {
-        // Google's favicon service with fallback options
-        let urlString = "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://\(domain)&size=\(size)"
+    /// Fetch company logo from Brandfetch
+    /// Requires browser User-Agent to bypass hotlinking protection
+    private func fetchBrandfetch(domain: String) async -> NSImage? {
+        let urlString = "https://cdn.brandfetch.io/\(domain)?c=\(brandfetchToken)"
         guard let url = URL(string: urlString) else { return nil }
         
-        return await fetchImage(from: url)
+        // Browser User-Agent required to bypass hotlinking block
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)", forHTTPHeaderField: "User-Agent")
+        
+        return await fetchImage(request: request)
     }
     
-    /// Generic image fetcher with error handling
+    /// Generic image fetcher with error handling (URL version)
     private func fetchImage(from url: URL) async -> NSImage? {
+        let request = URLRequest(url: url)
+        return await fetchImage(request: request)
+    }
+    
+    /// Generic image fetcher with error handling (Request version)
+    private func fetchImage(request: URLRequest) async -> NSImage? {
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
@@ -160,7 +173,7 @@ class AvatarManager: ObservableObject {
             
             return image
         } catch {
-            print("AVATAR Failed to fetch \(url): \(error.localizedDescription)")
+            print("AVATAR Failed to fetch \(request.url?.absoluteString ?? "unknown"): \(error.localizedDescription)")
             return nil
         }
     }
