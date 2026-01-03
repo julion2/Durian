@@ -2,14 +2,17 @@
 //  AvatarView.swift
 //  Durian
 //
-//  Avatar with initials and hash-based color
+//  Avatar with real images (Gravatar/Favicon) and initials fallback
 //
 
 import SwiftUI
 
 struct AvatarView: View {
     let name: String
+    var email: String? = nil  // Optional email for avatar lookup
     var size: CGFloat = 36
+    
+    @State private var loadedImage: NSImage? = nil
     
     private static let avatarColors: [Color] = [
         .red, .orange, .yellow, .green, .mint, .teal,
@@ -18,20 +21,44 @@ struct AvatarView: View {
     
     var body: some View {
         ZStack {
-            Circle()
-                .fill(colorForName)
-            
-            Text(initials)
-                .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundColor(.white)
+            if let image = loadedImage {
+                // Real avatar image
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipShape(Circle())
+            } else {
+                // Fallback: Initials with hash-based color
+                Circle()
+                    .fill(colorForName)
+                
+                Text(initials)
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundColor(.white)
+            }
         }
         .frame(width: size, height: size)
+        .task(id: email) {
+            await loadAvatarImage()
+        }
     }
+    
+    // MARK: - Avatar Loading
+    
+    private func loadAvatarImage() async {
+        guard let email = email, !email.isEmpty else { return }
+        
+        // Request 2x size for retina displays
+        let requestSize = Int(size * 2)
+        loadedImage = await AvatarManager.shared.loadAvatar(for: email, size: requestSize)
+    }
+    
+    // MARK: - Initials (Fallback)
     
     /// Extract initials from name (max 2 characters)
     /// "Julian Schenker" → "JS"
     /// "Atlassian Home" → "AH"
-    /// "info@example.com" → "I"
+    /// "info@example.com" → "IN"
     private var initials: String {
         let cleanName = extractDisplayName(from: name)
         let words = cleanName.split(separator: " ")

@@ -94,7 +94,7 @@ struct EmailDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             // Sender row
             HStack(alignment: .top, spacing: 12) {
-                AvatarView(name: email.from, size: 40)
+                AvatarView(name: email.from, email: email.from, size: 40)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(extractName(from: email.from))
@@ -404,7 +404,7 @@ struct ThreadMessageCardView: View {
     @ViewBuilder
     private var senderRow: some View {
         HStack(alignment: .top, spacing: 12) {
-            AvatarView(name: message.from, size: 40)
+            AvatarView(name: message.from, email: message.from, size: 40)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(extractName(from: message.from))
