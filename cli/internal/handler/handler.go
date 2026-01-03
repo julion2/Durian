@@ -27,7 +27,7 @@ func (h *Handler) Handle(cmd protocol.Command) protocol.Response {
 		return h.Search(cmd.Query, cmd.Limit)
 	case "show":
 		if cmd.Thread != "" {
-			return h.ShowByThread(cmd.Thread)
+			return h.ShowThread(cmd.Thread)
 		}
 		return h.Show(cmd.File)
 	case "tag":

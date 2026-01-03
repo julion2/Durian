@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	goimap "github.com/emersion/go-imap"
+
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
@@ -64,15 +66,16 @@ type MailboxResult struct {
 
 // Syncer handles IMAP synchronization for an account
 type Syncer struct {
-	client       *Client
-	maildir      *MaildirWriter
-	notmuch      *notmuch.Client
-	state        *State
-	stateMgr     *StateManager
-	account      *config.AccountConfig
-	options      *SyncOptions
-	output       io.Writer
-	trashMailbox string // Cached trash mailbox name for delete operations
+	client          *Client
+	maildir         *MaildirWriter
+	notmuch         *notmuch.Client
+	state           *State
+	stateMgr        *StateManager
+	account         *config.AccountConfig
+	options         *SyncOptions
+	output          io.Writer
+	trashMailbox    string                // Cached trash mailbox name for delete operations
+	serverMailboxes []*goimap.MailboxInfo // Cached mailbox list for exclusion tags
 }
 
 // NewSyncer creates a new syncer for an account
@@ -135,9 +138,30 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		return nil, err
 	}
 
-	// Sync each mailbox
+	// Cache server mailbox list for exclusion tag logic
+	s.serverMailboxes, _ = s.client.ListMailboxes()
+
+	// Sync each mailbox with automatic reconnection on failure
 	for _, mbox := range mailboxes {
 		mboxResult := s.syncMailbox(mbox)
+
+		// Check if error is connection-related and try to reconnect
+		if mboxResult.Error != nil && isConnectionError(mboxResult.Error) {
+			debug.Log("Sync: connection lost during %s, attempting reconnect...", mbox)
+			fmt.Fprintf(s.output, "  ⚠ Connection lost, reconnecting...\n")
+
+			if err := s.client.Reconnect(); err != nil {
+				debug.Log("Sync: reconnect failed: %v", err)
+				result.Mailboxes = append(result.Mailboxes, mboxResult)
+				result.Error = fmt.Errorf("reconnect failed: %w", err)
+				break // Can't continue without connection
+			}
+
+			// Retry the mailbox after reconnection
+			fmt.Fprintf(s.output, "  ✓ Reconnected, retrying %s...\n", mbox)
+			mboxResult = s.syncMailbox(mbox)
+		}
+
 		result.Mailboxes = append(result.Mailboxes, mboxResult)
 		result.TotalNew += mboxResult.NewMsgs
 		result.TotalSkipped += mboxResult.SkippedMsgs
@@ -170,32 +194,76 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 
 // getMailboxesToSync returns the list of mailboxes to sync
 func (s *Syncer) getMailboxesToSync() ([]string, error) {
-	// If specific mailboxes are requested, use those
+	// If specific mailboxes are requested via CLI, use those
 	if len(s.options.Mailboxes) > 0 {
 		return s.options.Mailboxes, nil
 	}
 
-	// Get configured mailboxes or defaults
-	configuredMailboxes := s.account.GetIMAPMailboxes()
+	// If explicit mailboxes are configured in config, use those
+	if len(s.account.IMAP.Mailboxes) > 0 {
+		configuredMailboxes := s.account.GetIMAPMailboxes()
 
-	// List all mailboxes on server
+		// List all mailboxes on server
+		serverMailboxes, err := s.client.ListMailboxes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to list mailboxes: %w", err)
+		}
+
+		// Match configured patterns against server mailboxes
+		var result []string
+		for _, serverMbox := range serverMailboxes {
+			name := serverMbox.Name
+
+			// Skip excluded mailboxes
+			if config.IsIMAPMailboxExcluded(name) {
+				continue
+			}
+
+			// Check if mailbox matches any configured pattern
+			for _, pattern := range configuredMailboxes {
+				if matchMailbox(name, pattern) {
+					result = append(result, name)
+					break
+				}
+			}
+		}
+
+		return result, nil
+	}
+
+	// No explicit config - use SPECIAL-USE auto-detection
+	// This auto-detects localized folder names (e.g., "Gesendete Elemente" for Sent)
+	mailboxes, err := s.client.GetSyncMailboxes()
+	if err != nil {
+		debug.Log("getMailboxesToSync: SPECIAL-USE detection failed: %v, falling back to defaults", err)
+		// Fallback to default names (legacy behavior)
+		return s.getMailboxesByName(config.DefaultIMAPMailboxes)
+	}
+
+	if len(mailboxes) == 0 {
+		debug.Log("getMailboxesToSync: no mailboxes detected via SPECIAL-USE, falling back to defaults")
+		return s.getMailboxesByName(config.DefaultIMAPMailboxes)
+	}
+
+	return mailboxes, nil
+}
+
+// getMailboxesByName finds mailboxes by matching against a list of names (legacy fallback)
+func (s *Syncer) getMailboxesByName(names []string) ([]string, error) {
 	serverMailboxes, err := s.client.ListMailboxes()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list mailboxes: %w", err)
 	}
 
-	// Match configured patterns against server mailboxes
 	var result []string
 	for _, serverMbox := range serverMailboxes {
 		name := serverMbox.Name
 
-		// Skip excluded mailboxes
 		if config.IsIMAPMailboxExcluded(name) {
 			continue
 		}
 
-		// Check if mailbox matches any configured pattern
-		for _, pattern := range configuredMailboxes {
+		for _, pattern := range names {
 			if matchMailbox(name, pattern) {
 				result = append(result, name)
 				break
@@ -367,6 +435,11 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 	if result.NewMsgs > 0 {
 		fmt.Fprintf(s.output, "    ✓ %d new messages\n", result.NewMsgs)
+
+		// Add exclusion tags for Junk/Trash folders (for notmuch search exclusion)
+		if !s.options.DryRun && s.serverMailboxes != nil {
+			s.addExclusionTagsForMailbox(mailboxName)
+		}
 	}
 
 	// Flag synchronization (after message download)
@@ -387,6 +460,20 @@ func runNotmuchNew() error {
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// isConnectionError checks if an error indicates a lost connection
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection closed") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "EOF") ||
+		strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "use of closed network connection")
 }
 
 // ensureMessageIDMapping builds the UID<->MessageID mapping for all UIDs on server
@@ -430,6 +517,43 @@ func (s *Syncer) buildNotmuchFolderName(mailboxName string) string {
 	accountFolder := filepath.Base(maildirBase)
 	// Combine: accountFolder/mailboxName
 	return filepath.Join(accountFolder, mailboxName)
+}
+
+// addExclusionTagsForMailbox adds notmuch exclusion tags based on IMAP SPECIAL-USE role
+// Junk folders get +junk +spam, Trash folders get +deleted
+// This enables notmuch search exclusion (via search.exclude_tags config)
+func (s *Syncer) addExclusionTagsForMailbox(mailboxName string) {
+	var tagsToAdd []string
+
+	// Find the mailbox in our cached list and check its SPECIAL-USE attributes
+	for _, mbox := range s.serverMailboxes {
+		if mbox.Name != mailboxName {
+			continue
+		}
+		for _, attr := range mbox.Attributes {
+			switch {
+			case strings.EqualFold(attr, "\\Junk"):
+				tagsToAdd = []string{"junk", "spam"}
+			case strings.EqualFold(attr, "\\Trash"):
+				tagsToAdd = []string{"deleted"}
+			}
+		}
+		break
+	}
+
+	if len(tagsToAdd) == 0 {
+		return
+	}
+
+	// Build notmuch folder query and add tags
+	folderPath := s.buildNotmuchFolderName(mailboxName)
+	query := fmt.Sprintf("folder:\"%s\"", folderPath)
+
+	if err := s.notmuch.AddTags(query, tagsToAdd...); err != nil {
+		debug.Log("addExclusionTagsForMailbox: failed to add tags to %s: %v", mailboxName, err)
+	} else {
+		debug.Log("addExclusionTagsForMailbox: added %v to %s", tagsToAdd, mailboxName)
+	}
 }
 
 // syncFlags synchronizes flags between local notmuch and IMAP server

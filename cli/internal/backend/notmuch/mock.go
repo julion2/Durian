@@ -15,10 +15,20 @@ type MockClient struct {
 	// TagErr is returned as error by Tag()
 	TagErr error
 
+	// ThreadMessages is returned by ShowThread()
+	ThreadMessages []ThreadMessage
+	// ThreadErr is returned as error by ShowThread()
+	ThreadErr error
+
 	// Track calls for verification
-	SearchCalls   []searchCall
-	GetFilesCalls []getFilesCall
-	TagCalls      []tagCall
+	SearchCalls     []searchCall
+	GetFilesCalls   []getFilesCall
+	TagCalls        []tagCall
+	ShowThreadCalls []showThreadCall
+}
+
+type showThreadCall struct {
+	ThreadID string
 }
 
 type searchCall struct {
@@ -39,8 +49,9 @@ type tagCall struct {
 // NewMockClient creates a new MockClient with default empty values
 func NewMockClient() *MockClient {
 	return &MockClient{
-		SearchResults: []SearchResult{},
-		Files:         []string{},
+		SearchResults:  []SearchResult{},
+		Files:          []string{},
+		ThreadMessages: []ThreadMessage{},
 	}
 }
 
@@ -71,11 +82,22 @@ func (m *MockClient) Tag(query string, tags []string) error {
 	return m.TagErr
 }
 
+// ShowThread returns the configured ThreadMessages and ThreadErr
+func (m *MockClient) ShowThread(threadID string) ([]ThreadMessage, error) {
+	m.ShowThreadCalls = append(m.ShowThreadCalls, showThreadCall{ThreadID: threadID})
+
+	if m.ThreadErr != nil {
+		return nil, m.ThreadErr
+	}
+	return m.ThreadMessages, nil
+}
+
 // Reset clears all recorded calls
 func (m *MockClient) Reset() {
 	m.SearchCalls = nil
 	m.GetFilesCalls = nil
 	m.TagCalls = nil
+	m.ShowThreadCalls = nil
 }
 
 // WithSearchResults sets SearchResults and returns the mock for chaining
@@ -105,5 +127,17 @@ func (m *MockClient) WithFilesError(err error) *MockClient {
 // WithTagError sets TagErr and returns the mock for chaining
 func (m *MockClient) WithTagError(err error) *MockClient {
 	m.TagErr = err
+	return m
+}
+
+// WithThreadMessages sets ThreadMessages and returns the mock for chaining
+func (m *MockClient) WithThreadMessages(messages []ThreadMessage) *MockClient {
+	m.ThreadMessages = messages
+	return m
+}
+
+// WithThreadError sets ThreadErr and returns the mock for chaining
+func (m *MockClient) WithThreadError(err error) *MockClient {
+	m.ThreadErr = err
 	return m
 }

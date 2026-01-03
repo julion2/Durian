@@ -280,7 +280,7 @@ func (a *AccountConfig) GetMaxAttachmentSize() int64 {
 // IMAP defaults
 const (
 	DefaultIMAPMaxMessages = 5000
-	DefaultIMAPBatchSize   = 5000
+	DefaultIMAPBatchSize   = 100 // Smaller batches for stability and progress feedback
 )
 
 // DefaultIMAPMailboxes are the mailboxes synced by default if not configured

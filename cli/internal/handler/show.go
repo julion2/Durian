@@ -79,9 +79,9 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 		messages = append(messages, info)
 	}
 
-	// Sort by timestamp (oldest first for chronological display)
+	// Sort by timestamp (newest first for email-style display)
 	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Timestamp < messages[j].Timestamp
+		return messages[i].Timestamp > messages[j].Timestamp
 	})
 
 	thread := &internmail.ThreadContent{

@@ -32,25 +32,25 @@ func TestHandleDispatchSearch(t *testing.T) {
 
 func TestHandleDispatchShowByThread(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	// GetFiles will return empty, causing NOT_FOUND - that's fine for dispatch test
-	mock.Files = []string{}
+	// ShowThread will return empty, causing NOT_FOUND - that's fine for dispatch test
+	mock.ThreadMessages = []notmuch.ThreadMessage{}
 
 	h := New(mock)
 	cmd := protocol.Command{Cmd: "show", Thread: "abc123"}
 
 	resp := h.Handle(cmd)
 
-	// ShowByThread was called, which calls GetFiles
-	if len(mock.GetFilesCalls) != 1 {
-		t.Errorf("GetFiles should be called once, got %d calls", len(mock.GetFilesCalls))
+	// ShowThread was called
+	if len(mock.ShowThreadCalls) != 1 {
+		t.Errorf("ShowThread should be called once, got %d calls", len(mock.ShowThreadCalls))
 	}
-	if mock.GetFilesCalls[0].Query != "thread:abc123" {
-		t.Errorf("GetFiles query = %q, want %q", mock.GetFilesCalls[0].Query, "thread:abc123")
+	if mock.ShowThreadCalls[0].ThreadID != "abc123" {
+		t.Errorf("ShowThread threadID = %q, want %q", mock.ShowThreadCalls[0].ThreadID, "abc123")
 	}
 
-	// Should fail because no file found
+	// Should fail because no messages found
 	if resp.OK {
-		t.Error("Should return error when no file found")
+		t.Error("Should return error when no messages found")
 	}
 	if resp.ErrorCode != protocol.ErrNotFound {
 		t.Errorf("ErrorCode = %q, want %q", resp.ErrorCode, protocol.ErrNotFound)
@@ -189,58 +189,82 @@ func TestSearchDefaultLimit(t *testing.T) {
 	}
 }
 
-func TestShowByThreadSuccess(t *testing.T) {
-	// This test would need actual file parsing, which requires test fixtures
-	// For now, we test the flow up to file lookup
-
+func TestShowThreadSuccess(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	// Return a non-existent file to test the flow
-	mock.Files = []string{"/nonexistent/file.eml"}
+	mock.ThreadMessages = []notmuch.ThreadMessage{
+		{
+			ID:        "msg1@example.com",
+			Timestamp: 1700000000,
+			Headers: map[string]string{
+				"From":    "alice@example.com",
+				"To":      "bob@example.com",
+				"Subject": "Test Subject",
+				"Date":    "2023-11-14",
+			},
+			Tags: []string{"inbox", "unread"},
+		},
+		{
+			ID:        "msg2@example.com",
+			Timestamp: 1700001000,
+			Headers: map[string]string{
+				"From": "bob@example.com",
+				"To":   "alice@example.com",
+				"Date": "2023-11-14",
+			},
+			Tags: []string{"inbox"},
+		},
+	}
 
 	h := New(mock)
-	resp := h.ShowByThread("abc123")
+	resp := h.ShowThread("abc123")
 
-	// GetFiles should be called with thread: prefix
-	if len(mock.GetFilesCalls) != 1 {
-		t.Fatal("GetFiles should be called once")
+	// ShowThread should be called
+	if len(mock.ShowThreadCalls) != 1 {
+		t.Fatal("ShowThread should be called once")
 	}
-	if mock.GetFilesCalls[0].Query != "thread:abc123" {
-		t.Errorf("Query = %q, want %q", mock.GetFilesCalls[0].Query, "thread:abc123")
+	if mock.ShowThreadCalls[0].ThreadID != "abc123" {
+		t.Errorf("ThreadID = %q, want %q", mock.ShowThreadCalls[0].ThreadID, "abc123")
 	}
 
-	// Should fail because file doesn't exist
-	if resp.OK {
-		t.Error("Should return error for non-existent file")
+	// Should succeed
+	if !resp.OK {
+		t.Errorf("Should return OK, got error: %s", resp.Error)
 	}
-	if resp.ErrorCode != protocol.ErrFileError {
-		t.Errorf("ErrorCode = %q, want %q", resp.ErrorCode, protocol.ErrFileError)
+	if resp.Thread == nil {
+		t.Fatal("Thread should not be nil")
+	}
+	if len(resp.Thread.Messages) != 2 {
+		t.Errorf("Should have 2 messages, got %d", len(resp.Thread.Messages))
+	}
+	if resp.Thread.Subject != "Test Subject" {
+		t.Errorf("Subject = %q, want %q", resp.Thread.Subject, "Test Subject")
 	}
 }
 
-func TestShowByThreadNotFound(t *testing.T) {
+func TestShowThreadNotFound(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	mock.Files = []string{} // Empty = no files found
+	mock.ThreadMessages = []notmuch.ThreadMessage{} // Empty = no messages found
 
 	h := New(mock)
-	resp := h.ShowByThread("nonexistent")
+	resp := h.ShowThread("nonexistent")
 
 	if resp.OK {
-		t.Error("ShowByThread() should return error when no file found")
+		t.Error("ShowThread() should return error when no messages found")
 	}
 	if resp.ErrorCode != protocol.ErrNotFound {
 		t.Errorf("ErrorCode = %q, want %q", resp.ErrorCode, protocol.ErrNotFound)
 	}
 }
 
-func TestShowByThreadBackendError(t *testing.T) {
+func TestShowThreadBackendError(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	mock.FilesErr = errors.New("backend unavailable")
+	mock.ThreadErr = errors.New("backend unavailable")
 
 	h := New(mock)
-	resp := h.ShowByThread("abc123")
+	resp := h.ShowThread("abc123")
 
 	if resp.OK {
-		t.Error("ShowByThread() should return error when backend fails")
+		t.Error("ShowThread() should return error when backend fails")
 	}
 	if resp.ErrorCode != protocol.ErrBackendError {
 		t.Errorf("ErrorCode = %q, want %q", resp.ErrorCode, protocol.ErrBackendError)

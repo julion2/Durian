@@ -37,11 +37,66 @@ type BodyPart struct {
 }
 
 // ExtractBodyContent extracts text/plain, text/html and attachments from a message
+// HTML content is stripped of quoted reply content to avoid duplicates in thread view
 func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments []string) {
 	for _, raw := range body {
 		extractFromRaw(raw, &text, &html, &attachments)
 	}
+	// Strip quoted content from HTML after extraction
+	html = StripQuotedContent(html)
 	return
+}
+
+// quotePatterns defines HTML patterns that indicate quoted/forwarded content
+// Order matters: more specific patterns should come before generic ones
+var quotePatterns = []string{
+	// Outlook
+	`<div id="mail-editor-reference-message-container"`,
+	`<div id="appendonsend"`,
+	`<div id="divRplyFwdMsg"`,
+	`<div name="divRplyFwdMsg"`,
+
+	// Gmail
+	`<div class="gmail_quote"`,
+	`<div class="gmail_extra"`,
+	`<blockquote class="gmail_quote"`,
+
+	// Apple Mail
+	`<blockquote type="cite"`,
+
+	// Generic blockquote (fallback - must be last)
+	`<blockquote`,
+}
+
+// StripQuotedContent removes quoted reply content from HTML
+// It finds the first quote marker and removes everything from there
+func StripQuotedContent(html string) string {
+	if html == "" {
+		return html
+	}
+
+	htmlLower := strings.ToLower(html)
+
+	// Find the earliest quote pattern
+	earliestIdx := -1
+	for _, pattern := range quotePatterns {
+		idx := strings.Index(htmlLower, strings.ToLower(pattern))
+		if idx != -1 && (earliestIdx == -1 || idx < earliestIdx) {
+			earliestIdx = idx
+		}
+	}
+
+	if earliestIdx == -1 {
+		return html // No quote found
+	}
+
+	// Cut at the quote start
+	stripped := html[:earliestIdx]
+
+	// Clean up trailing whitespace
+	stripped = strings.TrimRight(stripped, " \t\n\r")
+
+	return stripped
 }
 
 func extractFromRaw(raw json.RawMessage, text, html *string, attachments *[]string) {
@@ -161,7 +216,7 @@ func (c *ExecClient) Tag(query string, tags []string) error {
 
 // ShowThread returns all messages in a thread using notmuch show
 func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
-	cmd := exec.Command("notmuch", "show", "--format=json", "--entire-thread=true", "thread:"+threadID)
+	cmd := exec.Command("notmuch", "show", "--format=json", "--include-html", "--entire-thread=true", "thread:"+threadID)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

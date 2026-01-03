@@ -23,6 +23,42 @@ const (
 	DefaultTimeout = 30 * time.Second
 )
 
+// SpecialUseRole defines IMAP SPECIAL-USE mailbox roles (RFC 6154)
+type SpecialUseRole string
+
+const (
+	RoleSent    SpecialUseRole = "\\Sent"
+	RoleDrafts  SpecialUseRole = "\\Drafts"
+	RoleTrash   SpecialUseRole = "\\Trash"
+	RoleJunk    SpecialUseRole = "\\Junk"
+	RoleArchive SpecialUseRole = "\\Archive"
+	RoleAll     SpecialUseRole = "\\All"
+)
+
+// defaultRoleFallbacks maps SPECIAL-USE roles to common folder names for fallback
+var defaultRoleFallbacks = map[SpecialUseRole][]string{
+	RoleSent: {
+		"Sent", "Sent Items", "Sent Messages", "INBOX.Sent",
+		"[Gmail]/Sent Mail", "Gesendete Elemente", "Envoyés",
+	},
+	RoleDrafts: {
+		"Drafts", "Draft", "INBOX.Drafts", "[Gmail]/Drafts",
+		"Entwürfe", "Brouillons",
+	},
+	RoleTrash: {
+		"Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash",
+		"[Gmail]/Trash", "Gelöschte Elemente", "Papierkorb", "Corbeille",
+	},
+	RoleJunk: {
+		"Junk", "Spam", "INBOX.Junk", "INBOX.Spam",
+		"[Gmail]/Spam", "Junk-E-Mail",
+	},
+	RoleArchive: {
+		"Archive", "Archives", "INBOX.Archive", "[Gmail]/All Mail",
+		"Archiv",
+	},
+}
+
 // Client wraps an IMAP client connection
 type Client struct {
 	account *config.AccountConfig
@@ -576,88 +612,13 @@ func (c *Client) Delete(uid uint32) error {
 // FindDraftsMailbox finds the Drafts mailbox using SPECIAL-USE attributes
 // Falls back to common names if SPECIAL-USE is not available
 func (c *Client) FindDraftsMailbox() (string, error) {
-	if c.conn == nil {
-		return "", fmt.Errorf("not connected")
-	}
-
-	mailboxes, err := c.ListMailboxes()
-	if err != nil {
-		return "", err
-	}
-
-	// First pass: look for \Drafts SPECIAL-USE attribute
-	for _, mbox := range mailboxes {
-		for _, attr := range mbox.Attributes {
-			if strings.EqualFold(attr, "\\Drafts") {
-				return mbox.Name, nil
-			}
-		}
-	}
-
-	// Second pass: look for common draft folder names
-	commonNames := []string{
-		"Drafts",
-		"Draft",
-		"INBOX.Drafts",
-		"INBOX.Draft",
-		"[Gmail]/Drafts",
-		"Entwürfe",   // German
-		"Brouillons", // French
-	}
-
-	for _, name := range commonNames {
-		for _, mbox := range mailboxes {
-			if strings.EqualFold(mbox.Name, name) {
-				return mbox.Name, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("drafts mailbox not found")
+	return c.FindMailboxByRole(RoleDrafts)
 }
 
 // FindTrashMailbox finds the Trash mailbox using SPECIAL-USE attributes
 // Falls back to common names if SPECIAL-USE is not available
 func (c *Client) FindTrashMailbox() (string, error) {
-	if c.conn == nil {
-		return "", fmt.Errorf("not connected")
-	}
-
-	mailboxes, err := c.ListMailboxes()
-	if err != nil {
-		return "", err
-	}
-
-	// First pass: look for \Trash SPECIAL-USE attribute
-	for _, mbox := range mailboxes {
-		for _, attr := range mbox.Attributes {
-			if strings.EqualFold(attr, "\\Trash") {
-				return mbox.Name, nil
-			}
-		}
-	}
-
-	// Second pass: look for common trash folder names
-	commonNames := []string{
-		"Trash",
-		"[Gmail]/Trash",
-		"[Gmail]/Papierkorb", // German Gmail
-		"Deleted Items",      // Outlook
-		"Deleted Messages",   // Apple
-		"INBOX.Trash",
-		"Papierkorb", // German
-		"Corbeille",  // French
-	}
-
-	for _, name := range commonNames {
-		for _, mbox := range mailboxes {
-			if strings.EqualFold(mbox.Name, name) {
-				return mbox.Name, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("trash mailbox not found")
+	return c.FindMailboxByRole(RoleTrash)
 }
 
 // CopyToMailbox copies a message to another mailbox by UID
@@ -714,6 +675,77 @@ func (c *Client) SearchByMessageID(messageID string) (uint32, error) {
 	return uids[0], nil
 }
 
+// FindMailboxByRole finds a mailbox by SPECIAL-USE role (RFC 6154)
+// First checks for the SPECIAL-USE attribute, then falls back to common names
+func (c *Client) FindMailboxByRole(role SpecialUseRole) (string, error) {
+	if c.conn == nil {
+		return "", fmt.Errorf("not connected")
+	}
+
+	mailboxes, err := c.ListMailboxes()
+	if err != nil {
+		return "", err
+	}
+
+	// First pass: look for SPECIAL-USE attribute
+	roleStr := string(role)
+	for _, mbox := range mailboxes {
+		for _, attr := range mbox.Attributes {
+			if strings.EqualFold(attr, roleStr) {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	// Second pass: fallback to common names
+	fallbacks, ok := defaultRoleFallbacks[role]
+	if !ok {
+		return "", fmt.Errorf("no mailbox found with role %s", role)
+	}
+
+	for _, name := range fallbacks {
+		for _, mbox := range mailboxes {
+			if strings.EqualFold(mbox.Name, name) {
+				return mbox.Name, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no mailbox found with role %s", role)
+}
+
+// GetSyncMailboxes returns ALL mailboxes to sync
+// Only excludes folders with \Noselect attribute (container folders, not real mailboxes)
+// This ensures complete sync for proper threading across all folders
+func (c *Client) GetSyncMailboxes() ([]string, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	mailboxes, err := c.ListMailboxes()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []string
+	for _, mbox := range mailboxes {
+		// Skip \Noselect folders (container folders, not real mailboxes)
+		isNoselect := false
+		for _, attr := range mbox.Attributes {
+			if strings.EqualFold(attr, "\\Noselect") {
+				isNoselect = true
+				break
+			}
+		}
+		if !isNoselect {
+			result = append(result, mbox.Name)
+		}
+	}
+
+	debug.Log("GetSyncMailboxes: returning %d mailboxes (all except \\Noselect)", len(result))
+	return result, nil
+}
+
 // Close closes the IMAP connection
 func (c *Client) Close() error {
 	if c.conn == nil {
@@ -728,6 +760,37 @@ func (c *Client) Close() error {
 	}
 
 	return c.conn.Close()
+}
+
+// IsConnected returns true if the connection is still alive
+func (c *Client) IsConnected() bool {
+	if c.conn == nil {
+		return false
+	}
+	// Send NOOP to check connection - this also acts as a keepalive
+	return c.conn.Noop() == nil
+}
+
+// Reconnect closes the current connection and establishes a new one
+func (c *Client) Reconnect() error {
+	// Close existing connection if any
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+
+	// Connect and authenticate
+	if err := c.Connect(); err != nil {
+		return fmt.Errorf("reconnect failed: %w", err)
+	}
+
+	if err := c.Authenticate(); err != nil {
+		c.Close()
+		return fmt.Errorf("reconnect auth failed: %w", err)
+	}
+
+	debug.Log("Reconnect: successfully reconnected to %s", c.account.IMAP.Host)
+	return nil
 }
 
 // Account returns the account config
