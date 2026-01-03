@@ -64,21 +64,23 @@ struct AvatarView: View {
     /// "Julian Schenker <julian@example.com>" → "Julian Schenker"
     /// "julian@example.com" → "julian"
     private func extractDisplayName(from: String) -> String {
+        var name = from
+        
         // Check for "Name <email>" format
         if let range = from.range(of: "<") {
-            let namePart = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !namePart.isEmpty {
-                return namePart
-            }
+            name = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
         }
         
-        // Check for plain email - use local part
-        if from.contains("@") {
+        // Remove surrounding quotes
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        
+        // If still empty, check for plain email - use local part
+        if name.isEmpty && from.contains("@") {
             if let atIndex = from.firstIndex(of: "@") {
-                return String(from[..<atIndex])
+                name = String(from[..<atIndex])
             }
         }
         
-        return from
+        return name.isEmpty ? from : name
     }
 }

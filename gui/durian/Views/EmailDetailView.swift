@@ -112,7 +112,7 @@ struct EmailDetailView: View {
                 
                 Spacer()
                 
-                Text(email.date)
+                Text(formatDate(email.date))
                     .font(.system(size: 14))
                     .foregroundColor(Color.Detail.textTertiary)
                     .lineLimit(1)
@@ -252,18 +252,79 @@ struct EmailDetailView: View {
     /// Extract display name from email format
     /// "Julian Schenker <julian@example.com>" -> "Julian Schenker"
     private func extractName(from: String) -> String {
+        var name = from
+        
+        // Extract name before <email> part
         if let range = from.range(of: "<") {
-            let namePart = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !namePart.isEmpty {
-                return namePart
-            }
+            name = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
         }
-        if from.contains("@") {
+        
+        // Remove surrounding quotes
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        
+        // If still empty, try to extract from email
+        if name.isEmpty && from.contains("@") {
             if let atIndex = from.firstIndex(of: "@") {
-                return String(from[..<atIndex])
+                name = String(from[..<atIndex])
             }
         }
-        return from
+        
+        return name.isEmpty ? from : name
+    }
+    
+    /// Format RFC 2822 date string to readable format
+    private func formatDate(_ dateString: String) -> String {
+        // Parse RFC 2822 format: "Tue, 30 Dec 2025 17:20:47 +0100"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        
+        guard let date = formatter.date(from: dateString) else {
+            // Fallback: try without day name
+            formatter.dateFormat = "dd MMM yyyy HH:mm:ss Z"
+            guard let date = formatter.date(from: dateString) else {
+                return dateString // Return original if parsing fails
+            }
+            return formatRelativeDate(date)
+        }
+        
+        return formatRelativeDate(date)
+    }
+    
+    /// Format date as relative or absolute depending on age
+    private func formatRelativeDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        if calendar.isDateInToday(date) {
+            // Today: show time only
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        } else if calendar.isDateInYesterday(date) {
+            // Yesterday
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return "Gestern, \(formatter.string(from: date))"
+        } else if let daysAgo = calendar.dateComponents([.day], from: date, to: now).day, daysAgo < 7 {
+            // Within last week: show day name
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "EEEE, HH:mm"
+            return formatter.string(from: date)
+        } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            // This year: show date without year
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "d. MMM, HH:mm"
+            return formatter.string(from: date)
+        } else {
+            // Older: show full date
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "d. MMM yyyy, HH:mm"
+            return formatter.string(from: date)
+        }
     }
 }
 
@@ -359,7 +420,7 @@ struct ThreadMessageCardView: View {
             
             Spacer()
             
-            Text(message.date)
+            Text(formatDate(message.date))
                 .font(.system(size: 14))
                 .foregroundColor(Color.Detail.textTertiary)
                 .lineLimit(1)
@@ -452,17 +513,78 @@ struct ThreadMessageCardView: View {
     // MARK: - Helper Methods
     
     private func extractName(from: String) -> String {
+        var name = from
+        
+        // Extract name before <email> part
         if let range = from.range(of: "<") {
-            let namePart = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !namePart.isEmpty {
-                return namePart
-            }
+            name = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
         }
-        if from.contains("@") {
+        
+        // Remove surrounding quotes
+        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        
+        // If still empty, try to extract from email
+        if name.isEmpty && from.contains("@") {
             if let atIndex = from.firstIndex(of: "@") {
-                return String(from[..<atIndex])
+                name = String(from[..<atIndex])
             }
         }
-        return from
+        
+        return name.isEmpty ? from : name
+    }
+    
+    /// Format RFC 2822 date string to readable format
+    private func formatDate(_ dateString: String) -> String {
+        // Parse RFC 2822 format: "Tue, 30 Dec 2025 17:20:47 +0100"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        
+        guard let date = formatter.date(from: dateString) else {
+            // Fallback: try without day name
+            formatter.dateFormat = "dd MMM yyyy HH:mm:ss Z"
+            guard let date = formatter.date(from: dateString) else {
+                return dateString // Return original if parsing fails
+            }
+            return formatRelativeDate(date)
+        }
+        
+        return formatRelativeDate(date)
+    }
+    
+    /// Format date as relative or absolute depending on age
+    private func formatRelativeDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        if calendar.isDateInToday(date) {
+            // Today: show time only
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        } else if calendar.isDateInYesterday(date) {
+            // Yesterday
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return "Gestern, \(formatter.string(from: date))"
+        } else if let daysAgo = calendar.dateComponents([.day], from: date, to: now).day, daysAgo < 7 {
+            // Within last week: show day name
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "EEEE, HH:mm"
+            return formatter.string(from: date)
+        } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
+            // This year: show date without year
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "d. MMM, HH:mm"
+            return formatter.string(from: date)
+        } else {
+            // Older: show full date
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "de_DE")
+            formatter.dateFormat = "d. MMM yyyy, HH:mm"
+            return formatter.string(from: date)
+        }
     }
 }
