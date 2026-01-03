@@ -52,9 +52,9 @@ class AvatarManager: ObservableObject {
     
     // MARK: - Public API
     
-    /// Load avatar for email address
+    /// Load avatar for email address or name
     /// - Parameters:
-    ///   - email: Full email string (can be "Name <email>" format)
+    ///   - email: Full email string (can be "Name <email>" format) or just a name
     ///   - size: Desired image size in pixels
     /// - Returns: NSImage if found, nil otherwise (fallback to initials)
     func loadAvatar(for email: String, size: Int = 128) async -> NSImage? {
@@ -73,8 +73,16 @@ class AvatarManager: ObservableObject {
             return nil
         }
         
-        // Extract domain
-        guard let domain = extractDomain(from: cleanEmail) else {
+        // Extract domain - either from email or guess from name
+        let domain: String?
+        if cleanEmail.contains("@") {
+            domain = extractDomain(from: cleanEmail)
+        } else {
+            // No email address - try to guess domain from name (for list view)
+            domain = guessDomainFromName(cleanEmail)
+        }
+        
+        guard let domain = domain else {
             return nil
         }
         
@@ -119,6 +127,23 @@ class AvatarManager: ObservableObject {
     private func extractDomain(from email: String) -> String? {
         guard let atIndex = email.firstIndex(of: "@") else { return nil }
         return String(email[email.index(after: atIndex)...]).lowercased()
+    }
+    
+    /// Guess domain from a company/brand name (for list view where we only have author name)
+    /// Only returns domain if name already looks like a domain (e.g. "Amazon.de")
+    /// Returns nil for regular names to avoid false matches
+    private func guessDomainFromName(_ name: String) -> String? {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        // Must look like a domain: no spaces, has dot, no @, minimum length
+        guard !cleanName.contains(" "),
+              !cleanName.contains("@"),
+              cleanName.contains("."),
+              cleanName.count >= 4 else {  // minimum "a.de"
+            return nil
+        }
+        
+        return cleanName
     }
     
     /// Fetch avatar from Gravatar

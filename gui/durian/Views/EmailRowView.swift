@@ -13,7 +13,7 @@ struct EmailRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(name: email.from, size: 32)
+            AvatarView(name: email.from, email: email.from, size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
