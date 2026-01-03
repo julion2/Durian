@@ -198,6 +198,9 @@ struct MailMessage: Identifiable, Hashable {
     var bodyState: EmailBodyState
     var incomingAttachments: [IncomingAttachmentMetadata]
     
+    // Thread messages (loaded from CLI show command)
+    var threadMessages: [ThreadMessage]?
+    
     // Reply/Forward metadata (loaded with body)
     var messageId: String?
     var inReplyTo: String?
@@ -221,6 +224,7 @@ struct MailMessage: Identifiable, Hashable {
         self.hasAttachment = tags.contains("attachment")
         self.bodyState = .notLoaded
         self.incomingAttachments = []
+        self.threadMessages = nil
         self.messageId = nil
         self.inReplyTo = nil
         self.references = nil
@@ -252,6 +256,7 @@ struct MailMessage: Identifiable, Hashable {
         hasher.combine(isRead)
         hasher.combine(isPinned)
         hasher.combine(bodyState)
+        hasher.combine(threadMessages?.count ?? 0)
     }
     
     static func == (lhs: MailMessage, rhs: MailMessage) -> Bool {
@@ -262,7 +267,8 @@ struct MailMessage: Identifiable, Hashable {
         lhs.body == rhs.body &&
         lhs.isRead == rhs.isRead &&
         lhs.isPinned == rhs.isPinned &&
-        lhs.bodyState == rhs.bodyState
+        lhs.bodyState == rhs.bodyState &&
+        lhs.threadMessages?.count == rhs.threadMessages?.count
     }
 }
 

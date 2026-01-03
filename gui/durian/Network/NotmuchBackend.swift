@@ -24,6 +24,7 @@ struct DurianResponse: Decodable {
     let error: String?
     let results: [NotmuchMailResult]?
     let mail: NotmuchMailContent?
+    let thread: ThreadContent?  // New: full thread with all messages
 }
 
 struct NotmuchMailResult: Decodable {
@@ -47,6 +48,29 @@ struct NotmuchMailContent: Decodable {
     let body: String
     let html: String?
     let attachments: [String]?
+}
+
+// MARK: - Thread Models (from CLI show command)
+
+/// Represents a complete email thread with all messages
+struct ThreadContent: Decodable {
+    let thread_id: String
+    let subject: String
+    let messages: [ThreadMessage]
+}
+
+/// Represents a single message within a thread
+struct ThreadMessage: Decodable, Identifiable, Equatable {
+    let id: String
+    let from: String
+    let to: String?
+    let cc: String?
+    let date: String
+    let timestamp: Int
+    let body: String
+    let html: String?
+    let attachments: [String]?
+    let tags: [String]?
 }
 
 // MARK: - Notmuch Backend
@@ -79,13 +103,12 @@ class NotmuchBackend: ObservableObject {
     // This is safe because we only set it from MainActor and read from background
     nonisolated(unsafe) private var shouldCancelPrefetch = false
     
-    // Body cache - persists loaded bodies across search/tag changes
-    private var bodyCache: [String: CachedBody] = [:]
+    // Thread cache - persists loaded thread messages across search/tag changes
+    private var threadCache: [String: CachedThread] = [:]
     private let maxCacheSize = 200
     
-    private struct CachedBody {
-        let body: String
-        let htmlBody: String?
+    private struct CachedThread {
+        let messages: [ThreadMessage]
         let timestamp: Date
     }
     
@@ -183,12 +206,12 @@ class NotmuchBackend: ObservableObject {
             emails[index].bodyState = .loading
         }
         
-        // Use thread_id directly - durian will resolve the file path
+        // Use thread_id directly - durian CLI returns full thread with all messages
         let request = DurianRequest(cmd: "show", thread: id)
         
         guard let response = await sendCommand(request, cancelOnPrefetchAbort: isPrefetch),
               response.ok,
-              let mail = response.mail else {
+              let thread = response.thread else {
             // Check if this was a cancellation vs real failure
             // Only treat as cancellation if this is a prefetch request
             if let index = emails.firstIndex(where: { $0.id == id }) {
@@ -208,54 +231,63 @@ class NotmuchBackend: ObservableObject {
             return
         }
         
-        // Update email with body and reply metadata
+        // Update email with thread messages
         if let index = emails.firstIndex(where: { $0.id == id }) {
-            emails[index].body = mail.body
-            emails[index].htmlBody = mail.html
-            emails[index].to = mail.to
-            emails[index].cc = mail.cc
-            emails[index].messageId = mail.message_id
-            emails[index].inReplyTo = mail.in_reply_to
-            emails[index].references = mail.references
-            emails[index].bodyState = .loaded(body: mail.body, attributedBody: nil)
-            print("NOTMUCH Loaded body for \(id): \(mail.body.prefix(100))...")
+            // Store all thread messages for display
+            emails[index].threadMessages = thread.messages
             
-            // Cache the body
-            cacheBody(id: id, body: mail.body, htmlBody: mail.html)
+            // For backward compatibility: use newest message for single-email fields
+            if let newestMessage = thread.messages.last {
+                emails[index].body = newestMessage.body
+                emails[index].htmlBody = newestMessage.html
+                emails[index].to = newestMessage.to
+                emails[index].cc = newestMessage.cc
+            }
+            
+            // Use combined body for state (for preview purposes)
+            let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+            emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
+            print("NOTMUCH Loaded thread \(id) with \(thread.messages.count) messages")
+            
+            // Cache the thread messages
+            cacheThread(id: id, messages: thread.messages)
         }
     }
     
-    // MARK: - Body Cache
+    // MARK: - Thread Cache
     
-    private func cacheBody(id: String, body: String, htmlBody: String?) {
+    private func cacheThread(id: String, messages: [ThreadMessage]) {
         // Add to cache
-        bodyCache[id] = CachedBody(body: body, htmlBody: htmlBody, timestamp: Date())
+        threadCache[id] = CachedThread(messages: messages, timestamp: Date())
         
         // Cleanup if cache is too large (remove oldest entries)
-        if bodyCache.count > maxCacheSize {
-            let sortedKeys = bodyCache.keys.sorted { 
-                bodyCache[$0]!.timestamp < bodyCache[$1]!.timestamp 
+        if threadCache.count > maxCacheSize {
+            let sortedKeys = threadCache.keys.sorted { 
+                threadCache[$0]!.timestamp < threadCache[$1]!.timestamp 
             }
-            let keysToRemove = sortedKeys.prefix(bodyCache.count - maxCacheSize)
+            let keysToRemove = sortedKeys.prefix(threadCache.count - maxCacheSize)
             for key in keysToRemove {
-                bodyCache.removeValue(forKey: key)
+                threadCache.removeValue(forKey: key)
             }
             print("NOTMUCH Cache cleanup: removed \(keysToRemove.count) old entries")
         }
     }
     
-    private func restoreCachedBodies() {
+    private func restoreCachedThreads() {
         var restoredCount = 0
         for (index, email) in emails.enumerated() {
-            if let cached = bodyCache[email.id] {
-                emails[index].body = cached.body
-                emails[index].htmlBody = cached.htmlBody
-                emails[index].bodyState = .loaded(body: cached.body, attributedBody: nil)
+            if let cached = threadCache[email.id] {
+                emails[index].threadMessages = cached.messages
+                // Use combined body for state
+                let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+                emails[index].body = cached.messages.last?.body
+                emails[index].htmlBody = cached.messages.last?.html
+                emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
                 restoredCount += 1
             }
         }
         if restoredCount > 0 {
-            print("NOTMUCH Restored \(restoredCount) bodies from cache")
+            print("NOTMUCH Restored \(restoredCount) threads from cache")
         }
     }
     
@@ -385,8 +417,8 @@ class NotmuchBackend: ObservableObject {
             )
         }
         
-        // Restore cached bodies before UI update
-        restoreCachedBodies()
+        // Restore cached threads before UI update
+        restoreCachedThreads()
         
         print("NOTMUCH Search returned \(emails.count) emails")
         isLoadingEmails = false

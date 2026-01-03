@@ -271,6 +271,7 @@ struct ContentView: View {
                             }
                         }
                     )
+                    .id(email.id)  // Force new View instance on email change to reset @State
                     
                     // Selection badge when multiple emails marked
                     if markedEmails.count > 1 {

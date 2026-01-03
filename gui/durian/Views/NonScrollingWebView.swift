@@ -26,12 +26,14 @@ struct NonScrollingWebView: NSViewRepresentable {
     let html: String
     let theme: String              // "light", "dark", "system" (default)
     let loadRemoteImages: Bool     // Security: block tracking pixels by default
+    let emailId: String            // Track which email this WebView belongs to (for race condition prevention)
     @Binding var contentHeight: CGFloat
     
-    init(html: String, theme: String = "system", loadRemoteImages: Bool = false, contentHeight: Binding<CGFloat>) {
+    init(html: String, theme: String = "system", loadRemoteImages: Bool = false, emailId: String = "", contentHeight: Binding<CGFloat>) {
         self.html = html
         self.theme = theme
         self.loadRemoteImages = loadRemoteImages
+        self.emailId = emailId
         self._contentHeight = contentHeight
     }
     
@@ -69,6 +71,7 @@ struct NonScrollingWebView: NSViewRepresentable {
         // (contentHeight binding triggers re-render → updateNSView → reload → didFinish → height update → loop)
         if context.coordinator.lastLoadedHTML != styledHTML {
             context.coordinator.lastLoadedHTML = styledHTML
+            context.coordinator.loadedForEmailId = emailId  // Track which email this load is for
             webView.loadHTMLString(styledHTML, baseURL: nil)
         }
     }
@@ -156,12 +159,18 @@ struct NonScrollingWebView: NSViewRepresentable {
         weak var webView: WKWebView?
         var parent: NonScrollingWebView?
         var lastLoadedHTML: String?  // Track to prevent reload loops
+        var loadedForEmailId: String?  // Track which email we loaded for (race condition prevention)
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Capture email ID at callback time to detect stale callbacks
+            let expectedEmailId = loadedForEmailId
+            
             // Measure content height after page loads
             webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, error in
                 if let height = result as? CGFloat, height > 0 {
                     DispatchQueue.main.async {
+                        // Only update height if still showing the same email (prevents race conditions)
+                        guard self?.parent?.emailId == expectedEmailId else { return }
                         self?.parent?.contentHeight = height
                     }
                 }
