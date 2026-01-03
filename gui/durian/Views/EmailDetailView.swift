@@ -19,7 +19,6 @@ struct EmailDetailView: View {
     
     // MARK: - State
     
-    @State private var isDetailsExpanded: Bool = false
     @State private var messageHeights: [String: CGFloat] = [:]  // Use message ID as key
     
     // MARK: - Body
@@ -44,7 +43,6 @@ struct EmailDetailView: View {
         }
         // Reset state when email changes
         .onChange(of: email.id) { _ in
-            isDetailsExpanded = false
             messageHeights = [:]
         }
     }
@@ -70,8 +68,6 @@ struct EmailDetailView: View {
                         message: message,
                         isFirst: index == 0,
                         isLast: index == 0,  // Newest message (first) gets reply button
-                        isDetailsExpanded: index == 0 ? $isDetailsExpanded : .constant(false),
-                        showExpandableDetails: index == 0,
                         email: email,
                         contentHeight: bindingForMessageId(message.id),
                         onReply: onReply,
@@ -335,19 +331,20 @@ struct ThreadMessageCardView: View {
     let message: ThreadMessage
     let isFirst: Bool
     let isLast: Bool
-    @Binding var isDetailsExpanded: Bool
-    let showExpandableDetails: Bool
     let email: MailMessage  // Parent email for expanded details
     @Binding var contentHeight: CGFloat
     let onReply: () -> Void
     let onReplyAll: () -> Void
     let onForward: () -> Void
     
+    // Each card manages its own expanded state
+    @State private var isDetailsExpanded: Bool = false
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             senderRow
             
-            if showExpandableDetails && isDetailsExpanded {
+            if isDetailsExpanded {
                 expandedDetails
             }
             
@@ -396,26 +393,8 @@ struct ThreadMessageCardView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(Color.Detail.textPrimary)
                 
-                // Expandable details chevron only on first card
-                if showExpandableDetails {
-                    HStack(spacing: 4) {
-                        Text("Details")
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.Detail.textSecondary)
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color.Detail.textSecondary)
-                            .rotationEffect(.degrees(isDetailsExpanded ? 90 : 0))
-                            .animation(.easeInOut(duration: 0.2), value: isDetailsExpanded)
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isDetailsExpanded.toggle()
-                        }
-                    }
-                }
+                // To/Cc line with expand chevron
+                recipientsRow
             }
             
             Spacer()
@@ -424,6 +403,70 @@ struct ThreadMessageCardView: View {
                 .font(.system(size: 14))
                 .foregroundColor(Color.Detail.textTertiary)
                 .lineLimit(1)
+        }
+    }
+    
+    // MARK: - Recipients Row (To/Cc)
+    
+    @ViewBuilder
+    private var recipientsRow: some View {
+        HStack(spacing: 4) {
+            // To recipients
+            if let to = message.to, !to.isEmpty {
+                Text("To:")
+                    .foregroundColor(Color.Detail.textTertiary)
+                Text(extractRecipientNames(to).joined(separator: ", "))
+                    .foregroundColor(Color.Detail.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            // Cc recipients (only if present)
+            if let cc = message.cc, !cc.isEmpty {
+                Text("Cc:")
+                    .foregroundColor(Color.Detail.textTertiary)
+                Text(extractRecipientNames(cc).joined(separator: ", "))
+                    .foregroundColor(Color.Detail.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            // Expand chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color.Detail.textSecondary)
+                .rotationEffect(.degrees(isDetailsExpanded ? 90 : 0))
+                .animation(.easeInOut(duration: 0.2), value: isDetailsExpanded)
+        }
+        .font(.system(size: 14))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isDetailsExpanded.toggle()
+            }
+        }
+    }
+    
+    /// Extract clean names from recipient list
+    /// "\"Lisa Neumayer | kmpro\" <l@x.de>, \"Max Müller\" <m@x.de>" → ["Lisa Neumayer", "Max Müller"]
+    private func extractRecipientNames(_ recipients: String) -> [String] {
+        // Split by comma, but be careful with commas inside quotes
+        let parts = recipients.components(separatedBy: ">,")
+        
+        return parts.compactMap { part in
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return nil }
+            
+            // Add back the ">" if it was removed by split (except for last part)
+            let fullPart = trimmed.hasSuffix(">") ? trimmed : trimmed + ">"
+            
+            // Use extractName to get clean name
+            let name = extractName(from: fullPart)
+            
+            // Remove "| domain" suffix if present
+            if let pipeRange = name.range(of: " |") {
+                return String(name[..<pipeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+            }
+            
+            return name.isEmpty ? nil : name
         }
     }
     
