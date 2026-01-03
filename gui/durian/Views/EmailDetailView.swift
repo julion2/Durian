@@ -513,7 +513,6 @@ struct ThreadMessageCardView: View {
             Text("\(label):")
                 .font(.system(size: 13))
                 .foregroundColor(Color.Detail.textTertiary)
-                .frame(width: 70, alignment: .trailing)
             
             Text(value)
                 .font(.system(size: 13))
