@@ -194,7 +194,7 @@ class SyncManager: ObservableObject {
     
     // MARK: - Quick Sync (Cmd+R)
     
-    /// Quick sync - syncs all accounts with shorter timeout
+    /// Quick sync - syncs current profile's INBOX only
     @discardableResult
     func quickSync() async -> Bool {
         guard !syncLock else {
@@ -205,15 +205,25 @@ class SyncManager: ObservableObject {
         syncLock = true
         defer { syncLock = false }
         
-        print("SYNC: Quick sync starting")
+        // Get current profile for targeted sync
+        guard let currentProfile = ProfileManager.shared.currentProfile else {
+            print("SYNC: Quick sync - no current profile, skipping")
+            return false
+        }
+        
+        let accountName = currentProfile.name
+        print("SYNC: Quick sync starting for \(accountName) INBOX")
         syncState = .syncing
         
-        let success = await runDurianSync(timeout: 60)
+        let success = await runDurianSync(account: accountName, mailbox: "INBOX", timeout: 60)
         
         if success {
             print("SYNC: Quick sync completed successfully")
             syncState = .success
             lastSyncTime = Date()
+            
+            // Reload email list to show new messages
+            await reloadEmailList()
             
             // After 3 seconds, go back to idle
             Task {
@@ -244,14 +254,17 @@ class SyncManager: ObservableObject {
         syncLock = true
         defer { syncLock = false }
         
-        print("SYNC: Full sync starting")
+        print("SYNC: Full sync starting (all accounts)")
         // No UI feedback for full sync (runs in background)
         
-        let success = await runDurianSync(timeout: 300)
+        let success = await runDurianSync(account: nil, mailbox: nil, timeout: 300)
         
         if success {
             print("SYNC: Full sync completed successfully")
             lastSyncTime = Date()
+            
+            // Reload email list to show new messages
+            await reloadEmailList()
         } else {
             print("SYNC: Full sync failed")
             sendNotification(title: "Full Sync Failed", body: "Could not sync emails")
@@ -262,15 +275,28 @@ class SyncManager: ObservableObject {
     
     // MARK: - Core Sync Logic
     
-    /// Run durian sync directly
-    private func runDurianSync(timeout: TimeInterval) async -> Bool {
+    /// Run durian sync with optional account and mailbox targeting
+    /// - Parameters:
+    ///   - account: Specific account name to sync (nil = all accounts)
+    ///   - mailbox: Specific mailbox to sync (nil = all mailboxes)
+    ///   - timeout: Command timeout in seconds
+    private func runDurianSync(account: String?, mailbox: String?, timeout: TimeInterval) async -> Bool {
         guard FileManager.default.fileExists(atPath: durianPath) else {
             print("SYNC: durian not found at \(durianPath)")
             return false
         }
         
-        print("SYNC: Running durian sync (timeout: \(Int(timeout))s)")
-        let result = await runCommand(durianPath, args: ["sync"], timeout: timeout)
+        // Build command args: sync [account] [mailbox]
+        var args = ["sync"]
+        if let account = account {
+            args.append(account)
+            if let mailbox = mailbox {
+                args.append(mailbox)
+            }
+        }
+        
+        print("SYNC: Running durian \(args.joined(separator: " ")) (timeout: \(Int(timeout))s)")
+        let result = await runCommand(durianPath, args: args, timeout: timeout)
         
         if result.success {
             print("SYNC: durian sync completed successfully")
@@ -285,6 +311,15 @@ class SyncManager: ObservableObject {
         }
         
         return result.success
+    }
+    
+    /// Reload the email list after sync to show new messages
+    private func reloadEmailList() async {
+        // Get the current backend and refresh the email list
+        if let backend = AccountManager.shared.notmuchBackend {
+            print("SYNC: Reloading email list")
+            await backend.reload()
+        }
     }
     
     // MARK: - Notifications

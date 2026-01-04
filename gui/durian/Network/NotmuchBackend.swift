@@ -379,7 +379,7 @@ class NotmuchBackend: ObservableObject {
     
     // MARK: - Internal: Search
     
-    private func search(_ query: String, limit: Int = 50) async {
+    private func search(_ query: String, limit: Int = 200) async {
         await restartProcessIfNeeded()
         
         isLoadingEmails = true
