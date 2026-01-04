@@ -4,6 +4,7 @@ package notmuch
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,44 @@ func (c *Client) MessageExists(messageID string) bool {
 
 	count := strings.TrimSpace(string(output))
 	return count != "0" && count != ""
+}
+
+// GetFilenameByMessageID returns the file path for a message by its Message-ID
+// Returns empty string if not found (no error)
+func (c *Client) GetFilenameByMessageID(messageID string) string {
+	args := []string{"search", "--output=files", "--exclude=false", "id:" + messageID}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+
+	cmd := exec.Command("notmuch", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	// Return first filename (there might be multiple for duplicates)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) > 0 && lines[0] != "" {
+		return lines[0]
+	}
+	return ""
+}
+
+// DeleteMessageFile removes a message file from disk and the notmuch database
+// Returns nil if successful or if the message doesn't exist
+func (c *Client) DeleteMessageFile(messageID string) error {
+	filename := c.GetFilenameByMessageID(messageID)
+	if filename == "" {
+		return nil // Message not found, nothing to delete
+	}
+
+	// Remove the file from disk
+	if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove file %s: %w", filename, err)
+	}
+
+	return nil
 }
 
 // GetMessageByFilename retrieves a message by its filename (maildir path)

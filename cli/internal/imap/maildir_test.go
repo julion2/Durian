@@ -160,51 +160,6 @@ func TestImapFlagsToMaildirFlags(t *testing.T) {
 	}
 }
 
-func TestMaildirWriter_UIDMarker(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "durian-maildir-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	w := NewMaildirWriter(tmpDir)
-
-	// Initially no message exists
-	if w.MessageExists("INBOX", 12345) {
-		t.Error("expected message to not exist initially")
-	}
-
-	// Mark as synced
-	if err := w.MarkMessageSynced("INBOX", 12345, "some-maildir-key"); err != nil {
-		t.Fatalf("MarkMessageSynced failed: %v", err)
-	}
-
-	// Now it should exist
-	if !w.MessageExists("INBOX", 12345) {
-		t.Error("expected message to exist after marking")
-	}
-
-	// Get the key back
-	key, err := w.GetSyncedMessageKey("INBOX", 12345)
-	if err != nil {
-		t.Fatalf("GetSyncedMessageKey failed: %v", err)
-	}
-
-	if key != "some-maildir-key" {
-		t.Errorf("expected key 'some-maildir-key', got %q", key)
-	}
-
-	// Different UID should not exist
-	if w.MessageExists("INBOX", 99999) {
-		t.Error("expected different UID to not exist")
-	}
-
-	// Different mailbox should not exist
-	if w.MessageExists("Sent", 12345) {
-		t.Error("expected different mailbox to not have the UID")
-	}
-}
-
 func TestMaildirWriter_GetMailboxes(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "durian-maildir-test-*")
 	if err != nil {

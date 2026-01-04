@@ -79,67 +79,6 @@ func (w *MaildirWriter) WriteMessage(mailboxName string, msg *imap.Message, body
 	return maildirMsg.Key(), nil
 }
 
-// MessageExists checks if a message with the given UID already exists
-// We use a marker file to track which UIDs have been synced
-func (w *MaildirWriter) MessageExists(mailboxName string, uid uint32) bool {
-	markerPath := w.uidMarkerPath(mailboxName, uid)
-	_, err := os.Stat(markerPath)
-	return err == nil
-}
-
-// MarkMessageSynced creates a marker file for a synced message
-func (w *MaildirWriter) MarkMessageSynced(mailboxName string, uid uint32, key string) error {
-	markerDir := filepath.Join(w.basePath, ".durian", sanitizeMailboxName(mailboxName))
-	if err := os.MkdirAll(markerDir, 0755); err != nil {
-		return err
-	}
-
-	markerPath := w.uidMarkerPath(mailboxName, uid)
-	return os.WriteFile(markerPath, []byte(key), 0644)
-}
-
-// GetSyncedMessageKey returns the maildir key for a synced UID
-func (w *MaildirWriter) GetSyncedMessageKey(mailboxName string, uid uint32) (string, error) {
-	markerPath := w.uidMarkerPath(mailboxName, uid)
-	data, err := os.ReadFile(markerPath)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-// DeleteMessage removes a message from maildir by its UID
-// This is called when a message was deleted or moved on the IMAP server
-// Returns nil if successful or if the message doesn't exist locally
-func (w *MaildirWriter) DeleteMessage(mailboxName string, uid uint32) error {
-	// 1. Get the maildir key from UID marker
-	key, err := w.GetSyncedMessageKey(mailboxName, uid)
-	if err != nil {
-		// Marker doesn't exist - message wasn't properly synced, nothing to delete
-		return nil
-	}
-
-	// 2. Find and delete the actual message file using maildir API
-	path := w.mailboxPath(mailboxName)
-	dir := maildir.Dir(path)
-
-	// Get the message by key and remove it
-	msg, err := dir.MessageByKey(key)
-	if err == nil && msg != nil {
-		if removeErr := msg.Remove(); removeErr != nil {
-			debug.Log("DeleteMessage: failed to remove message %s: %v", key, removeErr)
-		}
-	}
-
-	// 3. Delete the UID marker file
-	markerPath := w.uidMarkerPath(mailboxName, uid)
-	if removeErr := os.Remove(markerPath); removeErr != nil && !os.IsNotExist(removeErr) {
-		debug.Log("DeleteMessage: failed to remove marker %s: %v", markerPath, removeErr)
-	}
-
-	return nil
-}
-
 // mailboxPath returns the filesystem path for a mailbox
 func (w *MaildirWriter) mailboxPath(mailboxName string) string {
 	// Convert IMAP mailbox name to filesystem path
@@ -147,12 +86,6 @@ func (w *MaildirWriter) mailboxPath(mailboxName string) string {
 	// Sent Items -> basePath/Sent Items (or sanitized)
 	name := sanitizeMailboxName(mailboxName)
 	return filepath.Join(w.basePath, name)
-}
-
-// uidMarkerPath returns the path to the UID marker file
-func (w *MaildirWriter) uidMarkerPath(mailboxName string, uid uint32) string {
-	name := sanitizeMailboxName(mailboxName)
-	return filepath.Join(w.basePath, ".durian", name, fmt.Sprintf("%d.uid", uid))
 }
 
 // sanitizeMailboxName makes a mailbox name safe for filesystem use

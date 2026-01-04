@@ -380,8 +380,16 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		} else {
 			fmt.Fprintf(s.output, "    ✗ Removing %d deleted messages...\n", len(deletedUIDs))
 			for _, uid := range deletedUIDs {
-				debug.Log("syncMailbox: removing deleted UID %d", uid)
-				s.maildir.DeleteMessage(mailboxName, uid)
+				// Get Message-ID from state to find the file
+				messageID, hasID := mboxState.GetMessageID(uid)
+				if hasID && messageID != "" {
+					debug.Log("syncMailbox: removing deleted UID %d (Message-ID: %s)", uid, messageID)
+					if err := s.notmuch.DeleteMessageFile(messageID); err != nil {
+						debug.Log("syncMailbox: failed to delete file for UID %d: %v", uid, err)
+					}
+				} else {
+					debug.Log("syncMailbox: no Message-ID for deleted UID %d, skipping file deletion", uid)
+				}
 				mboxState.RemoveSyncedUID(uid)
 				result.DeletedMsgs++
 			}
@@ -529,16 +537,15 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			}
 
 			// Pass the already-read body to WriteMessage
-			key, err := s.maildir.WriteMessage(mailboxName, msg, msgBody)
+			_, err := s.maildir.WriteMessage(mailboxName, msg, msgBody)
 			if err != nil {
 				fmt.Fprintf(s.output, "    Warning: failed to write message %d: %v\n", msg.Uid, err)
 				result.SkippedMsgs++
 				continue
 			}
 
-			// Mark as synced
+			// Mark as synced in state (no more .uid marker files needed)
 			mboxState.AddSyncedUID(msg.Uid)
-			s.maildir.MarkMessageSynced(mailboxName, msg.Uid, key)
 
 			// Store initial flag state
 			initialFlags := FlagStateFromIMAP(msg.Flags)
