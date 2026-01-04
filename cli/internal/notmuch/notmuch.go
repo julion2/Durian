@@ -41,6 +41,25 @@ func (c *Client) GetMessageByID(messageID string) (*Message, error) {
 	return messages[0], nil
 }
 
+// MessageExists checks if a message with the given Message-ID exists in notmuch
+// Returns true if found, false otherwise (no error on not-found)
+func (c *Client) MessageExists(messageID string) bool {
+	// Use count for efficiency - faster than full search
+	args := []string{"count", "--exclude=false", "id:" + messageID}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+
+	cmd := exec.Command("notmuch", args...)
+	output, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+
+	count := strings.TrimSpace(string(output))
+	return count != "0" && count != ""
+}
+
 // GetMessageByFilename retrieves a message by its filename (maildir path)
 func (c *Client) GetMessageByFilename(filename string) (*Message, error) {
 	// notmuch can search by path
@@ -194,6 +213,36 @@ func (c *Client) RemoveTags(query string, tags ...string) error {
 	}
 
 	for _, tag := range tags {
+		args = append(args, "-"+tag)
+	}
+	args = append(args, "--", query)
+
+	cmd := exec.Command("notmuch", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("notmuch tag failed: %s", string(output))
+	}
+
+	return nil
+}
+
+// ModifyTags adds and removes tags in a single notmuch call
+// This is more efficient than separate AddTags/RemoveTags calls
+// Example: ModifyTags("id:xxx", []string{"trash"}, []string{"inbox"})
+// Results in: notmuch tag +trash -inbox -- id:xxx
+func (c *Client) ModifyTags(query string, addTags []string, removeTags []string) error {
+	if len(addTags) == 0 && len(removeTags) == 0 {
+		return nil
+	}
+
+	args := []string{"tag"}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+
+	for _, tag := range addTags {
+		args = append(args, "+"+tag)
+	}
+	for _, tag := range removeTags {
 		args = append(args, "-"+tag)
 	}
 	args = append(args, "--", query)

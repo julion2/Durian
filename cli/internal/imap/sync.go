@@ -31,6 +31,25 @@ const (
 	SyncUploadOnly
 )
 
+// FolderTagMapping defines which tags to add/remove when syncing a folder
+// This is used for deduplication: when a mail already exists locally,
+// we update tags instead of downloading again
+type FolderTagMapping struct {
+	AddTags    []string // Tags to add (e.g., "trash" for Trash folder)
+	RemoveTags []string // Tags to remove (e.g., "inbox" when mail moved to Trash)
+}
+
+// specialUseFolderTags maps IMAP SPECIAL-USE attributes to tag operations
+// These are standardized by RFC 6154
+var specialUseFolderTags = map[string]FolderTagMapping{
+	"\\Inbox":   {AddTags: []string{"inbox"}, RemoveTags: []string{}},
+	"\\Sent":    {AddTags: []string{"sent"}, RemoveTags: []string{}},
+	"\\Drafts":  {AddTags: []string{"draft"}, RemoveTags: []string{}},
+	"\\Trash":   {AddTags: []string{"trash"}, RemoveTags: []string{"inbox"}},
+	"\\Junk":    {AddTags: []string{"spam"}, RemoveTags: []string{"inbox"}},
+	"\\Archive": {AddTags: []string{"archive"}, RemoveTags: []string{}},
+}
+
 // SyncOptions configures the sync behavior
 type SyncOptions struct {
 	DryRun    bool
@@ -43,27 +62,29 @@ type SyncOptions struct {
 
 // SyncResult contains the results of a sync operation
 type SyncResult struct {
-	Account       string
-	Mailboxes     []MailboxResult
-	Duration      time.Duration
-	TotalNew      int
-	TotalSkipped  int
-	TotalDeleted  int // Messages deleted locally (removed from server)
-	FlagsUploaded int // Flags uploaded to server
-	FlagsDownload int // Flags downloaded from server
-	Error         error
+	Account           string
+	Mailboxes         []MailboxResult
+	Duration          time.Duration
+	TotalNew          int
+	TotalSkipped      int
+	TotalDeleted      int // Messages deleted locally (removed from server)
+	TotalDeduplicated int // Messages that already existed locally (tags updated)
+	FlagsUploaded     int // Flags uploaded to server
+	FlagsDownload     int // Flags downloaded from server
+	Error             error
 }
 
 // MailboxResult contains the results for a single mailbox
 type MailboxResult struct {
-	Name          string
-	TotalMsgs     uint32
-	NewMsgs       int
-	SkippedMsgs   int
-	DeletedMsgs   int // Messages deleted locally (removed from server)
-	FlagsUploaded int
-	FlagsDownload int
-	Error         error
+	Name             string
+	TotalMsgs        uint32
+	NewMsgs          int
+	SkippedMsgs      int
+	DeletedMsgs      int // Messages deleted locally (removed from server)
+	DeduplicatedMsgs int // Messages that already existed locally (tags updated)
+	FlagsUploaded    int
+	FlagsDownload    int
+	Error            error
 }
 
 // Syncer handles IMAP synchronization for an account
@@ -168,6 +189,7 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		result.TotalNew += mboxResult.NewMsgs
 		result.TotalSkipped += mboxResult.SkippedMsgs
 		result.TotalDeleted += mboxResult.DeletedMsgs
+		result.TotalDeduplicated += mboxResult.DeduplicatedMsgs
 		result.FlagsUploaded += mboxResult.FlagsUploaded
 		result.FlagsDownload += mboxResult.FlagsDownload
 
@@ -188,6 +210,14 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		fmt.Fprintf(s.output, "  Running notmuch new...\n")
 		if err := runNotmuchNew(); err != nil {
 			fmt.Fprintf(s.output, "  Warning: notmuch new failed: %v\n", err)
+		}
+
+		// Apply folder-based tags after notmuch new has indexed the messages
+		// This sets inbox/trash/spam/sent/draft tags based on SPECIAL-USE folders
+		for _, mboxResult := range result.Mailboxes {
+			if mboxResult.NewMsgs > 0 {
+				s.applyFolderTags(mboxResult.Name)
+			}
 		}
 	}
 
@@ -383,16 +413,84 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		fmt.Fprintf(s.output, "    Limited to %d most recent messages\n", maxMessages)
 	}
 
-	// Fetch in batches
-	batchSize := s.account.GetIMAPBatchSize()
-	totalBatches := (len(unsyncedUIDs) + batchSize - 1) / batchSize
+	// Deduplication: Check if messages already exist locally (moved from another folder)
+	// Fetch Message-IDs for unsynced UIDs first
+	var toDownload []uint32
+	if !s.options.DryRun && len(unsyncedUIDs) > 0 {
+		debug.Log("syncMailbox: checking for duplicates among %d unsynced UIDs", len(unsyncedUIDs))
 
-	for i := 0; i < len(unsyncedUIDs); i += batchSize {
-		end := i + batchSize
-		if end > len(unsyncedUIDs) {
-			end = len(unsyncedUIDs)
+		// Fetch envelopes to get Message-IDs
+		envelopes, err := s.client.FetchEnvelopes(unsyncedUIDs)
+		if err != nil {
+			debug.Log("syncMailbox: failed to fetch envelopes for dedup: %v", err)
+			// Fall back to downloading everything
+			toDownload = unsyncedUIDs
+		} else {
+			// Get folder tag mapping for this mailbox
+			tagMapping := s.getFolderTagMapping(mailboxName)
+
+			// Check each message for duplicates
+			for _, uid := range unsyncedUIDs {
+				messageID, hasID := envelopes[uid]
+				if !hasID || messageID == "" {
+					// No Message-ID, must download
+					toDownload = append(toDownload, uid)
+					continue
+				}
+
+				// Check if this message already exists in notmuch
+				if s.notmuch.MessageExists(messageID) {
+					// Message exists! Update tags instead of downloading
+					debug.Log("syncMailbox: UID %d (Message-ID: %s) already exists, updating tags", uid, messageID)
+
+					if tagMapping != nil {
+						query := fmt.Sprintf("id:%s", messageID)
+						if err := s.notmuch.ModifyTags(query, tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
+							debug.Log("syncMailbox: failed to update tags for %s: %v", messageID, err)
+						}
+					}
+
+					// Mark as synced (we don't need to download)
+					mboxState.AddSyncedUID(uid)
+					mboxState.SetMessageID(uid, messageID)
+					result.DeduplicatedMsgs++
+				} else {
+					// Message doesn't exist, need to download
+					toDownload = append(toDownload, uid)
+				}
+			}
+
+			if result.DeduplicatedMsgs > 0 {
+				fmt.Fprintf(s.output, "    ⚡ %d messages already exist (tags updated)\n", result.DeduplicatedMsgs)
+			}
 		}
-		batch := unsyncedUIDs[i:end]
+	} else {
+		toDownload = unsyncedUIDs
+	}
+
+	// Nothing left to download after deduplication
+	if len(toDownload) == 0 {
+		if result.DeduplicatedMsgs > 0 || result.DeletedMsgs > 0 {
+			// Still run flag sync
+			if !s.options.NoFlags {
+				uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
+				result.FlagsUploaded = uploaded
+				result.FlagsDownload = downloaded
+			}
+		}
+		return result
+	}
+
+	// Fetch remaining messages in batches
+	batchSize := s.account.GetIMAPBatchSize()
+	totalBatches := (len(toDownload) + batchSize - 1) / batchSize
+
+	for i := 0; i < len(toDownload); i += batchSize {
+		end := i + batchSize
+		if end > len(toDownload) {
+			end = len(toDownload)
+		}
+		batch := toDownload[i:end]
 		batchNum := (i / batchSize) + 1
 
 		fmt.Fprintf(s.output, "    ↓ Batch %d/%d: Fetching messages %d-%d...\n",
@@ -457,11 +555,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 	if result.NewMsgs > 0 {
 		fmt.Fprintf(s.output, "    ✓ %d new messages\n", result.NewMsgs)
-
-		// Add exclusion tags for Junk/Trash folders (for notmuch search exclusion)
-		if !s.options.DryRun && s.serverMailboxes != nil {
-			s.addExclusionTagsForMailbox(mailboxName)
-		}
+		// Folder tags (inbox/trash/spam/etc.) are applied after notmuch new in the main Sync() loop
 	}
 
 	// Flag synchronization (after message download)
@@ -541,9 +635,30 @@ func (s *Syncer) buildNotmuchFolderName(mailboxName string) string {
 	return filepath.Join(accountFolder, mailboxName)
 }
 
+// applyFolderTags applies folder-based tags to all messages in a mailbox
+// Uses SPECIAL-USE attributes to determine which tags to add/remove
+// Called after notmuch new to tag newly indexed messages
+func (s *Syncer) applyFolderTags(mailboxName string) {
+	mapping := s.getFolderTagMapping(mailboxName)
+	if mapping == nil || (len(mapping.AddTags) == 0 && len(mapping.RemoveTags) == 0) {
+		return
+	}
+
+	// Build notmuch folder query
+	folderPath := s.buildNotmuchFolderName(mailboxName)
+	query := fmt.Sprintf("folder:\"%s\"", folderPath)
+
+	if err := s.notmuch.ModifyTags(query, mapping.AddTags, mapping.RemoveTags); err != nil {
+		debug.Log("applyFolderTags: failed to apply tags to %s: %v", mailboxName, err)
+	} else {
+		debug.Log("applyFolderTags: applied +%v -%v to %s", mapping.AddTags, mapping.RemoveTags, mailboxName)
+	}
+}
+
 // addExclusionTagsForMailbox adds notmuch exclusion tags based on IMAP SPECIAL-USE role
 // Junk folders get +junk +spam, Trash folders get +deleted
 // This enables notmuch search exclusion (via search.exclude_tags config)
+// DEPRECATED: Use applyFolderTags instead which uses getFolderTagMapping
 func (s *Syncer) addExclusionTagsForMailbox(mailboxName string) {
 	var tagsToAdd []string
 
@@ -576,6 +691,39 @@ func (s *Syncer) addExclusionTagsForMailbox(mailboxName string) {
 	} else {
 		debug.Log("addExclusionTagsForMailbox: added %v to %s", tagsToAdd, mailboxName)
 	}
+}
+
+// getFolderTagMapping returns the tag mapping for a mailbox based on SPECIAL-USE attributes
+// Returns tags to add and remove when a mail is found in this folder
+// Used for both new downloads and deduplication (updating tags for existing mails)
+func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
+	// Special case: INBOX always gets inbox tag
+	if strings.EqualFold(mailboxName, "INBOX") {
+		return &FolderTagMapping{
+			AddTags:    []string{"inbox"},
+			RemoveTags: []string{},
+		}
+	}
+
+	// Find the mailbox in our cached list and check its SPECIAL-USE attributes
+	for _, mbox := range s.serverMailboxes {
+		if mbox.Name != mailboxName {
+			continue
+		}
+		for _, attr := range mbox.Attributes {
+			// Normalize attribute for lookup (case-insensitive)
+			normalizedAttr := strings.ToLower(attr)
+			for specialUse, mapping := range specialUseFolderTags {
+				if strings.EqualFold(normalizedAttr, strings.ToLower(specialUse)) {
+					return &mapping
+				}
+			}
+		}
+		break
+	}
+
+	// No special-use attribute found - no tag changes
+	return nil
 }
 
 // syncFlags synchronizes flags between local notmuch and IMAP server
