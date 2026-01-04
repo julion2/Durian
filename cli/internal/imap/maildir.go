@@ -108,6 +108,38 @@ func (w *MaildirWriter) GetSyncedMessageKey(mailboxName string, uid uint32) (str
 	return string(data), nil
 }
 
+// DeleteMessage removes a message from maildir by its UID
+// This is called when a message was deleted or moved on the IMAP server
+// Returns nil if successful or if the message doesn't exist locally
+func (w *MaildirWriter) DeleteMessage(mailboxName string, uid uint32) error {
+	// 1. Get the maildir key from UID marker
+	key, err := w.GetSyncedMessageKey(mailboxName, uid)
+	if err != nil {
+		// Marker doesn't exist - message wasn't properly synced, nothing to delete
+		return nil
+	}
+
+	// 2. Find and delete the actual message file using maildir API
+	path := w.mailboxPath(mailboxName)
+	dir := maildir.Dir(path)
+
+	// Get the message by key and remove it
+	msg, err := dir.MessageByKey(key)
+	if err == nil && msg != nil {
+		if removeErr := msg.Remove(); removeErr != nil {
+			debug.Log("DeleteMessage: failed to remove message %s: %v", key, removeErr)
+		}
+	}
+
+	// 3. Delete the UID marker file
+	markerPath := w.uidMarkerPath(mailboxName, uid)
+	if removeErr := os.Remove(markerPath); removeErr != nil && !os.IsNotExist(removeErr) {
+		debug.Log("DeleteMessage: failed to remove marker %s: %v", markerPath, removeErr)
+	}
+
+	return nil
+}
+
 // mailboxPath returns the filesystem path for a mailbox
 func (w *MaildirWriter) mailboxPath(mailboxName string) string {
 	// Convert IMAP mailbox name to filesystem path

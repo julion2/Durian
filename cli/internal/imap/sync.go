@@ -48,6 +48,7 @@ type SyncResult struct {
 	Duration      time.Duration
 	TotalNew      int
 	TotalSkipped  int
+	TotalDeleted  int // Messages deleted locally (removed from server)
 	FlagsUploaded int // Flags uploaded to server
 	FlagsDownload int // Flags downloaded from server
 	Error         error
@@ -59,6 +60,7 @@ type MailboxResult struct {
 	TotalMsgs     uint32
 	NewMsgs       int
 	SkippedMsgs   int
+	DeletedMsgs   int // Messages deleted locally (removed from server)
 	FlagsUploaded int
 	FlagsDownload int
 	Error         error
@@ -165,6 +167,7 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		result.Mailboxes = append(result.Mailboxes, mboxResult)
 		result.TotalNew += mboxResult.NewMsgs
 		result.TotalSkipped += mboxResult.SkippedMsgs
+		result.TotalDeleted += mboxResult.DeletedMsgs
 		result.FlagsUploaded += mboxResult.FlagsUploaded
 		result.FlagsDownload += mboxResult.FlagsDownload
 
@@ -180,8 +183,8 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		}
 	}
 
-	// Run notmuch new
-	if !s.options.NoNotmuch && !s.options.DryRun && result.TotalNew > 0 {
+	// Run notmuch new (for new messages or after deletions)
+	if !s.options.NoNotmuch && !s.options.DryRun && (result.TotalNew > 0 || result.TotalDeleted > 0) {
 		fmt.Fprintf(s.output, "  Running notmuch new...\n")
 		if err := runNotmuchNew(); err != nil {
 			fmt.Fprintf(s.output, "  Warning: notmuch new failed: %v\n", err)
@@ -338,8 +341,27 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	unsyncedUIDs := mboxState.GetUnsyncedUIDs(allUIDs)
 	debug.Log("syncMailbox: %d unsynced UIDs", len(unsyncedUIDs))
 
+	// Check for deleted/moved messages (UIDs that are locally synced but no longer on server)
+	deletedUIDs := mboxState.GetDeletedUIDs(allUIDs)
+	if len(deletedUIDs) > 0 {
+		if s.options.DryRun {
+			fmt.Fprintf(s.output, "    Would remove %d deleted messages\n", len(deletedUIDs))
+			result.DeletedMsgs = len(deletedUIDs)
+		} else {
+			fmt.Fprintf(s.output, "    ✗ Removing %d deleted messages...\n", len(deletedUIDs))
+			for _, uid := range deletedUIDs {
+				debug.Log("syncMailbox: removing deleted UID %d", uid)
+				s.maildir.DeleteMessage(mailboxName, uid)
+				mboxState.RemoveSyncedUID(uid)
+				result.DeletedMsgs++
+			}
+		}
+	}
+
 	if len(unsyncedUIDs) == 0 {
-		fmt.Fprintf(s.output, "    (up to date)\n")
+		if result.DeletedMsgs == 0 {
+			fmt.Fprintf(s.output, "    (up to date)\n")
+		}
 		// Still run flag sync even if no new messages
 		// Flag sync runs even in dry-run mode to show what would happen
 		if !s.options.NoFlags {

@@ -106,6 +106,45 @@ func (ms *MailboxState) GetUnsyncedUIDs(allUIDs []uint32) []uint32 {
 	return unsynced
 }
 
+// GetDeletedUIDs returns UIDs that are locally synced but no longer exist on server
+// These messages were either deleted or moved to another folder
+func (ms *MailboxState) GetDeletedUIDs(serverUIDs []uint32) []uint32 {
+	serverSet := make(map[uint32]bool)
+	for _, uid := range serverUIDs {
+		serverSet[uid] = true
+	}
+
+	var deleted []uint32
+	for _, uid := range ms.SyncedUIDs {
+		if !serverSet[uid] {
+			deleted = append(deleted, uid)
+		}
+	}
+
+	return deleted
+}
+
+// RemoveSyncedUID removes a UID from the synced list and cleans up related maps
+func (ms *MailboxState) RemoveSyncedUID(uid uint32) {
+	// Remove from SyncedUIDs slice
+	var newUIDs []uint32
+	for _, u := range ms.SyncedUIDs {
+		if u != uid {
+			newUIDs = append(newUIDs, u)
+		}
+	}
+	ms.SyncedUIDs = newUIDs
+
+	// Clean up MessageFlags
+	delete(ms.MessageFlags, uid)
+
+	// Clean up UID <-> MessageID mappings
+	if msgID, ok := ms.UIDToMessageID[uid]; ok {
+		delete(ms.MessageIDToUID, msgID)
+		delete(ms.UIDToMessageID, uid)
+	}
+}
+
 // NeedsFullResync returns true if UIDVALIDITY changed
 func (ms *MailboxState) NeedsFullResync(newUIDValidity uint32) bool {
 	return ms.UIDValidity != 0 && ms.UIDValidity != newUIDValidity
