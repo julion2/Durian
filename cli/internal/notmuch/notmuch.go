@@ -122,7 +122,8 @@ func (c *Client) GetMessageByFilename(filename string) (*Message, error) {
 // Search searches for messages matching the query
 // Uses --exclude=false to include messages with excluded tags (deleted, spam)
 func (c *Client) Search(query string) ([]*Message, error) {
-	args := []string{"search", "--exclude=false", "--output=messages", "--format=json", query}
+	// Use notmuch show to get all message info in one go
+	args := []string{"show", "--format=json", "--entire-thread=false", "--exclude=false", query}
 	if c.databasePath != "" {
 		args = append([]string{"--config=" + c.databasePath}, args...)
 	}
@@ -131,27 +132,43 @@ func (c *Client) Search(query string) ([]*Message, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("notmuch search failed: %s", string(exitErr.Stderr))
+			return nil, fmt.Errorf("notmuch show failed: %s", string(exitErr.Stderr))
 		}
-		return nil, fmt.Errorf("notmuch search failed: %w", err)
+		return nil, fmt.Errorf("notmuch show failed: %w", err)
 	}
 
-	// Parse message IDs
-	var messageIDs []string
+	// notmuch show returns a nested structure: [ [[{msg}, [replies]], ...], ... ]  (array of threads)
+	var threads [][][]json.RawMessage
 	if len(output) > 0 {
-		if err := json.Unmarshal(output, &messageIDs); err != nil {
-			return nil, fmt.Errorf("failed to parse search results: %w", err)
+		if err := json.Unmarshal(output, &threads); err != nil {
+			return nil, fmt.Errorf("failed to parse show results: %w", err)
 		}
 	}
 
-	// Get full message info for each ID
 	var messages []*Message
-	for _, id := range messageIDs {
-		msg, err := c.showMessage(id)
-		if err != nil {
-			continue // Skip messages we can't show
+	for _, thread := range threads {
+		for _, msgPair := range thread {
+			if len(msgPair) == 0 {
+				continue
+			}
+
+			var msg showResult
+			if err := json.Unmarshal(msgPair[0], &msg); err != nil {
+				continue // Skip malformed messages
+			}
+
+			// Use first filename if multiple
+			filename := ""
+			if len(msg.Filename) > 0 {
+				filename = msg.Filename[0]
+			}
+
+			messages = append(messages, &Message{
+				ID:       msg.ID,
+				Filename: filename,
+				Tags:     msg.Tags,
+			})
 		}
-		messages = append(messages, msg)
 	}
 
 	return messages, nil
