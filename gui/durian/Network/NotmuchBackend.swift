@@ -119,11 +119,27 @@ class NotmuchBackend: ObservableObject {
     
     // MARK: - Protocol: Connection
     
-    func connect() async {
-        let durianPath = "\(NSHomeDirectory())/.local/bin/durian"
+    /// Resolve durian CLI path: check ~/.local/bin/durian first, then search PATH
+    private func resolveDurianPath() -> String? {
+        let homePath = "\(NSHomeDirectory())/.local/bin/durian"
+        if FileManager.default.fileExists(atPath: homePath) {
+            return homePath
+        }
         
-        guard FileManager.default.fileExists(atPath: durianPath) else {
-            connectionStatus = "durian not found at \(durianPath)"
+        // Search in standard PATHs if not in home local bin
+        let searchPaths = ["/usr/local/bin/durian", "/opt/homebrew/bin/durian"]
+        for path in searchPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        
+        return nil
+    }
+
+    func connect() async {
+        guard let durianPath = resolveDurianPath() else {
+            connectionStatus = "durian CLI not found in ~/.local/bin or /usr/local/bin"
             print("NOTMUCH ERROR: \(connectionStatus)")
             return
         }
@@ -155,7 +171,7 @@ class NotmuchBackend: ObservableObject {
             try process?.run()
             isConnected = true
             connectionStatus = "Connected to notmuch"
-            print("NOTMUCH Started durian process")
+            print("NOTMUCH Started durian process: \(durianPath)")
             
             // Initial load
             await selectFolder("inbox")
@@ -500,76 +516,52 @@ class NotmuchBackend: ObservableObject {
             return nil
         }
         
+        // Ensure we are connected
+        await restartProcessIfNeeded()
+        
         do {
             var data = try encoder.encode(request)
             data.append(contentsOf: "\n".utf8)
             
-            return await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    // Only one request at a time to prevent response mixing
-                    // Use timeout-based wait so we can check for cancellation
-                    var waitResult = self.requestSemaphore.wait(timeout: .now() + 0.1)
-                    while waitResult == .timedOut {
-                        // Only cancel if this is a prefetch request AND cancellation is requested
-                        if cancelOnPrefetchAbort && self.shouldCancelPrefetch {
-                            print("NOTMUCH sendCommand: Prefetch cancelled while waiting for semaphore")
-                            continuation.resume(returning: nil)
-                            return
-                        }
-                        waitResult = self.requestSemaphore.wait(timeout: .now() + 0.1)
-                    }
-                    defer { self.requestSemaphore.signal() }
-                    
-                    stdin.write(data)
-                    
-                    // Buffered reading bis Newline (eine JSON-Zeile pro Response)
-                    var buffer = Data()
-                    let startTime = Date()
-                    let timeout: TimeInterval = 30.0
-                    
-                    while true {
-                        // Timeout check
-                        if Date().timeIntervalSince(startTime) > timeout {
-                            print("NOTMUCH ERROR: Read timeout after 30s")
-                            continuation.resume(returning: nil)
-                            return
-                        }
-                        
-                        let chunk = stdout.availableData
-                        if chunk.isEmpty {
-                            Thread.sleep(forTimeInterval: 0.01)
-                            continue
-                        }
-                        buffer.append(chunk)
-                        
-                        // Prüfe ob vollständige Zeile (endet mit \n)
-                        if let str = String(data: buffer, encoding: .utf8), str.contains("\n") {
-                            break
-                        }
-                    }
-                    
-                    let responseData = buffer
-                    
-                    if responseData.isEmpty {
-                        print("NOTMUCH ERROR: Empty response")
-                        continuation.resume(returning: nil)
-                        return
-                    }
-                    
-                    do {
-                        let response = try self.decoder.decode(DurianResponse.self, from: responseData)
-                        continuation.resume(returning: response)
-                    } catch {
-                        print("NOTMUCH ERROR: Decode failed: \(error)")
-                        if let str = String(data: responseData, encoding: .utf8) {
-                            print("NOTMUCH Raw: \(str.prefix(500))")
-                        }
-                        continuation.resume(returning: nil)
-                    }
+            // Only one request at a time to prevent response mixing
+            // We use the semaphore even with async/await to guarantee request-response order
+            let waitResult = self.requestSemaphore.wait(timeout: .now() + 30.0)
+            guard waitResult == .success else {
+                print("NOTMUCH ERROR: Timed out waiting for request semaphore")
+                return nil
+            }
+            defer { self.requestSemaphore.signal() }
+            
+            // Write request
+            try stdin.write(contentsOf: data)
+            
+            // Use bytes.lines for efficient, modern async reading
+            // This is much safer than manual loops and sleeps
+            let lineStream = stdout.bytes.lines
+            
+            for try await line in lineStream {
+                if line.isEmpty { continue }
+                
+                guard let responseData = line.data(using: .utf8) else {
+                    print("NOTMUCH ERROR: Failed to convert line to data")
+                    return nil
+                }
+                
+                do {
+                    let response = try self.decoder.decode(DurianResponse.self, from: responseData)
+                    return response
+                } catch {
+                    print("NOTMUCH ERROR: Decode failed: \(error)")
+                    print("NOTMUCH Raw: \(line.prefix(500))")
+                    return nil
                 }
             }
+            
+            print("NOTMUCH ERROR: Stream ended without response")
+            return nil
+            
         } catch {
-            print("NOTMUCH ERROR: Encode failed: \(error)")
+            print("NOTMUCH ERROR: IPC failed: \(error)")
             return nil
         }
     }

@@ -72,8 +72,8 @@ class SyncManager: ObservableObject {
     private var lastFailureNotificationTime: Date?
     
     private init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        durianPath = home.appendingPathComponent(".local/bin/durian").path
+        // Initial path resolution, will be refreshed in runDurianSync if needed
+        durianPath = FileManager.default.resolveDurianPath() ?? ""
     }
     
     // MARK: - Setup (call on app start)
@@ -281,8 +281,8 @@ class SyncManager: ObservableObject {
     ///   - mailbox: Specific mailbox to sync (nil = all mailboxes)
     ///   - timeout: Command timeout in seconds
     private func runDurianSync(account: String?, mailbox: String?, timeout: TimeInterval) async -> Bool {
-        guard FileManager.default.fileExists(atPath: durianPath) else {
-            print("SYNC: durian not found at \(durianPath)")
+        guard let resolvedPath = FileManager.default.resolveDurianPath() else {
+            print("SYNC: durian CLI not found in ~/.local/bin or /usr/local/bin")
             return false
         }
         
@@ -295,8 +295,8 @@ class SyncManager: ObservableObject {
             }
         }
         
-        print("SYNC: Running durian \(args.joined(separator: " ")) (timeout: \(Int(timeout))s)")
-        let result = await runCommand(durianPath, args: args, timeout: timeout)
+        print("SYNC: Running \(resolvedPath) \(args.joined(separator: " ")) (timeout: \(Int(timeout))s)")
+        let result = await runCommand(resolvedPath, args: args, timeout: timeout)
         
         if result.success {
             print("SYNC: durian sync completed successfully")
