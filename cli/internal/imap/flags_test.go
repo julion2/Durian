@@ -71,9 +71,9 @@ func TestFlagStateFromNotmuchTags(t *testing.T) {
 			expected: FlagState{Seen: false, Flagged: true},
 		},
 		{
-			name:     "all sync tags",
+			name:     "all sync tags (deleted not mapped)",
 			tags:     []string{"flagged", "replied", "deleted"},
-			expected: FlagState{Seen: true, Flagged: true, Answered: true, Deleted: true},
+			expected: FlagState{Seen: true, Flagged: true, Answered: true},
 		},
 		{
 			name:     "with non-sync tags",
@@ -142,19 +142,19 @@ func TestFlagStateToNotmuchTags(t *testing.T) {
 			name:           "unread message",
 			state:          FlagState{Seen: false},
 			expectedAdd:    []string{"unread"},
-			expectedRemove: []string{"flagged", "replied", "deleted"},
+			expectedRemove: []string{"flagged", "replied"},
 		},
 		{
 			name:           "read message",
 			state:          FlagState{Seen: true},
 			expectedAdd:    nil,
-			expectedRemove: []string{"unread", "flagged", "replied", "deleted"},
+			expectedRemove: []string{"unread", "flagged", "replied"},
 		},
 		{
 			name:           "flagged unread message",
 			state:          FlagState{Seen: false, Flagged: true},
 			expectedAdd:    []string{"unread", "flagged"},
-			expectedRemove: []string{"replied", "deleted"},
+			expectedRemove: []string{"replied"},
 		},
 	}
 
