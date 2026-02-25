@@ -5,7 +5,6 @@ notifications_enabled = false
 
 [sync]
 auto_fetch_enabled = false
-mbsync_channels = []
 
 [signatures]
 default = "Regards"

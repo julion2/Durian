@@ -168,7 +168,7 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
-    // MARK: - Full Reload (mbsync via launchd + notmuch new)
+    // MARK: - Full Reload
     
     func reloadNotmuch() async {
         guard let backend = notmuchBackend else { return }

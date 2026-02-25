@@ -17,12 +17,11 @@ type SettingsConfig struct {
 	LoadRemoteImages     bool   `toml:"load_remote_images"`
 }
 
-// SyncConfig contains mbsync/sync settings
+// SyncConfig contains sync settings
 type SyncConfig struct {
-	AutoFetchEnabled  bool     `toml:"auto_fetch_enabled"`
-	AutoFetchInterval float64  `toml:"auto_fetch_interval"` // seconds
-	FullSyncInterval  float64  `toml:"full_sync_interval"`  // seconds
-	MbsyncChannels    []string `toml:"mbsync_channels"`
+	AutoFetchEnabled  bool    `toml:"auto_fetch_enabled"`
+	AutoFetchInterval float64 `toml:"auto_fetch_interval"` // seconds
+	FullSyncInterval  float64 `toml:"full_sync_interval"`  // seconds
 }
 
 // NotmuchConfig contains notmuch-specific settings

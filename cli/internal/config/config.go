@@ -98,7 +98,6 @@ func Default() *Config {
 			AutoFetchEnabled:  true,
 			AutoFetchInterval: 120,
 			FullSyncInterval:  7200,
-			MbsyncChannels:    []string{},
 		},
 		Signatures: map[string]string{},
 		Accounts:   []AccountConfig{},

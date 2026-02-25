@@ -83,10 +83,6 @@ func TestLoadValidConfig(t *testing.T) {
 	if cfg.Sync.AutoFetchInterval != 120 {
 		t.Errorf("Sync.AutoFetchInterval = %v, want %v", cfg.Sync.AutoFetchInterval, 120)
 	}
-	if len(cfg.Sync.MbsyncChannels) != 2 {
-		t.Errorf("Sync.MbsyncChannels length = %d, want 2", len(cfg.Sync.MbsyncChannels))
-	}
-
 	// Notmuch
 	if cfg.Notmuch.DatabasePath != "~/.mail" {
 		t.Errorf("Notmuch.DatabasePath = %q, want %q", cfg.Notmuch.DatabasePath, "~/.mail")

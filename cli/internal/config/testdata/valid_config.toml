@@ -8,7 +8,6 @@ load_remote_images = false
 auto_fetch_enabled = true
 auto_fetch_interval = 120
 full_sync_interval = 7200
-mbsync_channels = ["work", "personal"]
 
 [notmuch]
 database_path = "~/.mail"
