@@ -210,11 +210,14 @@ class SyncManager: ObservableObject {
             print("SYNC: Quick sync - no current profile, skipping")
             return false
         }
-        
-        let accountName = currentProfile.name
-        print("SYNC: Quick sync starting for \(accountName) INBOX")
+
+        // Use account alias for single-account profiles, sync all for multi/wildcard
+        let accountName: String? = (!currentProfile.isAll && currentProfile.accounts.count == 1)
+            ? currentProfile.accounts.first
+            : nil
+        print("SYNC: Quick sync starting for \(accountName ?? "all") INBOX")
         syncState = .syncing
-        
+
         let success = await runDurianSync(account: accountName, mailbox: "INBOX", timeout: 60)
         
         if success {
