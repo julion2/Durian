@@ -1,30 +1,23 @@
+
 //
 //  NotmuchBackend.swift
 //  Durian
 //
-//  notmuch mail backend using durian CLI IPC
+//  notmuch mail backend using durian CLI HTTP server
 //
 
 import Foundation
 import Combine
 import AppKit
 
-// MARK: - JSON Models for durian
-
-struct DurianRequest: Encodable {
-    let cmd: String
-    var query: String?
-    var limit: Int?
-    var thread: String?  // thread_id for show command
-    var tags: String?
-}
+// MARK: - JSON Models (unchanged, but DurianRequest is no longer needed)
 
 struct DurianResponse: Decodable {
     let ok: Bool
     let error: String?
     let results: [NotmuchMailResult]?
     let mail: NotmuchMailContent?
-    let thread: ThreadContent?  // New: full thread with all messages
+    let thread: ThreadContent?
 }
 
 struct NotmuchMailResult: Decodable {
@@ -50,42 +43,20 @@ struct NotmuchMailContent: Decodable {
     let attachments: [String]?
 }
 
-// MARK: - Thread Models (from CLI show command)
-
-/// Represents a complete email thread with all messages
 struct ThreadContent: Decodable {
     let thread_id: String
     let subject: String
     let messages: [ThreadMessage]
 }
 
-/// Represents a single message within a thread
-struct ThreadMessage: Decodable, Identifiable, Equatable {
-    let id: String
-    let from: String
-    let to: String?
-    let cc: String?
-    let date: String
-    let timestamp: Int
-    let body: String
-    let html: String?
-    let attachments: [String]?
-    let tags: [String]?
-}
-
 // MARK: - Notmuch Backend
 
 @MainActor
 class NotmuchBackend: ObservableObject {
-    private var process: Process?
-    private var stdin: FileHandle?
-    private var stdout: FileHandle?
-    private let encoder = JSONEncoder()
+    private var durianProcess: Process?
     private let decoder = JSONDecoder()
-    
-    // IPC synchronization - only one request at a time to prevent response mixing
-    private let requestSemaphore = DispatchSemaphore(value: 1)
-    
+    private let baseURL = URL(string: "http://localhost:9723/api/v1")!
+
     // MARK: - Published State (Protocol conformance)
     @Published var isConnected = false
     @Published var connectionStatus = "Disconnected"
@@ -93,193 +64,347 @@ class NotmuchBackend: ObservableObject {
     @Published var emails: [MailMessage] = []
     @Published var isLoadingEmails = false
     @Published var loadingProgress = ""
-    
+
     // Internal state
     private var currentQuery = "tag:inbox"
     
     // Cancellation support for prefetch
     private var prefetchTask: Task<Void, Never>?
-    // Use nonisolated(unsafe) to allow access from background thread
-    // This is safe because we only set it from MainActor and read from background
-    nonisolated(unsafe) private var shouldCancelPrefetch = false
-    
-    // Thread cache - persists loaded thread messages across search/tag changes
+    private var shouldCancelPrefetch = false
+
+    // Thread cache
     private var threadCache: [String: CachedThread] = [:]
     private let maxCacheSize = 200
-    
+
     private struct CachedThread {
         let messages: [ThreadMessage]
         let timestamp: Date
     }
-    
+
     init() {
-        // Set default tags as folders
         folders = MailFolder.defaultNotmuchTags
     }
-    
-    // MARK: - Protocol: Connection
-    
-    /// Resolve durian CLI path: check ~/.local/bin/durian first, then search PATH
+
+    // MARK: - Connection Management
+
     private func resolveDurianPath() -> String? {
+        // This helper remains the same
         let homePath = "\(NSHomeDirectory())/.local/bin/durian"
         if FileManager.default.fileExists(atPath: homePath) {
             return homePath
         }
-        
-        // Search in standard PATHs if not in home local bin
         let searchPaths = ["/usr/local/bin/durian", "/opt/homebrew/bin/durian"]
         for path in searchPaths {
             if FileManager.default.fileExists(atPath: path) {
                 return path
             }
         }
-        
         return nil
     }
 
     func connect() async {
+        guard durianProcess == nil || !durianProcess!.isRunning else {
+            print("NOTMUCH Server already running")
+            return
+        }
+
         guard let durianPath = resolveDurianPath() else {
-            connectionStatus = "durian CLI not found in ~/.local/bin or /usr/local/bin"
+            connectionStatus = "durian CLI not found"
             print("NOTMUCH ERROR: \(connectionStatus)")
             return
         }
-        
-        process = Process()
-        process?.executableURL = URL(fileURLWithPath: durianPath)
-        process?.arguments = ["serve"]  // Start JSON protocol server
-        
-        // Set PATH to include Homebrew bin directories so durian can find notmuch
-        var environment = ProcessInfo.processInfo.environment
-        let homebrewPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
-        if let existingPath = environment["PATH"] {
-            environment["PATH"] = "\(homebrewPaths):\(existingPath)"
-        } else {
-            environment["PATH"] = "\(homebrewPaths):/usr/bin:/bin:/usr/sbin:/sbin"
-        }
-        process?.environment = environment
-        
-        let inPipe = Pipe()
-        let outPipe = Pipe()
-        process?.standardInput = inPipe
-        process?.standardOutput = outPipe
-        process?.standardError = FileHandle.nullDevice
-        
-        stdin = inPipe.fileHandleForWriting
-        stdout = outPipe.fileHandleForReading
-        
+
+        durianProcess = Process()
+        durianProcess?.executableURL = URL(fileURLWithPath: durianPath)
+        durianProcess?.arguments = ["serve"]
+
+        // Discard output so the pipe doesn't fill up
+        durianProcess?.standardOutput = FileHandle.nullDevice
+        durianProcess?.standardError = FileHandle.nullDevice
+
         do {
-            try process?.run()
-            isConnected = true
-            connectionStatus = "Connected to notmuch"
-            print("NOTMUCH Started durian process: \(durianPath)")
+            try durianProcess?.run()
+            print("NOTMUCH Started durian server process")
+
+            // Give the server a moment to start
+            try? await Task.sleep(for: .seconds(1))
+
+            // Check if the server is reachable
+            var request = URLRequest(url: baseURL)
+            request.httpMethod = "HEAD" // Lightweight request to check server status
             
-            // Initial load
-            await selectFolder("inbox")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 { // 404 is ok, means our base endpoint is handled
+                isConnected = true
+                connectionStatus = "Connected to notmuch"
+                print("NOTMUCH Server is responsive")
+                await selectFolder("inbox")
+            } else {
+                throw NSError(domain: "NotmuchBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server not responsive"])
+            }
         } catch {
-            connectionStatus = "Failed: \(error.localizedDescription)"
-            print("NOTMUCH ERROR: \(error)")
+            connectionStatus = "Failed to start or connect to server: \(error.localizedDescription)"
+            print("NOTMUCH ERROR: \(connectionStatus)")
+            durianProcess?.terminate()
+            durianProcess = nil
+            isConnected = false
         }
     }
-    
+
     func disconnect() async {
-        process?.terminate()
-        process = nil
-        stdin = nil
-        stdout = nil
+        durianProcess?.terminate()
+        durianProcess = nil
         isConnected = false
         connectionStatus = "Disconnected"
-        print("NOTMUCH Disconnected")
+        print("NOTMUCH Disconnected and server terminated")
     }
-    
-    // MARK: - Protocol: Folder/Tag Selection
+
+    // MARK: - Folder/Tag Selection (unchanged)
     
     func selectFolder(_ name: String) async {
-        // Cancel any running prefetch to free the semaphore
         shouldCancelPrefetch = true
         prefetchTask?.cancel()
         prefetchTask = nil
         
-        // Use ProfileManager to build query from folder config with account filter
         currentQuery = ProfileManager.shared.buildQuery(folderName: name)
         print("NOTMUCH selectFolder: \(currentQuery)")
         await search(currentQuery)
     }
-    
-    // MARK: - Protocol: Email Operations
-    
-    /// Protocol conformance: fetch email body (user-initiated, not cancellable)
+
+    // MARK: - Generic HTTP Request Function
+
+    private func request<T: Decodable>(endpoint: String, method: String = "GET", body: (some Encodable)? = nil) async -> T? {
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            print("NOTMUCH ERROR: Invalid URL")
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        
+        if let body = body {
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            do {
+                request.httpBody = try JSONEncoder().encode(body)
+            } catch {
+                print("NOTMUCH ERROR: Failed to encode request body: \(error)")
+                return nil
+            }
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let response = try decoder.decode(T.self, from: data)
+            return response
+        } catch {
+            print("NOTMUCH ERROR: Request to \(endpoint) failed: \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - Email Operations (Refactored to use HTTP)
+
     func fetchEmailBody(id: String) async {
         await fetchEmailBodyInternal(id: id, isPrefetch: false)
     }
-    
-    /// Internal fetch email body with prefetch option
-    /// - Parameters:
-    ///   - id: The thread/email ID
-    ///   - isPrefetch: If true, this request can be cancelled when shouldCancelPrefetch is set
+
     private func fetchEmailBodyInternal(id: String, isPrefetch: Bool) async {
-        // Find and update email state to loading
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].bodyState = .loading
         }
-        
-        // Use thread_id directly - durian CLI returns full thread with all messages
-        let request = DurianRequest(cmd: "show", thread: id)
-        
-        guard let response = await sendCommand(request, cancelOnPrefetchAbort: isPrefetch),
-              response.ok,
-              let thread = response.thread else {
-            // Check if this was a cancellation vs real failure
-            // Only treat as cancellation if this is a prefetch request
+
+        let response: DurianResponse? = await request(endpoint: "/threads/\(id)")
+
+        guard let thread = response?.thread else {
             if let index = emails.firstIndex(where: { $0.id == id }) {
-                if isPrefetch && (shouldCancelPrefetch || Task.isCancelled) {
+                 if isPrefetch && (shouldCancelPrefetch || Task.isCancelled) {
                     emails[index].bodyState = .notLoaded
-                    print("NOTMUCH Prefetch cancelled for \(id), reset to notLoaded")
-                } else if !isPrefetch {
-                    // User-initiated request failed - mark as failed
-                    emails[index].bodyState = .failed(message: "Failed to load")
-                    print("NOTMUCH Body fetch failed for \(id)")
+                    print("NOTMUCH Prefetch cancelled for \(id)")
                 } else {
-                    // Prefetch failed but not due to cancellation
-                    emails[index].bodyState = .notLoaded
-                    print("NOTMUCH Prefetch failed for \(id), reset to notLoaded")
+                    emails[index].bodyState = .failed(message: "Failed to load thread")
+                    print("NOTMUCH Body fetch failed for \(id)")
                 }
             }
             return
         }
-        
-        // Update email with thread messages
+
         if let index = emails.firstIndex(where: { $0.id == id }) {
-            // Store all thread messages for display
             emails[index].threadMessages = thread.messages
-            
-            // For backward compatibility: use newest message for single-email fields
             if let newestMessage = thread.messages.last {
                 emails[index].body = newestMessage.body
                 emails[index].htmlBody = newestMessage.html
                 emails[index].to = newestMessage.to
                 emails[index].cc = newestMessage.cc
             }
-            
-            // Use combined body for state (for preview purposes)
             let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
             emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
             print("NOTMUCH Loaded thread \(id) with \(thread.messages.count) messages")
-            
-            // Cache the thread messages
             cacheThread(id: id, messages: thread.messages)
         }
     }
     
-    // MARK: - Thread Cache
+    private func search(_ query: String, limit: Int = 200) async {
+        isLoadingEmails = true
+        loadingProgress = "Searching..."
+
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("/search"), resolvingAgainstBaseURL: false) else {
+            loadingProgress = "Search failed: Invalid URL"
+            isLoadingEmails = false
+            return
+        }
+        components.queryItems = [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+
+        guard let url = components.url else {
+            loadingProgress = "Search failed: Could not create URL"
+            isLoadingEmails = false
+            return
+        }
+
+        let response: DurianResponse? = await request(endpoint: url.path + "?" + (url.query ?? ""))
+
+        guard let results = response?.results else {
+            isLoadingEmails = false
+            loadingProgress = "Search failed"
+            return
+        }
+
+        shouldCancelPrefetch = false
+        emails = results.map { mail in
+            MailMessage(
+                threadId: mail.thread_id,
+                subject: mail.subject,
+                from: mail.from,
+                date: mail.date,
+                timestamp: mail.timestamp,
+                tags: mail.tags
+            )
+        }
+        
+        restoreCachedThreads()
+        print("NOTMUCH Search returned \(emails.count) emails")
+        isLoadingEmails = false
+        loadingProgress = ""
+        
+        Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            startPrefetch(count: 5)
+        }
+    }
+    
+    func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("/search"), resolvingAgainstBaseURL: false) else {
+            return []
+        }
+        components.queryItems = [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        
+        guard let url = components.url else { return [] }
+
+        let response: DurianResponse? = await request(endpoint: url.path + "?" + (url.query ?? ""))
+        
+        guard let results = response?.results else { return [] }
+        
+        return results.map { mail in
+            MailMessage(
+                threadId: mail.thread_id,
+                subject: mail.subject,
+                from: mail.from,
+                date: mail.date,
+                timestamp: mail.timestamp,
+                tags: mail.tags
+            )
+        }
+    }
+
+    private func tag(query: String, tags: String) async -> Bool {
+        struct TagRequest: Encodable { let tags: String }
+        
+        // The new API expects a thread_id, so we need to extract it.
+        // This is a simplification; a more robust solution might be needed
+        // if the query is more complex than "thread:some-id".
+        let threadId = query.replacingOccurrences(of: "thread:", with: "")
+
+        let response: DurianResponse? = await request(
+            endpoint: "/threads/\(threadId)/tags",
+            method: "POST",
+            body: TagRequest(tags: tags)
+        )
+        
+        if response?.ok == true {
+            print("NOTMUCH Tagged \(query) with \(tags)")
+            return true
+        } else {
+            print("NOTMUCH Tag error: \(response?.error ?? "unknown")")
+            return false
+        }
+    }
+
+    // MARK: - Unchanged methods (markAsRead, togglePin, etc.)
+    // These methods use `tag` internally and don't need to be changed.
+    
+    func markAsRead(id: String) async {
+        let success = await tag(query: "thread:\(id)", tags: "-unread")
+        if success {
+            if let index = emails.firstIndex(where: { $0.id == id }) {
+                emails[index].isRead = true
+            }
+        }
+    }
+
+    func markAsUnread(id: String) async {
+        let success = await tag(query: "thread:\(id)", tags: "+unread")
+        if success {
+            if let index = emails.firstIndex(where: { $0.id == id }) {
+                emails[index].isRead = false
+            }
+        }
+    }
+
+    func toggleRead(id: String) async {
+        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
+        if emails[index].isRead {
+            await markAsUnread(id: id)
+        } else {
+            await markAsRead(id: id)
+        }
+    }
+
+    func togglePin(id: String) async {
+        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
+        let isCurrentlyPinned = emails[index].isPinned
+        
+        let tags = isCurrentlyPinned ? "-flagged" : "+flagged"
+        let success = await tag(query: "thread:\(id)", tags: tags)
+        
+        if success {
+            emails[index].isPinned = !isCurrentlyPinned
+            print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
+        }
+    }
+
+    func deleteMessage(id: String) async throws {
+        let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
+        if success {
+            emails.removeAll { $0.id == id }
+        }
+    }
+    
+    func reload() async {
+        await search(currentQuery)
+    }
+
+    // MARK: - Unchanged Caching and Prefetching Logic
     
     private func cacheThread(id: String, messages: [ThreadMessage]) {
-        // Add to cache
         threadCache[id] = CachedThread(messages: messages, timestamp: Date())
-        
-        // Cleanup if cache is too large (remove oldest entries)
         if threadCache.count > maxCacheSize {
-            let sortedKeys = threadCache.keys.sorted { 
-                threadCache[$0]!.timestamp < threadCache[$1]!.timestamp 
+            let sortedKeys = threadCache.keys.sorted {
+                threadCache[$0]!.timestamp < threadCache[$1]!.timestamp
             }
             let keysToRemove = sortedKeys.prefix(threadCache.count - maxCacheSize)
             for key in keysToRemove {
@@ -294,7 +419,6 @@ class NotmuchBackend: ObservableObject {
         for (index, email) in emails.enumerated() {
             if let cached = threadCache[email.id] {
                 emails[index].threadMessages = cached.messages
-                // Use combined body for state
                 let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
                 emails[index].body = cached.messages.last?.body
                 emails[index].htmlBody = cached.messages.last?.html
@@ -307,63 +431,6 @@ class NotmuchBackend: ObservableObject {
         }
     }
     
-    func markAsRead(id: String) async {
-        let success = await tag(query: "thread:\(id)", tags: "-unread")
-        if success {
-            if let index = emails.firstIndex(where: { $0.id == id }) {
-                emails[index].isRead = true
-            }
-        }
-    }
-    
-    func markAsUnread(id: String) async {
-        let success = await tag(query: "thread:\(id)", tags: "+unread")
-        if success {
-            if let index = emails.firstIndex(where: { $0.id == id }) {
-                emails[index].isRead = false
-            }
-        }
-    }
-    
-    func toggleRead(id: String) async {
-        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
-        if emails[index].isRead {
-            await markAsUnread(id: id)
-        } else {
-            await markAsRead(id: id)
-        }
-    }
-    
-    func togglePin(id: String) async {
-        guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
-        let isCurrentlyPinned = emails[index].isPinned
-        
-        let tags = isCurrentlyPinned ? "-flagged" : "+flagged"
-        let success = await tag(query: "thread:\(id)", tags: tags)
-        
-        if success {
-            emails[index].isPinned = !isCurrentlyPinned
-            print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
-        }
-    }
-    
-    func deleteMessage(id: String) async throws {
-        let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
-        if success {
-            emails.removeAll { $0.id == id }
-        }
-    }
-    
-    // MARK: - Protocol: Reload
-    
-    func reload() async {
-        await search(currentQuery)
-    }
-    
-    // MARK: - Prefetching
-    
-    /// Prefetch bodies for first N emails (called after search)
-    /// Now runs sequentially to avoid semaphore blocking, with cancellation support
     private func prefetchInitialBodiesInternal(count: Int = 5) async {
         let emailsToFetch = emails.prefix(count).filter { email in
             if case .notLoaded = email.bodyState { return true }
@@ -374,9 +441,7 @@ class NotmuchBackend: ObservableObject {
         
         print("NOTMUCH Prefetching \(emailsToFetch.count) bodies...")
         
-        // Sequential fetching with cancellation check
         for email in emailsToFetch {
-            // Check if we should cancel (new search started)
             if shouldCancelPrefetch || Task.isCancelled {
                 print("NOTMUCH Prefetch cancelled")
                 return
@@ -384,189 +449,16 @@ class NotmuchBackend: ObservableObject {
             await fetchEmailBodyInternal(id: email.id, isPrefetch: true)
         }
     }
-    
-    /// Start prefetch as a cancellable task
+
     func startPrefetch(count: Int = 5) {
         shouldCancelPrefetch = false
         prefetchTask = Task {
             await prefetchInitialBodiesInternal(count: count)
         }
     }
-    
-    // MARK: - Internal: Search
-    
-    private func search(_ query: String, limit: Int = 200) async {
-        await restartProcessIfNeeded()
-        
-        isLoadingEmails = true
-        loadingProgress = "Searching..."
-        
-        let request = DurianRequest(cmd: "search", query: query, limit: limit)
-        
-        guard let response = await sendCommand(request) else {
-            isLoadingEmails = false
-            loadingProgress = "Search failed"
-            return
-        }
-        
-        if !response.ok {
-            print("NOTMUCH ERROR: \(response.error ?? "unknown")")
-            isLoadingEmails = false
-            loadingProgress = "Error: \(response.error ?? "unknown")"
-            return
-        }
-        
-        // Reset prefetch cancellation flag before updating emails
-        // This allows onAppear/selection requests to proceed immediately
-        shouldCancelPrefetch = false
-        
-        // Convert to MailMessage
-        let results = response.results ?? []
-        emails = results.map { mail in
-            MailMessage(
-                threadId: mail.thread_id,
-                subject: mail.subject,
-                from: mail.from,
-                date: mail.date,
-                timestamp: mail.timestamp,
-                tags: mail.tags
-            )
-        }
-        
-        // Restore cached threads before UI update
-        restoreCachedThreads()
-        
-        print("NOTMUCH Search returned \(emails.count) emails")
-        isLoadingEmails = false
-        loadingProgress = ""
-        
-        // Start prefetch after short delay to let UI update first
-        Task {
-            try? await Task.sleep(for: .milliseconds(100))
-            startPrefetch(count: 5)
-        }
-    }
-    
-    // MARK: - Public: Global Search (for SearchPopup)
-    
-    /// Search all emails without affecting the main emails array
-    /// Used by SearchPopupView for global search
-    func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
-        await restartProcessIfNeeded()
-        
-        let request = DurianRequest(cmd: "search", query: query, limit: limit)
-        
-        guard let response = await sendCommand(request) else {
-            return []
-        }
-        
-        guard response.ok, let results = response.results else {
-            return []
-        }
-        
-        // Convert to MailMessage without modifying self.emails
-        return results.map { mail in
-            MailMessage(
-                threadId: mail.thread_id,
-                subject: mail.subject,
-                from: mail.from,
-                date: mail.date,
-                timestamp: mail.timestamp,
-                tags: mail.tags
-            )
-        }
-    }
-    
-    // MARK: - Internal: Tag
-    
-    private func tag(query: String, tags: String) async -> Bool {
-        await restartProcessIfNeeded()
-        
-        let request = DurianRequest(cmd: "tag", query: query, tags: tags)
-        
-        guard let response = await sendCommand(request) else {
-            return false
-        }
-        
-        if response.ok {
-            print("NOTMUCH Tagged \(query) with \(tags)")
-            return true
-        } else {
-            print("NOTMUCH Tag error: \(response.error ?? "unknown")")
-            return false
-        }
-    }
-    
-    // MARK: - Internal: IPC
-    
-    private func restartProcessIfNeeded() async {
-        if process == nil || !(process?.isRunning ?? false) {
-            print("NOTMUCH Restarting process...")
-            await connect()
-        }
-    }
-    
-    /// Send a command to the durian process
-    /// - Parameters:
-    ///   - request: The request to send
-    ///   - cancelOnPrefetchAbort: If true, this request will be cancelled when shouldCancelPrefetch is set
-    private func sendCommand(_ request: DurianRequest, cancelOnPrefetchAbort: Bool = false) async -> DurianResponse? {
-        guard let stdin = stdin, let stdout = stdout else {
-            print("NOTMUCH ERROR: No stdin/stdout")
-            return nil
-        }
-        
-        // Ensure we are connected
-        await restartProcessIfNeeded()
-        
-        do {
-            var data = try encoder.encode(request)
-            data.append(contentsOf: "\n".utf8)
-            
-            // Only one request at a time to prevent response mixing
-            // We use the semaphore even with async/await to guarantee request-response order
-            let waitResult = self.requestSemaphore.wait(timeout: .now() + 30.0)
-            guard waitResult == .success else {
-                print("NOTMUCH ERROR: Timed out waiting for request semaphore")
-                return nil
-            }
-            defer { self.requestSemaphore.signal() }
-            
-            // Write request
-            try stdin.write(contentsOf: data)
-            
-            // Use bytes.lines for efficient, modern async reading
-            // This is much safer than manual loops and sleeps
-            let lineStream = stdout.bytes.lines
-            
-            for try await line in lineStream {
-                if line.isEmpty { continue }
-                
-                guard let responseData = line.data(using: .utf8) else {
-                    print("NOTMUCH ERROR: Failed to convert line to data")
-                    return nil
-                }
-                
-                do {
-                    let response = try self.decoder.decode(DurianResponse.self, from: responseData)
-                    return response
-                } catch {
-                    print("NOTMUCH ERROR: Decode failed: \(error)")
-                    print("NOTMUCH Raw: \(line.prefix(500))")
-                    return nil
-                }
-            }
-            
-            print("NOTMUCH ERROR: Stream ended without response")
-            return nil
-            
-        } catch {
-            print("NOTMUCH ERROR: IPC failed: \(error)")
-            return nil
-        }
-    }
 }
 
 // MARK: - Protocol Conformance
-
 extension NotmuchBackend: MailBackendProtocol {}
+
+
