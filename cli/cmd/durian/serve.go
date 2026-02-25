@@ -38,7 +38,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
 
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    ":9723",
 		Handler: r,
 	}
 
