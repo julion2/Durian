@@ -1,62 +1,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Attachment Models
-
-struct IncomingAttachmentMetadata: Identifiable, Codable, Hashable {
-    let id: UUID
-    let section: String
-    let filename: String
-    let mimeType: String
-    let sizeBytes: Int64
-    let disposition: AttachmentDisposition
-    let contentId: String?
-    
-    init(id: UUID = UUID(), section: String, filename: String, mimeType: String, sizeBytes: Int64, disposition: AttachmentDisposition = .attachment, contentId: String? = nil) {
-        self.id = id
-        self.section = section
-        self.filename = filename
-        self.mimeType = mimeType
-        self.sizeBytes = sizeBytes
-        self.disposition = disposition
-        self.contentId = contentId
-    }
-    
-    var sizeFormatted: String {
-        ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
-    }
-    
-    var icon: String {
-        if mimeType.hasPrefix("image/") {
-            return "photo"
-        } else if mimeType.hasPrefix("video/") {
-            return "video"
-        } else if mimeType.hasPrefix("audio/") {
-            return "music.note"
-        } else if mimeType.contains("pdf") {
-            return "doc.fill"
-        } else if mimeType.contains("zip") || mimeType.contains("archive") {
-            return "doc.zipper"
-        } else if mimeType.contains("word") || mimeType.contains("document") {
-            return "doc.text"
-        } else if mimeType.contains("excel") || mimeType.contains("spreadsheet") {
-            return "tablecells"
-        } else if mimeType.contains("powerpoint") || mimeType.contains("presentation") {
-            return "rectangle.on.rectangle.angled"
-        } else {
-            return "doc"
-        }
-    }
-    
-    var isInlineImage: Bool {
-        return disposition == .inline && mimeType.hasPrefix("image/")
-    }
-}
-
-enum AttachmentDisposition: String, Codable, Hashable {
-    case inline
-    case attachment
-}
+// MARK: - Thread Message
 
 struct ThreadMessage: Decodable, Identifiable, Equatable {
     let id: String
