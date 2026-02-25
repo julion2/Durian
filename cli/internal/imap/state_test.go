@@ -238,10 +238,11 @@ func TestStateManager_LoadSave(t *testing.T) {
 	email := "test@example.com"
 
 	// Load non-existent state - should return new empty state
-	state, err := sm.Load(email)
+	state, lock, err := sm.Load(email)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
+	defer releaseLock(lock)
 
 	if state == nil {
 		t.Fatal("expected non-nil state")
@@ -265,6 +266,9 @@ func TestStateManager_LoadSave(t *testing.T) {
 		t.Fatalf("Save failed: %v", err)
 	}
 
+	// Release lock before re-loading
+	releaseLock(lock)
+
 	// Verify file exists
 	statePath := filepath.Join(tmpDir, email+"-imap-state.json")
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
@@ -272,10 +276,11 @@ func TestStateManager_LoadSave(t *testing.T) {
 	}
 
 	// Load again and verify
-	loaded, err := sm.Load(email)
+	loaded, lock2, err := sm.Load(email)
 	if err != nil {
 		t.Fatalf("Load after save failed: %v", err)
 	}
+	defer releaseLock(lock2)
 
 	inboxState := loaded.GetMailboxState("INBOX")
 	if inboxState.UIDValidity != 12345 {

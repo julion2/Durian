@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 )
@@ -266,21 +267,60 @@ func (sm *StateManager) statePath(email string) string {
 	return filepath.Join(sm.cacheDir, fmt.Sprintf("%s-imap-state.json", email))
 }
 
+// lockPath returns the path to the lock file for an account
+func (sm *StateManager) lockPath(email string) string {
+	return sm.statePath(email) + ".lock"
+}
+
+// acquireLock acquires an exclusive file lock for the account state
+func (sm *StateManager) acquireLock(email string) (*os.File, error) {
+	if err := os.MkdirAll(sm.cacheDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create cache dir: %w", err)
+	}
+
+	lockFile, err := os.OpenFile(sm.lockPath(email), os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open lock file: %w", err)
+	}
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		lockFile.Close()
+		return nil, fmt.Errorf("failed to acquire lock (another sync running?): %w", err)
+	}
+
+	return lockFile, nil
+}
+
+// releaseLock releases the file lock
+func releaseLock(lockFile *os.File) {
+	if lockFile != nil {
+		syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		lockFile.Close()
+	}
+}
+
 // Load loads the sync state for an account
-func (sm *StateManager) Load(email string) (*State, error) {
+func (sm *StateManager) Load(email string) (*State, *os.File, error) {
+	lockFile, err := sm.acquireLock(email)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	path := sm.statePath(email)
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return NewState(), nil
+			return NewState(), lockFile, nil
 		}
-		return nil, fmt.Errorf("failed to read state file: %w", err)
+		releaseLock(lockFile)
+		return nil, nil, fmt.Errorf("failed to read state file: %w", err)
 	}
 
 	var state State
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("failed to parse state file: %w", err)
+		releaseLock(lockFile)
+		return nil, nil, fmt.Errorf("failed to parse state file: %w", err)
 	}
 
 	// Rebuild reverse maps for backwards compatibility and consistency
@@ -297,15 +337,11 @@ func (sm *StateManager) Load(email string) (*State, error) {
 		}
 	}
 
-	return &state, nil
+	return &state, lockFile, nil
 }
 
 // Save saves the sync state for an account
 func (sm *StateManager) Save(email string, state *State) error {
-	if err := os.MkdirAll(sm.cacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache dir: %w", err)
-	}
-
 	path := sm.statePath(email)
 
 	data, err := json.MarshalIndent(state, "", "  ")

@@ -94,6 +94,7 @@ type Syncer struct {
 	notmuch         *notmuch.Client
 	state           *State
 	stateMgr        *StateManager
+	stateLock       *os.File             // File lock held during sync
 	account         *config.AccountConfig
 	options         *SyncOptions
 	output          io.Writer
@@ -130,12 +131,13 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		Account: s.account.Email,
 	}
 
-	// Load state
+	// Load state (acquires file lock to prevent concurrent syncs)
 	var err error
-	s.state, err = s.stateMgr.Load(s.account.Email)
+	s.state, s.stateLock, err = s.stateMgr.Load(s.account.Email)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load state: %w", err)
 	}
+	defer releaseLock(s.stateLock)
 
 	// Connect
 	fmt.Fprintf(s.output, "  Connecting to %s:%d...\n", s.account.IMAP.Host, s.account.IMAP.Port)
@@ -196,12 +198,12 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		if mboxResult.Error != nil && result.Error == nil {
 			result.Error = mboxResult.Error
 		}
-	}
 
-	// Save state
-	if !s.options.DryRun {
-		if err := s.stateMgr.Save(s.account.Email, s.state); err != nil {
-			fmt.Fprintf(s.output, "  Warning: failed to save state: %v\n", err)
+		// Save state after each mailbox so progress survives interrupts (Ctrl+C)
+		if !s.options.DryRun {
+			if err := s.stateMgr.Save(s.account.Email, s.state); err != nil {
+				fmt.Fprintf(s.output, "  Warning: failed to save state: %v\n", err)
+			}
 		}
 	}
 
@@ -662,44 +664,6 @@ func (s *Syncer) applyFolderTags(mailboxName string) {
 	}
 }
 
-// addExclusionTagsForMailbox adds notmuch exclusion tags based on IMAP SPECIAL-USE role
-// Junk folders get +junk +spam, Trash folders get +deleted
-// This enables notmuch search exclusion (via search.exclude_tags config)
-// DEPRECATED: Use applyFolderTags instead which uses getFolderTagMapping
-func (s *Syncer) addExclusionTagsForMailbox(mailboxName string) {
-	var tagsToAdd []string
-
-	// Find the mailbox in our cached list and check its SPECIAL-USE attributes
-	for _, mbox := range s.serverMailboxes {
-		if mbox.Name != mailboxName {
-			continue
-		}
-		for _, attr := range mbox.Attributes {
-			switch {
-			case strings.EqualFold(attr, "\\Junk"):
-				tagsToAdd = []string{"junk", "spam"}
-			case strings.EqualFold(attr, "\\Trash"):
-				tagsToAdd = []string{"deleted"}
-			}
-		}
-		break
-	}
-
-	if len(tagsToAdd) == 0 {
-		return
-	}
-
-	// Build notmuch folder query and add tags
-	folderPath := s.buildNotmuchFolderName(mailboxName)
-	query := fmt.Sprintf("folder:\"%s\"", folderPath)
-
-	if err := s.notmuch.AddTags(query, tagsToAdd...); err != nil {
-		debug.Log("addExclusionTagsForMailbox: failed to add tags to %s: %v", mailboxName, err)
-	} else {
-		debug.Log("addExclusionTagsForMailbox: added %v to %s", tagsToAdd, mailboxName)
-	}
-}
-
 // getFolderTagMapping returns the tag mapping for a mailbox based on SPECIAL-USE attributes
 // Returns tags to add and remove when a mail is found in this folder
 // Used for both new downloads and deduplication (updating tags for existing mails)
@@ -912,10 +876,9 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 		if s.trashMailbox != "" {
 			if err := s.client.CopyToMailbox(uid, s.trashMailbox); err != nil {
 				debug.Log("uploadFlagChanges: copy to trash failed: %v", err)
-				// Continue anyway - at least set the deleted flag
-			} else {
-				debug.Log("uploadFlagChanges: copied UID %d to %s", uid, s.trashMailbox)
+				return fmt.Errorf("copy to trash failed for UID %d: %w", uid, err)
 			}
+			debug.Log("uploadFlagChanges: copied UID %d to %s", uid, s.trashMailbox)
 		}
 
 		// Set \Deleted flag
@@ -926,7 +889,6 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 		// Expunge to permanently remove from current mailbox
 		if err := s.client.Expunge(); err != nil {
 			debug.Log("uploadFlagChanges: expunge failed: %v", err)
-			// Not a fatal error - message is marked deleted
 		}
 
 		return nil

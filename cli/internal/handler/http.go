@@ -2,11 +2,20 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/gorilla/mux"
 )
+
+// writeJSON encodes response as JSON, logging any encoding errors
+func writeJSON(w http.ResponseWriter, response any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("failed to encode JSON response: %v", err)
+	}
+}
 
 func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
@@ -22,16 +31,14 @@ func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := h.Search(query, limit)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func (h *Handler) ShowThreadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	threadID := vars["thread_id"]
 	response := h.ShowThread(threadID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +54,5 @@ func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := h.Tag("thread:"+threadID, tagRequest.Tags)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
