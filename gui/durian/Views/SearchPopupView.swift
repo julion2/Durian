@@ -26,21 +26,27 @@ struct SearchPopupView: View {
             if !query.isEmpty {
                 Divider()
                     .opacity(0.3)
-                
-                if searchManager.isSearching {
-                    loadingView
-                } else if searchManager.results.isEmpty {
-                    noResultsView
-                } else {
-                    resultsListView
+
+                Group {
+                    if searchManager.isSearching {
+                        loadingView
+                    } else if searchManager.results.isEmpty {
+                        noResultsView
+                    } else {
+                        resultsListView
+                    }
                 }
+                .background(Color(white: 0.45, opacity: 0.08))
             }
         }
         .frame(width: 680)
-        .glassEffect(.regular.tint(Color(white: 0.2, opacity: 0.3)), in: .rect(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.25), radius: 24, y: 12)
+        .glassEffect(.regular.tint(Color(white: 0.45, opacity: 0.2)), in: .rect(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.35), radius: 32, y: 16)
         .onAppear {
-            isTextFieldFocused = true
+            // Delay focus slightly so the window is ready to accept first responder
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isTextFieldFocused = true
+            }
         }
         .onChange(of: query) { _, newQuery in
             searchManager.search(query: newQuery)
@@ -129,29 +135,53 @@ struct SearchPopupView: View {
     }
     
     private var resultsListView: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(searchManager.results.enumerated()), id: \.element.id) { index, email in
-                        SearchResultRow(
-                            email: email,
-                            isSelected: index == selectedIndex
-                        )
-                        .id(index)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            selectedIndex = index
-                            selectCurrentResult()
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(searchManager.results.enumerated()), id: \.element.id) { index, email in
+                            SearchResultRow(
+                                email: email,
+                                isSelected: index == selectedIndex
+                            )
+                            .id(index)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedIndex = index
+                                selectCurrentResult()
+                            }
                         }
                     }
                 }
-            }
-            .frame(maxHeight: 350)
-            .onChange(of: selectedIndex) { _, newIndex in
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    proxy.scrollTo(newIndex, anchor: .center)
+                .frame(maxHeight: 450)
+                .onChange(of: selectedIndex) { _, newIndex in
+                    withAnimation(.easeInOut(duration: 0.1)) {
+                        proxy.scrollTo(newIndex, anchor: .center)
+                    }
                 }
             }
+
+            Divider()
+                .opacity(0.3)
+
+            // Footer with result count and keyboard hints
+            HStack {
+                Text("\(searchManager.results.count) result\(searchManager.results.count == 1 ? "" : "s")")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                Spacer()
+
+                HStack(spacing: 12) {
+                    Text("↑↓ Navigate")
+                    Text("↵ Open")
+                    Text("⎋ Close")
+                }
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
     }
     
@@ -179,7 +209,10 @@ struct SearchPopupView: View {
 struct SearchResultRow: View {
     let email: MailMessage
     let isSelected: Bool
-    
+
+    /// Tags to hide from pills (already represented as icons or not useful)
+    private static let hiddenTags: Set<String> = ["unread", "attachment", "flagged"]
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             // Unread indicator
@@ -187,33 +220,62 @@ struct SearchResultRow: View {
                 .fill(email.isRead ? Color.clear : Color.blue)
                 .frame(width: 8, height: 8)
                 .padding(.top, 6)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
+
+            VStack(alignment: .leading, spacing: 4) {
+                // Row 1: sender, flagged, attachment, date
+                HStack(spacing: 6) {
                     Text(senderName)
                         .font(.headline)
                         .fontWeight(email.isRead ? .regular : .semibold)
                         .lineLimit(1)
-                    
+
                     Spacer()
-                    
+
+                    if email.isPinned {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.yellow)
+                    }
+
+                    if email.hasAttachment {
+                        Image(systemName: "paperclip")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
                     Text(email.date)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                
+
+                // Row 2: subject
                 Text(email.subject.isEmpty ? "(No Subject)" : email.subject)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                // Row 3: tag pills
+                if !visibleTags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(visibleTags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.gray.opacity(0.2), in: Capsule())
+                        }
+                    }
+                }
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 6)
         .contentShape(Rectangle())
     }
-    
+
     private var senderName: String {
         let from = email.from
         if let range = from.range(of: "<") {
@@ -221,5 +283,13 @@ struct SearchResultRow: View {
             if !namePart.isEmpty { return namePart }
         }
         return from
+    }
+
+    private var visibleTags: [String] {
+        guard let tags = email.tags else { return [] }
+        return tags
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !Self.hiddenTags.contains($0) }
     }
 }

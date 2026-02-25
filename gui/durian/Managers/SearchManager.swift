@@ -14,7 +14,7 @@ class SearchManager: ObservableObject {
     
     private var searchTask: Task<Void, Never>?
     private let debounceDelay: UInt64 = 300_000_000  // 300ms in nanoseconds
-    private let resultLimit: Int = 10
+    private let resultLimit: Int = 25
     
     /// Search emails with debounce
     func search(query: String) {

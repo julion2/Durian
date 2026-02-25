@@ -43,29 +43,35 @@ struct ContentView: View {
     @ViewBuilder
     private var searchPopupOverlay: some View {
         ZStack {
-            // Dimmed background
-            Color.black.opacity(0.4)
+            // Transparent tap-to-dismiss area (no dimming)
+            Color.clear
+                .contentShape(Rectangle())
                 .ignoresSafeArea()
                 .onTapGesture {
                     showSearchPopup = false
                 }
-            
-            // Centered popup
-            SearchPopupView(
-                isPresented: $showSearchPopup,
-                selectedEmailId: Binding(
-                    get: { markedEmails.first },
-                    set: { newId in
-                        if let id = newId {
-                            markedEmails = [id]
+
+            // Top-aligned popup
+            VStack {
+                SearchPopupView(
+                    isPresented: $showSearchPopup,
+                    selectedEmailId: Binding(
+                        get: { markedEmails.first },
+                        set: { newId in
+                            if let id = newId {
+                                markedEmails = [id]
+                            }
                         }
+                    ),
+                    onEmailSelected: { emailId in
+                        // Open email in detail view
+                        detailMode = .notmuchEmailDetail(emailId: emailId)
                     }
-                ),
-                onEmailSelected: { emailId in
-                    // Open email in detail view
-                    detailMode = .notmuchEmailDetail(emailId: emailId)
-                }
-            )
+                )
+                .padding(.top, 80)
+
+                Spacer()
+            }
         }
         .ignoresSafeArea()
     }
