@@ -118,6 +118,13 @@ class NotmuchBackend: ObservableObject {
         durianProcess?.executableURL = URL(fileURLWithPath: durianPath)
         durianProcess?.arguments = ["serve"]
 
+        // Ensure child process can find notmuch and other tools
+        var env = ProcessInfo.processInfo.environment
+        let extraPaths = ["/opt/homebrew/bin", "/usr/local/bin", "\(NSHomeDirectory())/.local/bin"]
+        let currentPath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        env["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
+        durianProcess?.environment = env
+
         // Discard output so the pipe doesn't fill up
         durianProcess?.standardOutput = FileHandle.nullDevice
         durianProcess?.standardError = FileHandle.nullDevice
@@ -173,7 +180,21 @@ class NotmuchBackend: ObservableObject {
 
     // MARK: - Generic HTTP Request Function
 
-    private func request<T: Decodable>(endpoint: String, method: String = "GET", body: (some Encodable)? = nil) async -> T? {
+    private func request<T: Decodable>(endpoint: String, method: String = "GET") async -> T? {
+        return await performRequest(endpoint: endpoint, method: method, bodyData: nil)
+    }
+
+    private func request<T: Decodable>(endpoint: String, method: String = "GET", body: some Encodable) async -> T? {
+        do {
+            let data = try JSONEncoder().encode(body)
+            return await performRequest(endpoint: endpoint, method: method, bodyData: data)
+        } catch {
+            print("NOTMUCH ERROR: Failed to encode request body: \(error)")
+            return nil
+        }
+    }
+
+    private func performRequest<T: Decodable>(endpoint: String, method: String, bodyData: Data?) async -> T? {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             print("NOTMUCH ERROR: Invalid URL")
             return nil
@@ -181,15 +202,10 @@ class NotmuchBackend: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        
-        if let body = body {
+
+        if let bodyData {
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-            do {
-                request.httpBody = try JSONEncoder().encode(body)
-            } catch {
-                print("NOTMUCH ERROR: Failed to encode request body: \(error)")
-                return nil
-            }
+            request.httpBody = bodyData
         }
 
         do {
@@ -247,23 +263,20 @@ class NotmuchBackend: ObservableObject {
         isLoadingEmails = true
         loadingProgress = "Searching..."
 
-        guard var components = URLComponents(url: baseURL.appendingPathComponent("/search"), resolvingAgainstBaseURL: false) else {
-            loadingProgress = "Search failed: Invalid URL"
-            isLoadingEmails = false
-            return
-        }
+        var components = URLComponents()
+        components.path = "/search"
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "limit", value: String(limit))
         ]
 
-        guard let url = components.url else {
+        guard let endpoint = components.string else {
             loadingProgress = "Search failed: Could not create URL"
             isLoadingEmails = false
             return
         }
 
-        let response: DurianResponse? = await request(endpoint: url.path + "?" + (url.query ?? ""))
+        let response: DurianResponse? = await request(endpoint: endpoint)
 
         guard let results = response?.results else {
             isLoadingEmails = false
@@ -295,17 +308,16 @@ class NotmuchBackend: ObservableObject {
     }
     
     func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
-        guard var components = URLComponents(url: baseURL.appendingPathComponent("/search"), resolvingAgainstBaseURL: false) else {
-            return []
-        }
+        var components = URLComponents()
+        components.path = "/search"
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "limit", value: String(limit))
         ]
-        
-        guard let url = components.url else { return [] }
 
-        let response: DurianResponse? = await request(endpoint: url.path + "?" + (url.query ?? ""))
+        guard let endpoint = components.string else { return [] }
+
+        let response: DurianResponse? = await request(endpoint: endpoint)
         
         guard let results = response?.results else { return [] }
         
