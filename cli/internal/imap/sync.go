@@ -766,26 +766,16 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		storedState, hasStoredState := mboxState.GetMessageFlags(uid)
 
 		if !hasStoredState {
-			// First sync for this message - establish baseline
-			merged := localState.Merge(serverState)
+			// First sync for this message - server is authoritative (no baseline to detect local changes)
+			// Only download server flags to local; don't upload stale local state
 			if !s.options.DryRun {
-				mboxState.SetMessageFlags(uid, merged)
+				mboxState.SetMessageFlags(uid, serverState)
 			}
 
-			// If local and server differ, sync them
-			if !localState.Equal(serverState) {
-				// Upload local changes to server
-				if s.options.Mode != SyncDownloadOnly {
-					if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
-						uploaded++
-						debug.Log("syncFlags: uploaded flags for UID %d (Message-ID: %s): %+v", uid, messageID, localState)
-					}
-				}
-				// Download server changes to local
-				if s.options.Mode != SyncUploadOnly {
-					if err := s.downloadFlagChanges(messageID, localState, serverState); err == nil {
-						downloaded++
-					}
+			if !localState.Equal(serverState) && s.options.Mode != SyncUploadOnly {
+				if err := s.downloadFlagChanges(messageID, localState, serverState); err == nil {
+					downloaded++
+					debug.Log("syncFlags: first-sync downloaded flags for UID %d (Message-ID: %s): %+v", uid, messageID, serverState)
 				}
 			}
 			continue
