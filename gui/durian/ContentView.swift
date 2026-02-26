@@ -43,9 +43,8 @@ struct ContentView: View {
     @ViewBuilder
     private var searchPopupOverlay: some View {
         ZStack {
-            // Transparent tap-to-dismiss area (no dimming)
-            Color.clear
-                .contentShape(Rectangle())
+            // Subtle dimming to normalize glass effect background
+            Color.black.opacity(0.15)
                 .ignoresSafeArea()
                 .onTapGesture {
                     showSearchPopup = false

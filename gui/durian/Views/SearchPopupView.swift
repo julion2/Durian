@@ -36,7 +36,6 @@ struct SearchPopupView: View {
                         resultsListView
                     }
                 }
-                .background(Color(white: 0.45, opacity: 0.08))
             }
         }
         .frame(width: 680)
