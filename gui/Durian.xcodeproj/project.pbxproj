@@ -7,12 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86A82ED8912E00C2F5CF /* GRDB */; };
 		F90F89432ED8AE6800C2F5CF /* TOMLDecoder in Frameworks */ = {isa = PBXBuildFile; productRef = F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */; };
-		F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4502EA3F44300214258 /* SwiftSMTP */; };
-		F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */ = {isa = PBXBuildFile; productRef = F926D4522EA3F44300214258 /* SwiftSMTPVapor */; };
-		F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */ = {isa = PBXBuildFile; productRef = F9BED1162E784F2400A0A48D /* NIOIMAP */; };
-		F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */ = {isa = PBXBuildFile; productRef = F9FEE9CF2E785521003E0C83 /* NIOSSL */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,11 +28,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				F90F89432ED8AE6800C2F5CF /* TOMLDecoder in Frameworks */,
-				F9FEE9D02E785521003E0C83 /* NIOSSL in Frameworks */,
-				F9BED1172E784F2400A0A48D /* NIOIMAP in Frameworks */,
-				F90F86A92ED8912E00C2F5CF /* GRDB in Frameworks */,
-				F926D4512EA3F44300214258 /* SwiftSMTP in Frameworks */,
-				F926D4532EA3F44300214258 /* SwiftSMTPVapor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,11 +70,6 @@
 			);
 			name = Durian;
 			packageProductDependencies = (
-				F9BED1162E784F2400A0A48D /* NIOIMAP */,
-				F9FEE9CF2E785521003E0C83 /* NIOSSL */,
-				F926D4502EA3F44300214258 /* SwiftSMTP */,
-				F926D4522EA3F44300214258 /* SwiftSMTPVapor */,
-				F90F86A82ED8912E00C2F5CF /* GRDB */,
 				F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */,
 			);
 			productName = colonSend;
@@ -116,10 +101,6 @@
 			mainGroup = F9BED0FB2E78416800A0A48D;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */,
-				F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */,
-				F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */,
-				F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */,
 				F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -415,14 +396,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/groue/GRDB.swift";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 6.0.0;
-			};
-		};
 		F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/dduan/TOMLDecoder";
@@ -431,62 +404,13 @@
 				minimumVersion = 0.2.2;
 			};
 		};
-		F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sersoft-gmbh/swift-smtp.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.16.0;
-			};
-		};
-		F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-nio-imap";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
-			};
-		};
-		F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-nio-ssl";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.34.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		F90F86A82ED8912E00C2F5CF /* GRDB */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F90F86A72ED8912E00C2F5CF /* XCRemoteSwiftPackageReference "GRDB" */;
-			productName = GRDB;
-		};
 		F90F86AB2ED89A0000C2F5CF /* TOMLDecoder */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F90F86AA2ED89A0000C2F5CF /* XCRemoteSwiftPackageReference "TOMLDecoder" */;
 			productName = TOMLDecoder;
-		};
-		F926D4502EA3F44300214258 /* SwiftSMTP */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */;
-			productName = SwiftSMTP;
-		};
-		F926D4522EA3F44300214258 /* SwiftSMTPVapor */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F926D44F2EA3F44300214258 /* XCRemoteSwiftPackageReference "swift-smtp" */;
-			productName = SwiftSMTPVapor;
-		};
-		F9BED1162E784F2400A0A48D /* NIOIMAP */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F9BED1152E784F2400A0A48D /* XCRemoteSwiftPackageReference "swift-nio-imap" */;
-			productName = NIOIMAP;
-		};
-		F9FEE9CF2E785521003E0C83 /* NIOSSL */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = F9FEE9CE2E785521003E0C83 /* XCRemoteSwiftPackageReference "swift-nio-ssl" */;
-			productName = NIOSSL;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
