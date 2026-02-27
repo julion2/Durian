@@ -88,6 +88,10 @@ func (d *DB) Init() error {
 // Add adds a new contact to the database
 // If the email already exists, it updates the name if provided
 func (d *DB) Add(email, name, source string) error {
+	if !isValidEmail(email) {
+		return fmt.Errorf("invalid email address: %s", email)
+	}
+
 	id := uuid.New().String()
 	now := time.Now()
 
@@ -126,6 +130,9 @@ func (d *DB) AddBatch(contacts []Contact) (added, updated int, err error) {
 	defer stmt.Close()
 
 	for _, c := range contacts {
+		if !isValidEmail(c.Email) {
+			continue
+		}
 		result, err := stmt.Exec(c.ID, strings.ToLower(c.Email), c.Name, c.Source, c.CreatedAt, c.UsageCount)
 		if err != nil {
 			return added, updated, fmt.Errorf("insert contact %s: %w", c.Email, err)
@@ -144,6 +151,16 @@ func (d *DB) AddBatch(contacts []Contact) (added, updated int, err error) {
 	}
 
 	return added, updated, nil
+}
+
+// CleanInvalid removes contacts with invalid email addresses from the database
+func (d *DB) CleanInvalid() (int, error) {
+	result, err := d.db.Exec(`DELETE FROM contacts WHERE email NOT LIKE '%_@_%.__%'`)
+	if err != nil {
+		return 0, fmt.Errorf("clean invalid contacts: %w", err)
+	}
+	removed, _ := result.RowsAffected()
+	return int(removed), nil
 }
 
 // Search searches for contacts by email or name prefix

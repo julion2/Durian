@@ -247,10 +247,14 @@ class NotmuchBackend: ObservableObject {
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].threadMessages = thread.messages
             if let newestMessage = thread.messages.last {
+                emails[index].from = newestMessage.from
                 emails[index].body = newestMessage.body
                 emails[index].htmlBody = newestMessage.html
                 emails[index].to = newestMessage.to
                 emails[index].cc = newestMessage.cc
+                emails[index].messageId = newestMessage.message_id
+                emails[index].inReplyTo = newestMessage.in_reply_to
+                emails[index].references = newestMessage.references
             }
             let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
             emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)

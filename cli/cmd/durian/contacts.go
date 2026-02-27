@@ -152,6 +152,12 @@ func runContactsImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("add contacts: %w", err)
 	}
 
+	// Clean up any invalid entries
+	cleaned, _ := db.CleanInvalid()
+	if cleaned > 0 {
+		fmt.Printf("Cleaned %d invalid entries\n", cleaned)
+	}
+
 	// Get final count
 	total, _ := db.Count()
 

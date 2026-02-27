@@ -213,6 +213,12 @@ class ContactsManager {
     /// Increment usage count for an email (call after sending)
     /// Note: This opens the DB in write mode temporarily
     func incrementUsage(for email: String) {
+        // Validate email before writing
+        guard email.contains("@"), email.contains(".") else {
+            print("CONTACTS: Skipping invalid email: \(email)")
+            return
+        }
+
         // Open in write mode
         var writeDb: OpaquePointer?
         guard sqlite3_open_v2(dbPath, &writeDb, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {

@@ -59,13 +59,16 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 
 	for _, msg := range threadMsgs {
 		info := internmail.MessageInfo{
-			ID:        msg.ID,
-			From:      msg.Headers["From"],
-			To:        msg.Headers["To"],
-			CC:        msg.Headers["Cc"],
-			Date:      msg.Headers["Date"],
-			Timestamp: msg.Timestamp,
-			Tags:      msg.Tags,
+			ID:         msg.ID,
+			From:       msg.Headers["From"],
+			To:         msg.Headers["To"],
+			CC:         msg.Headers["Cc"],
+			Date:       msg.Headers["Date"],
+			Timestamp:  msg.Timestamp,
+			MessageID:  msg.Headers["Message-ID"],
+			InReplyTo:  msg.Headers["In-Reply-To"],
+			References: msg.Headers["References"],
+			Tags:       msg.Tags,
 		}
 
 		// Get subject from first message

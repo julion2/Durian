@@ -10,6 +10,9 @@ struct ThreadMessage: Decodable, Identifiable, Equatable {
     let cc: String?
     let date: String
     let timestamp: Int
+    let message_id: String?
+    let in_reply_to: String?
+    let references: String?
     let body: String
     let html: String?
     let attachments: [String]?
@@ -156,7 +159,7 @@ struct MailFolder: Identifiable, Hashable {
 struct MailMessage: Identifiable, Hashable {
     let id: String  // thread_id for notmuch
     let subject: String
-    let from: String
+    var from: String
     var to: String?
     var cc: String?
     let date: String

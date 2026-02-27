@@ -329,11 +329,50 @@ extension EmailDraft {
         return extractEmail(from: address)
     }
     
-    /// Parse comma-separated email list and clean each address
+    /// Parse comma-separated email list, handling commas in unquoted display names
+    /// e.g. "van der Zee, Warden (EBV) <a@b.com>, c@d.com" → ["a@b.com", "c@d.com"]
     private static func parseEmailList(_ list: String) -> [String] {
-        return list.split(separator: ",")
-            .map { cleanEmailAddress(String($0)) }
-            .filter { !$0.isEmpty }
+        var results: [String] = []
+        var current = ""
+        var inQuotes = false
+        var inAngleBracket = false
+
+        for char in list {
+            switch char {
+            case "\"":
+                inQuotes.toggle()
+                current.append(char)
+            case "<":
+                inAngleBracket = true
+                current.append(char)
+            case ">":
+                inAngleBracket = false
+                current.append(char)
+            case ",":
+                if inQuotes || inAngleBracket {
+                    current.append(char)
+                } else if current.contains("<") && current.contains(">") {
+                    // Complete "Name <email>" address — comma is a separator
+                    let cleaned = cleanEmailAddress(current)
+                    if !cleaned.isEmpty { results.append(cleaned) }
+                    current = ""
+                } else if current.contains("@") {
+                    // Plain email without angle brackets — comma is a separator
+                    let cleaned = cleanEmailAddress(current)
+                    if !cleaned.isEmpty { results.append(cleaned) }
+                    current = ""
+                } else {
+                    // No complete address yet — comma is part of display name
+                    current.append(char)
+                }
+            default:
+                current.append(char)
+            }
+        }
+
+        let cleaned = cleanEmailAddress(current)
+        if !cleaned.isEmpty { results.append(cleaned) }
+        return results
     }
     
     /// Quote body text for reply (plain text)
@@ -430,12 +469,17 @@ class DraftManager {
     
     func saveDraft(_ draft: EmailDraft) {
         let fileURL = draftsDirectory.appendingPathComponent("\(draft.id.uuidString).json")
-        
+
+        var cleaned = draft
+        cleaned.to = Self.filterValidAddresses(draft.to)
+        cleaned.cc = Self.filterValidAddresses(draft.cc)
+        cleaned.bcc = Self.filterValidAddresses(draft.bcc)
+
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(draft)
+            let data = try encoder.encode(cleaned)
             try data.write(to: fileURL)
             print("Draft saved: \(fileURL.lastPathComponent)")
         } catch {
@@ -445,16 +489,19 @@ class DraftManager {
     
     func loadDraft(id: UUID) -> EmailDraft? {
         let fileURL = draftsDirectory.appendingPathComponent("\(id.uuidString).json")
-        
+
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return nil
         }
-        
+
         do {
             let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let draft = try decoder.decode(EmailDraft.self, from: data)
+            var draft = try decoder.decode(EmailDraft.self, from: data)
+            draft.to = Self.filterValidAddresses(draft.to)
+            draft.cc = Self.filterValidAddresses(draft.cc)
+            draft.bcc = Self.filterValidAddresses(draft.bcc)
             return draft
         } catch {
             print("Failed to load draft: \(error)")
@@ -493,5 +540,13 @@ class DraftManager {
         }
         
         return drafts.sorted { $0.modifiedAt > $1.modifiedAt }
+    }
+
+    /// Filter out addresses that don't contain a valid email (must have @)
+    private static func filterValidAddresses(_ addresses: [String]) -> [String] {
+        addresses.filter { addr in
+            let trimmed = addr.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty || trimmed.contains("@")
+        }
     }
 }

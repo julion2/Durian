@@ -105,7 +105,7 @@ struct TokenField: NSViewRepresentable {
         tokenField.font = .systemFont(ofSize: 14)
         
         // Token behavior
-        tokenField.tokenizingCharacterSet = CharacterSet(charactersIn: ",;\n")
+        tokenField.tokenizingCharacterSet = CharacterSet(charactersIn: ";\n")
         tokenField.tokenStyle = .rounded
         
         // Layout

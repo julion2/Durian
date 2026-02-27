@@ -41,6 +41,9 @@ type MessageInfo struct {
 	CC          string   `json:"cc,omitempty"`
 	Date        string   `json:"date"`
 	Timestamp   int64    `json:"timestamp"`
+	MessageID   string   `json:"message_id,omitempty"`
+	InReplyTo   string   `json:"in_reply_to,omitempty"`
+	References  string   `json:"references,omitempty"`
 	Body        string   `json:"body"`
 	HTML        string   `json:"html,omitempty"`
 	Attachments []string `json:"attachments,omitempty"`
