@@ -144,8 +144,9 @@ enum EmailSendingError: Error, LocalizedError {
 // MARK: - Email Helper
 
 enum EmailHelper {
-    /// Simple email validation
-    static func isValidEmail(_ email: String) -> Bool {
+    /// Simple email validation — handles both bare emails and "Name <email>" format
+    static func isValidEmail(_ input: String) -> Bool {
+        let email = cleanEmail(input)
         guard let atIndex = email.firstIndex(of: "@") else { return false }
         let afterAt = email[email.index(after: atIndex)...]
         return afterAt.contains(".") && !afterAt.hasPrefix(".") && !afterAt.hasSuffix(".")
