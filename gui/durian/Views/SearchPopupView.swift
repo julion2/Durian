@@ -11,17 +11,20 @@ struct SearchPopupView: View {
     @Binding var isPresented: Bool
     @Binding var selectedEmailId: String?
     let onEmailSelected: (String) -> Void
-    
+
     @StateObject private var searchManager = SearchManager()
     @State private var query: String = ""
     @State private var selectedIndex: Int = 0
     @FocusState private var isTextFieldFocused: Bool
-    
+
+    /// Fixed glass height — keeps sampling region constant to prevent color shift on resize
+    private let maxGlassHeight: CGFloat = 560
+
     var body: some View {
         VStack(spacing: 0) {
             // Search Input
             searchInputView
-            
+
             // Only show content when query is not empty
             if !query.isEmpty {
                 Divider()
@@ -39,7 +42,13 @@ struct SearchPopupView: View {
             }
         }
         .frame(width: 680)
-        .glassEffect(.regular.tint(Color(white: 0.45, opacity: 0.2)), in: .rect(cornerRadius: 16))
+        .background(alignment: .top) {
+            // Glass is always at max size so sampling region never changes
+            Color.clear
+                .frame(width: 680, height: maxGlassHeight)
+                .glassEffect(.regular.tint(Color(nsColor: .windowBackgroundColor).opacity(0.45)), in: .rect(cornerRadius: 16))
+        }
+        .clipShape(.rect(cornerRadius: 16))
         .shadow(color: .black.opacity(0.35), radius: 32, y: 16)
         .onAppear {
             // Delay focus slightly so the window is ready to accept first responder
