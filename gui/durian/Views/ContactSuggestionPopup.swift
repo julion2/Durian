@@ -20,7 +20,7 @@ struct ContactSuggestionRow: View {
     var body: some View {
         HStack(spacing: 8) {
             // Avatar with initials
-            AvatarView(name: contact.displayName, size: 22)
+            AvatarView(name: contact.displayName, email: contact.email, size: 22)
             
             // Name and Email
             VStack(alignment: .leading, spacing: 1) {
