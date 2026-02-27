@@ -307,14 +307,14 @@ struct ContentView: View {
             // Register all keymap handlers
             registerKeymapHandlers()
         }
-        .onChange(of: selectedTagID) { tagId in
+        .onChange(of: selectedTagID) { _, tagId in
             if let tagId = tagId {
                 Task {
                     await accountManager.selectNotmuchTag(tagId)
                 }
             }
         }
-        .onChange(of: markedEmails) { newSelection in
+        .onChange(of: markedEmails) { _, newSelection in
             // When selection changes externally (e.g., click), sync cursor
             if newSelection.count == 1, let emailId = newSelection.first {
                 cursorEmailId = emailId

@@ -128,17 +128,16 @@ class SyncManager: ObservableObject {
         
         quickSyncTimer?.invalidate()
         quickSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            guard !self.syncLock else {
-                print("SYNC: Quick sync timer skipped - sync already in progress")
-                return
-            }
-            guard NetworkMonitor.shared.isConnected else {
-                print("SYNC: Quick sync timer skipped - offline")
-                return
-            }
-            
             Task { @MainActor in
+                guard let self = self else { return }
+                guard !self.syncLock else {
+                    print("SYNC: Quick sync timer skipped - sync already in progress")
+                    return
+                }
+                guard NetworkMonitor.shared.isConnected else {
+                    print("SYNC: Quick sync timer skipped - offline")
+                    return
+                }
                 await self.quickSync()
             }
         }
@@ -159,17 +158,16 @@ class SyncManager: ObservableObject {
         
         fullSyncTimer?.invalidate()
         fullSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            guard !self.syncLock else {
-                print("SYNC: Full sync timer skipped - sync already in progress")
-                return
-            }
-            guard NetworkMonitor.shared.isConnected else {
-                print("SYNC: Full sync timer skipped - offline")
-                return
-            }
-            
             Task { @MainActor in
+                guard let self = self else { return }
+                guard !self.syncLock else {
+                    print("SYNC: Full sync timer skipped - sync already in progress")
+                    return
+                }
+                guard NetworkMonitor.shared.isConnected else {
+                    print("SYNC: Full sync timer skipped - offline")
+                    return
+                }
                 await self.fullSync()
             }
         }

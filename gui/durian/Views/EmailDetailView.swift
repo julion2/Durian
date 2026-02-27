@@ -42,7 +42,7 @@ struct EmailDetailView: View {
             }
         }
         // Reset state when email changes
-        .onChange(of: email.id) { _ in
+        .onChange(of: email.id) {
             messageHeights = [:]
         }
     }

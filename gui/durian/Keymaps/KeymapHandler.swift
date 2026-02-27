@@ -106,20 +106,24 @@ class KeymapHandler: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.isAppInForeground = true
-            self?.startKeyEventMonitoring()
-            print("KEYMAPS: App became active")
+            Task { @MainActor in
+                self?.isAppInForeground = true
+                self?.startKeyEventMonitoring()
+                print("KEYMAPS: App became active")
+            }
         }
-        
+
         NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.isAppInForeground = false
-            self?.stopKeyEventMonitoring()
-            self?.sequenceEngine.clearBuffer()
-            print("KEYMAPS: App resigned active")
+            Task { @MainActor in
+                self?.isAppInForeground = false
+                self?.stopKeyEventMonitoring()
+                self?.sequenceEngine.clearBuffer()
+                print("KEYMAPS: App resigned active")
+            }
         }
     }
     
