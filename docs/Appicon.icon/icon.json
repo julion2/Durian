@@ -1,0 +1,45 @@
+{
+  "color-space-for-untagged-svg-colors" : "display-p3",
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.36304,0.28892,0.27293,1.00000",
+      "display-p3:0.19141,0.11420,0.09753,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "dca919da-3f39-45c6-beab-1ef2c808b24a 1.png",
+          "name" : "dca919da-3f39-45c6-beab-1ef2c808b24a 1"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
