@@ -29,6 +29,7 @@ struct ComposeForm: View {
     @State private var keyMonitor: Any?
     @State private var showCcBcc: Bool = false
     @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
+    @State private var editorHeight: CGFloat = 100        // Dynamic height for EditableWebView
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -315,7 +316,10 @@ struct ComposeForm: View {
             // Signature Button
             if !signatures.isEmpty {
                 Menu {
-                    Button(action: { selectedSignature = nil }) {
+                    Button(action: {
+                        selectedSignature = nil
+                        updateBodyWithSignature()
+                    }) {
                         HStack {
                             Text("None")
                             if selectedSignature == nil {
@@ -385,32 +389,50 @@ struct ComposeForm: View {
     private var messageEditor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                // User's editable text area
-                ZStack(alignment: .topLeading) {
-                    // Placeholder
-                    if draft.body.isEmpty && draft.quotedContent == nil {
-                        Text("Message")
-                            .font(.system(size: 14))
-                            .foregroundColor(placeholderColor)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 8)
+                if draft.htmlSignature != nil {
+                    // Rich editor: contentEditable WebView with rendered HTML signature
+                    EditableWebView(
+                        plainText: $draft.body,
+                        htmlSignature: draft.htmlSignature,
+                        contentHeight: $editorHeight,
+                        font: .systemFont(ofSize: 14),
+                        textColor: NSColor(textColor),
+                        placeholderText: "Message"
+                    )
+                    .frame(height: editorHeight)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .onChange(of: draft.body) {
+                        scheduleAutoSave()
                     }
-                    
-                    // Text Editor - grows with content
-                    TextEditor(text: $draft.body)
-                        .font(.system(size: 14))
-                        .foregroundColor(textColor)
-                        .scrollContentBackground(.hidden)
-                        .scrollDisabled(true)  // Disable inner scroll, use outer ScrollView
-                        .frame(minHeight: 100)
-                        .fixedSize(horizontal: false, vertical: true)  // Grow vertically
-                        .onChange(of: draft.body) {
-                            scheduleAutoSave()
+                } else {
+                    // Plain text editor
+                    ZStack(alignment: .topLeading) {
+                        // Placeholder
+                        if draft.body.isEmpty && draft.quotedContent == nil {
+                            Text("Message")
+                                .font(.system(size: 14))
+                                .foregroundColor(placeholderColor)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 8)
                         }
+
+                        // Text Editor - grows with content
+                        TextEditor(text: $draft.body)
+                            .font(.system(size: 14))
+                            .foregroundColor(textColor)
+                            .scrollContentBackground(.hidden)
+                            .scrollDisabled(true)
+                            .frame(minHeight: 100)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .onChange(of: draft.body) {
+                                scheduleAutoSave()
+                            }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                
+
                 // Quoted content (for reply/forward) - rendered with full HTML fidelity
                 if let quoted = draft.quotedContent, !quoted.isEmpty {
                     quotedContentView(quoted)
@@ -445,6 +467,12 @@ struct ComposeForm: View {
         }
     }
     
+    /// Detect whether a signature string contains HTML tags
+    private func isHTMLSignature(_ text: String) -> Bool {
+        let pattern = "<\\s*(?:b|i|u|em|strong|br|div|span|p|a|img|table|tr|td|h[1-6]|ul|ol|li|hr|font|style)\\b[^>]*>"
+        return text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     /// Convert plain text quote to HTML with proper styling
     private func plainTextToHTML(_ text: String) -> String {
         // Escape HTML and convert newlines to <br>
@@ -545,19 +573,28 @@ struct ComposeForm: View {
     
     private func updateBodyWithSignature() {
         let sections = parseBodySections(draft.body)
-        
+
         var newBody = sections.userContent
-        
+
         if let signatureKey = selectedSignature,
            let signatureText = signatures[signatureKey],
            !signatureText.isEmpty {
-            newBody += "\n\n" + signatureText
+            if isHTMLSignature(signatureText) {
+                // HTML signature — keep separate, rendered in EditableWebView
+                draft.htmlSignature = signatureText
+            } else {
+                // Plain text — embed in body as before
+                draft.htmlSignature = nil
+                newBody += "\n\n" + signatureText
+            }
+        } else {
+            draft.htmlSignature = nil
         }
-        
+
         if !sections.quotedContent.isEmpty {
             newBody += "\n\n" + sections.quotedContent
         }
-        
+
         draft.body = newBody
     }
     

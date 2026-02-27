@@ -31,7 +31,10 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     var quotedContent: String?
     /// Whether quotedContent is HTML
     var quotedIsHTML: Bool = false
-    
+
+    /// HTML signature (kept separate from body, combined at send time)
+    var htmlSignature: String?
+
     init(
         id: UUID = UUID(),
         from: String,
@@ -45,7 +48,8 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         references: String? = nil,
         messageId: String? = nil,
         quotedContent: String? = nil,
-        quotedIsHTML: Bool = false
+        quotedIsHTML: Bool = false,
+        htmlSignature: String? = nil
     ) {
         self.id = id
         self.from = from
@@ -60,6 +64,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         self.messageId = messageId
         self.quotedContent = quotedContent
         self.quotedIsHTML = quotedIsHTML
+        self.htmlSignature = htmlSignature
         self.createdAt = Date()
         self.modifiedAt = Date()
     }

@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import Combine
 import AppKit
+import WebKit
 
 @MainActor
 class KeymapHandler: ObservableObject {
@@ -231,13 +232,18 @@ class KeymapHandler: ObservableObject {
         if firstResponder is NSTextView {
             return true
         }
-        
+
         // Directly editable NSTextField
         if let textField = firstResponder as? NSTextField,
            textField.isEditable {
             return true
         }
-        
+
+        // WKWebView with contentEditable (e.g. EditableWebView in compose)
+        if firstResponder is WKWebView {
+            return true
+        }
+
         return false
     }
 }

@@ -81,11 +81,26 @@ class EmailSendingManager: ObservableObject {
             args.append(draft.bcc.map(Self.quoteAddressIfNeeded).joined(separator: ","))
         }
         
-        // Build final body by combining user text and quoted content
+        // Build final body by combining user text, HTML signature, and quoted content
         var finalBody = draft.body
         var finalIsHTML = draft.isHTML
-        
-        if let quoted = draft.quotedContent, !quoted.isEmpty {
+
+        if let htmlSig = draft.htmlSignature {
+            // HTML signature — convert user text to HTML, append signature and quoted content
+            let userHTML = draft.body
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\n", with: "<br>")
+            finalBody = "<div>\(userHTML)</div><br>\(htmlSig)"
+
+            if let quoted = draft.quotedContent, !quoted.isEmpty {
+                let quotedHTML = draft.quotedIsHTML ? quoted : Self.plainTextToHTML(quoted)
+                finalBody += "<br><br>\(quotedHTML)"
+            }
+
+            finalIsHTML = true
+        } else if let quoted = draft.quotedContent, !quoted.isEmpty {
             if draft.quotedIsHTML {
                 // Convert user text to HTML and combine with quoted HTML
                 let userHTML = draft.body
@@ -233,6 +248,16 @@ class EmailSendingManager: ObservableObject {
         return trimmed
     }
     
+    /// Convert plain text to basic HTML (for combining plain text quoted content with HTML signature)
+    private static func plainTextToHTML(_ text: String) -> String {
+        let escaped = text
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\n", with: "<br>")
+        return "<div style=\"font-family: -apple-system, monospace; font-size: 13px; color: #666; white-space: pre-wrap;\">\(escaped)</div>"
+    }
+
     // MARK: - Command Execution
     
     private struct CommandResult {
