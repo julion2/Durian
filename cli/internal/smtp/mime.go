@@ -228,22 +228,32 @@ func ParseAddress(s string) (string, error) {
 }
 
 // ParseAddressList parses a comma-separated list of email addresses
+// Uses net/mail.ParseAddressList for RFC 5322 compliant parsing
+// (handles commas inside display names like "Last, First <email>")
 func ParseAddressList(s string) ([]string, error) {
 	if s == "" {
 		return nil, nil
 	}
 
-	parts := strings.Split(s, ",")
-	addresses := make([]string, 0, len(parts))
-
-	for _, part := range parts {
-		addr, err := ParseAddress(part)
-		if err != nil {
-			return nil, err
+	parsed, err := mail.ParseAddressList(s)
+	if err != nil {
+		// Fallback: try naive split for plain email lists without display names
+		parts := strings.Split(s, ",")
+		addresses := make([]string, 0, len(parts))
+		for _, part := range parts {
+			addr, err := ParseAddress(part)
+			if err != nil {
+				return nil, err
+			}
+			addresses = append(addresses, addr)
 		}
-		addresses = append(addresses, addr)
+		return addresses, nil
 	}
 
+	addresses := make([]string, 0, len(parsed))
+	for _, addr := range parsed {
+		addresses = append(addresses, addr.Address)
+	}
 	return addresses, nil
 }
 

@@ -65,20 +65,20 @@ class EmailSendingManager: ObservableObject {
         // Build durian send arguments
         var args = ["send",
             "--from", accountEmail,
-            "--to", draft.to.joined(separator: ","),
+            "--to", draft.to.map(Self.quoteAddressIfNeeded).joined(separator: ","),
             "--subject", draft.subject
         ]
-        
+
         // CC recipients
         if !draft.cc.isEmpty {
             args.append("--cc")
-            args.append(draft.cc.joined(separator: ","))
+            args.append(draft.cc.map(Self.quoteAddressIfNeeded).joined(separator: ","))
         }
-        
+
         // BCC recipients
         if !draft.bcc.isEmpty {
             args.append("--bcc")
-            args.append(draft.bcc.joined(separator: ","))
+            args.append(draft.bcc.map(Self.quoteAddressIfNeeded).joined(separator: ","))
         }
         
         // Build final body by combining user text and quoted content
@@ -198,6 +198,25 @@ class EmailSendingManager: ObservableObject {
         }
     }
     
+    /// Quote the display name in an address if it contains a comma
+    /// e.g. "van der Zee, Warden <a@b.com>" → "\"van der Zee, Warden\" <a@b.com>"
+    private static func quoteAddressIfNeeded(_ address: String) -> String {
+        let trimmed = address.trimmingCharacters(in: .whitespaces)
+        guard let angleBracketStart = trimmed.range(of: "<"),
+              trimmed.hasSuffix(">") else {
+            // Plain email, no display name
+            return trimmed
+        }
+
+        let displayName = String(trimmed[..<angleBracketStart.lowerBound]).trimmingCharacters(in: .whitespaces)
+        let emailPart = String(trimmed[angleBracketStart.lowerBound...])
+
+        if displayName.contains(",") && !displayName.hasPrefix("\"") {
+            return "\"\(displayName)\" \(emailPart)"
+        }
+        return trimmed
+    }
+
     /// Extract email address from string (handles "Name <email>" format)
     private nonisolated func extractEmail(from address: String) -> String {
         let trimmed = address.trimmingCharacters(in: .whitespaces)
