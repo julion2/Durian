@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "oauth",
+    srcs = [
+        "flow.go",
+        "keychain.go",
+        "pkce.go",
+        "provider.go",
+        "token.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/internal/oauth",
+    visibility = ["//cli:__subpackages__"],
+    deps = ["//cli/internal/keychain"],
+)
+
+go_test(
+    name = "oauth_test",
+    srcs = ["oauth_test.go"],
+    embed = [":oauth"],
+)

@@ -1,0 +1,43 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "durian_lib",
+    srcs = [
+        "auth.go",
+        "contacts.go",
+        "draft.go",
+        "main.go",
+        "root.go",
+        "search.go",
+        "send.go",
+        "serve.go",
+        "show.go",
+        "sync.go",
+        "tag.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/cmd/durian",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cli/internal/backend/notmuch",
+        "//cli/internal/config",
+        "//cli/internal/contacts",
+        "//cli/internal/debug",
+        "//cli/internal/draft",
+        "//cli/internal/handler",
+        "//cli/internal/imap",
+        "//cli/internal/keychain",
+        "//cli/internal/mail",
+        "//cli/internal/oauth",
+        "//cli/internal/protocol",
+        "//cli/internal/smtp",
+        "@com_github_gorilla_mux//:mux",
+        "@com_github_spf13_cobra//:cobra",
+        "@org_golang_x_term//:term",
+    ],
+)
+
+go_binary(
+    name = "durian",
+    embed = [":durian_lib"],
+    visibility = ["//visibility:public"],
+)

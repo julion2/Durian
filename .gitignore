@@ -94,3 +94,9 @@ fastlane/test_output
 
 iOSInjectionProject/
 AGENTS.md
+
+.claude/
+
+# Bazel
+/bazel-*
+MODULE.bazel.lock

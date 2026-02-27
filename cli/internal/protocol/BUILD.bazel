@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "protocol",
+    srcs = [
+        "command.go",
+        "response.go",
+        "server.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/internal/protocol",
+    visibility = ["//cli:__subpackages__"],
+    deps = ["//cli/internal/mail"],
+)
+
+go_test(
+    name = "protocol_test",
+    srcs = [
+        "response_test.go",
+        "server_test.go",
+    ],
+    embed = [":protocol"],
+    deps = ["//cli/internal/mail"],
+)

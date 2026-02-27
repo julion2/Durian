@@ -1,0 +1,40 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "imap",
+    srcs = [
+        "client.go",
+        "flags.go",
+        "maildir.go",
+        "state.go",
+        "sync.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/internal/imap",
+    visibility = ["//cli:__subpackages__"],
+    deps = [
+        "//cli/internal/config",
+        "//cli/internal/debug",
+        "//cli/internal/keychain",
+        "//cli/internal/notmuch",
+        "//cli/internal/oauth",
+        "@com_github_emersion_go_imap//:go-imap",
+        "@com_github_emersion_go_imap//client",
+        "@com_github_emersion_go_maildir//:go-maildir",
+        "@com_github_emersion_go_sasl//:go-sasl",
+    ],
+)
+
+go_test(
+    name = "imap_test",
+    srcs = [
+        "flags_test.go",
+        "maildir_test.go",
+        "state_test.go",
+        "sync_test.go",
+    ],
+    embed = [":imap"],
+    deps = [
+        "@com_github_emersion_go_imap//:go-imap",
+        "@com_github_emersion_go_maildir//:go-maildir",
+    ],
+)

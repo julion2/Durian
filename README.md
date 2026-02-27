@@ -20,16 +20,19 @@ agents/ # OpenCode agents
 
 ## Prerequisites
 ```bash
-brew install notmuch
+brew install notmuch bazel
 ```
 
 ## Build
 ```bash
-make              # build both
-make build-cli    # CLI only
-make dev          # CLI + open Xcode
-make install      # install CLI to /usr/local/bin
-make test         # run tests
+bazel build //...                # build everything
+bazel build //cli/...             # CLI only
+bazel build //gui:Durian         # GUI only
+```
+
+### Run the app
+```bash
+bazel build //gui:Durian && unzip -oq bazel-bin/gui/Durian.zip -d /tmp && open /tmp/Durian.app
 ```
 
 ## Keyboard Shortcuts

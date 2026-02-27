@@ -1,0 +1,8 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "notmuch",
+    srcs = ["notmuch.go"],
+    importpath = "github.com/durian-dev/durian/cli/internal/notmuch",
+    visibility = ["//cli:__subpackages__"],
+)

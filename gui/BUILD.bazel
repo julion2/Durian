@@ -1,0 +1,22 @@
+load("@rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_apple//apple:macos.bzl", "macos_application")
+
+swift_library(
+    name = "durian_lib",
+    srcs = glob(["durian/**/*.swift"]),
+    data = glob(
+        ["durian/Assets.xcassets/**"],
+        exclude = ["durian/Assets.xcassets/AppIcon.appiconset/**"],
+    ),
+    deps = ["@toml_decoder//:TOMLDecoder"],
+)
+
+macos_application(
+    name = "Durian",
+    bundle_id = "js-lab.durian",
+    bundle_name = "Durian",
+    entitlements = "durian/Durian.entitlements",
+    infoplists = [":Info.plist"],
+    minimum_os_version = "26.0",
+    deps = [":durian_lib"],
+)

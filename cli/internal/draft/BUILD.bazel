@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "draft",
+    srcs = ["draft.go"],
+    importpath = "github.com/durian-dev/durian/cli/internal/draft",
+    visibility = ["//cli:__subpackages__"],
+    deps = [
+        "//cli/internal/config",
+        "//cli/internal/imap",
+        "//cli/internal/smtp",
+        "@com_github_emersion_go_imap//:go-imap",
+    ],
+)

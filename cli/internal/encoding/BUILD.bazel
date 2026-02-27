@@ -1,0 +1,23 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "encoding",
+    srcs = [
+        "charset.go",
+        "header.go",
+        "html.go",
+        "transfer.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/internal/encoding",
+    visibility = ["//cli:__subpackages__"],
+    deps = [
+        "@org_golang_x_text//encoding/charmap",
+        "@org_golang_x_text//transform",
+    ],
+)
+
+go_test(
+    name = "encoding_test",
+    srcs = ["encoding_test.go"],
+    embed = [":encoding"],
+)
