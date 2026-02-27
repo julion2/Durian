@@ -189,8 +189,8 @@ extension EmailDraft {
     ///   - fromAccount: The email address to send from
     /// - Returns: A new EmailDraft configured as a reply
     static func createReply(from message: MailMessage, fromAccount: String) -> EmailDraft {
-        // Extract sender email from "Name <email>" format
-        let replyTo = extractEmail(from: message.from)
+        // Keep full "Name <email>" format for display in token field
+        let replyTo = message.from
         
         // Build subject with Re: prefix (avoid Re: Re: Re:)
         let subject = message.subject.hasPrefix("Re:") 
@@ -239,23 +239,23 @@ extension EmailDraft {
         
         // Add original To recipients (except sender and self)
         if let originalTo = message.to {
-            let toEmails = parseEmailList(originalTo)
+            let toAddresses = parseEmailList(originalTo)
             let senderEmail = extractEmail(from: message.from).lowercased()
-            for email in toEmails {
-                let normalized = email.lowercased()
-                if normalized != fromAccount.lowercased() && normalized != senderEmail {
-                    ccRecipients.append(email)
+            for address in toAddresses {
+                let emailOnly = extractEmail(from: address).lowercased()
+                if emailOnly != fromAccount.lowercased() && emailOnly != senderEmail {
+                    ccRecipients.append(address)
                 }
             }
         }
-        
+
         // Add original CC recipients (except self)
         if let originalCC = message.cc {
-            let ccEmails = parseEmailList(originalCC)
-            for email in ccEmails {
-                let normalized = email.lowercased()
-                if normalized != fromAccount.lowercased() {
-                    ccRecipients.append(email)
+            let ccAddresses = parseEmailList(originalCC)
+            for address in ccAddresses {
+                let emailOnly = extractEmail(from: address).lowercased()
+                if emailOnly != fromAccount.lowercased() {
+                    ccRecipients.append(address)
                 }
             }
         }
@@ -330,7 +330,7 @@ extension EmailDraft {
     }
     
     /// Parse comma-separated email list, handling commas in unquoted display names
-    /// e.g. "van der Zee, Warden (EBV) <a@b.com>, c@d.com" → ["a@b.com", "c@d.com"]
+    /// e.g. "van der Zee, Warden (EBV) <a@b.com>, c@d.com" → ["van der Zee, Warden (EBV) <a@b.com>", "c@d.com"]
     private static func parseEmailList(_ list: String) -> [String] {
         var results: [String] = []
         var current = ""
@@ -353,13 +353,13 @@ extension EmailDraft {
                     current.append(char)
                 } else if current.contains("<") && current.contains(">") {
                     // Complete "Name <email>" address — comma is a separator
-                    let cleaned = cleanEmailAddress(current)
-                    if !cleaned.isEmpty { results.append(cleaned) }
+                    let trimmed = current.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { results.append(trimmed) }
                     current = ""
                 } else if current.contains("@") {
                     // Plain email without angle brackets — comma is a separator
-                    let cleaned = cleanEmailAddress(current)
-                    if !cleaned.isEmpty { results.append(cleaned) }
+                    let trimmed = current.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { results.append(trimmed) }
                     current = ""
                 } else {
                     // No complete address yet — comma is part of display name
@@ -370,8 +370,8 @@ extension EmailDraft {
             }
         }
 
-        let cleaned = cleanEmailAddress(current)
-        if !cleaned.isEmpty { results.append(cleaned) }
+        let trimmed = current.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { results.append(trimmed) }
         return results
     }
     

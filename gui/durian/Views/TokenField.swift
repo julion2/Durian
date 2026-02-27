@@ -333,15 +333,19 @@ struct TokenField: NSViewRepresentable {
         
         /// Extract display name from "Name <email>" format, or return email if no name
         private func extractDisplayName(from fullString: String) -> String {
-            // Check for "Name <email>" format
-            if let range = fullString.range(of: " <") {
-                let namePart = String(fullString[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let trimmed = fullString.trimmingCharacters(in: .whitespaces)
+            // Check for "Name <email>" or "Name<email>" format
+            if let angleBracket = trimmed.range(of: "<"),
+               trimmed.contains(">") {
+                let namePart = String(trimmed[..<angleBracket.lowerBound])
+                    .trimmingCharacters(in: .whitespaces)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
                 if !namePart.isEmpty {
                     return namePart
                 }
             }
             // No name found, return as-is (probably just email)
-            return fullString
+            return trimmed
         }
         
         /// Extract email from "Name <email>" format, or return as-is if just email
