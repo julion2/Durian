@@ -30,6 +30,10 @@ struct ComposeForm: View {
     @State private var showCcBcc: Bool = false
     @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
     @State private var editorHeight: CGFloat = 100        // Dynamic height for EditableWebView
+    @State private var formatCommand: String?             // Pending format command for EditableWebView
+    @State private var isBold: Bool = false
+    @State private var isItalic: Bool = false
+    @State private var isUnderline: Bool = false
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -81,7 +85,21 @@ struct ComposeForm: View {
             formSection
             
             // Formatting Toolbar
-            ComposeToolbar()
+            ComposeToolbar(
+                onFormat: { command in
+                    if draft.htmlSignature == nil {
+                        // Switch from plain TextEditor to EditableWebView
+                        draft.htmlSignature = ""
+                    }
+                    // Delay briefly so EditableWebView can mount before receiving the command
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        formatCommand = command
+                    }
+                },
+                boldActive: isBold,
+                italicActive: isItalic,
+                underlineActive: isUnderline
+            )
             
             // Message Editor
             messageEditor
@@ -397,7 +415,17 @@ struct ComposeForm: View {
                         contentHeight: $editorHeight,
                         font: .systemFont(ofSize: 14),
                         textColor: NSColor(textColor),
-                        placeholderText: "Message"
+                        placeholderText: "Message",
+                        formatCommand: $formatCommand,
+                        htmlBody: Binding(
+                            get: { draft.htmlBody ?? "" },
+                            set: { draft.htmlBody = $0.isEmpty ? nil : $0 }
+                        ),
+                        onFormatStateChange: { bold, italic, underline in
+                            isBold = bold
+                            isItalic = italic
+                            isUnderline = underline
+                        }
                     )
                     .frame(height: editorHeight)
                     .padding(.horizontal, 12)

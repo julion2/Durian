@@ -16,6 +16,9 @@ struct EditableWebView: NSViewRepresentable {
     let font: NSFont
     let textColor: NSColor
     let placeholderText: String
+    @Binding var formatCommand: String?
+    @Binding var htmlBody: String
+    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -25,7 +28,9 @@ struct EditableWebView: NSViewRepresentable {
         // Message handler for content changes
         let handler = context.coordinator
         config.userContentController.add(handler, name: "textChanged")
+        config.userContentController.add(handler, name: "htmlChanged")
         config.userContentController.add(handler, name: "heightChanged")
+        config.userContentController.add(handler, name: "formatState")
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -66,6 +71,15 @@ struct EditableWebView: NSViewRepresentable {
                 placeholder: placeholderText
             )
             webView.loadHTMLString(html, baseURL: nil)
+        }
+
+        // Execute formatting command if requested
+        if let cmd = formatCommand {
+            DispatchQueue.main.async {
+                self.formatCommand = nil
+            }
+            let js = "document.getElementById('editor').focus(); document.execCommand('\(cmd)', false, null);"
+            webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
 
@@ -162,11 +176,37 @@ struct EditableWebView: NSViewRepresentable {
                     return text;
                 }
 
+                function getEditorHTML() {
+                    // Get innerHTML of user content (excluding signature)
+                    const sig = document.getElementById('sig');
+                    if (sig) {
+                        const range = document.createRange();
+                        range.setStart(editor, 0);
+                        range.setEndBefore(sig);
+                        const container = document.createElement('div');
+                        container.appendChild(range.cloneContents());
+                        return container.innerHTML;
+                    }
+                    return editor.innerHTML;
+                }
+
+                function notifyFormatState() {
+                    const b = document.queryCommandState('bold');
+                    const i = document.queryCommandState('italic');
+                    const u = document.queryCommandState('underline');
+                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u});
+                }
+
                 editor.addEventListener('input', function() {
                     const text = getPlainText();
                     window.webkit.messageHandlers.textChanged.postMessage(text);
+                    window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
                     setTimeout(notifyHeight, 10);
+                    notifyFormatState();
                 });
+
+                // Track bold/italic/underline state on selection/cursor change
+                document.addEventListener('selectionchange', notifyFormatState);
 
                 // Initial height
                 setTimeout(notifyHeight, 50);
@@ -196,10 +236,25 @@ struct EditableWebView: NSViewRepresentable {
                         self.isUpdating = false
                     }
                 }
+            case "htmlChanged":
+                if let html = message.body as? String, !isUpdating {
+                    DispatchQueue.main.async {
+                        self.parent?.htmlBody = html
+                    }
+                }
             case "heightChanged":
                 if let height = message.body as? CGFloat, height > 0 {
                     DispatchQueue.main.async {
                         self.parent?.contentHeight = max(height, 100)
+                    }
+                }
+            case "formatState":
+                if let dict = message.body as? [String: Bool] {
+                    let bold = dict["bold"] ?? false
+                    let italic = dict["italic"] ?? false
+                    let underline = dict["underline"] ?? false
+                    DispatchQueue.main.async {
+                        self.parent?.onFormatStateChange?(bold, italic, underline)
                     }
                 }
             default:

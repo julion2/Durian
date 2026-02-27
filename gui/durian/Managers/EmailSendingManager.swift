@@ -86,12 +86,17 @@ class EmailSendingManager: ObservableObject {
         var finalIsHTML = draft.isHTML
 
         if let htmlSig = draft.htmlSignature {
-            // HTML signature — convert user text to HTML, append signature and quoted content
-            let userHTML = draft.body
-                .replacingOccurrences(of: "&", with: "&amp;")
-                .replacingOccurrences(of: "<", with: "&lt;")
-                .replacingOccurrences(of: ">", with: "&gt;")
-                .replacingOccurrences(of: "\n", with: "<br>")
+            // HTML signature — use rich HTML body if available, otherwise escape plain text
+            let userHTML: String
+            if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+                userHTML = richHTML
+            } else {
+                userHTML = draft.body
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                    .replacingOccurrences(of: "\n", with: "<br>")
+            }
             finalBody = "<div>\(userHTML)</div><br>\(htmlSig)"
 
             if let quoted = draft.quotedContent, !quoted.isEmpty {
@@ -102,12 +107,17 @@ class EmailSendingManager: ObservableObject {
             finalIsHTML = true
         } else if let quoted = draft.quotedContent, !quoted.isEmpty {
             if draft.quotedIsHTML {
-                // Convert user text to HTML and combine with quoted HTML
-                let userHTML = draft.body
-                    .replacingOccurrences(of: "&", with: "&amp;")
-                    .replacingOccurrences(of: "<", with: "&lt;")
-                    .replacingOccurrences(of: ">", with: "&gt;")
-                    .replacingOccurrences(of: "\n", with: "<br>")
+                // Use rich HTML body if available, otherwise escape plain text
+                let userHTML: String
+                if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+                    userHTML = richHTML
+                } else {
+                    userHTML = draft.body
+                        .replacingOccurrences(of: "&", with: "&amp;")
+                        .replacingOccurrences(of: "<", with: "&lt;")
+                        .replacingOccurrences(of: ">", with: "&gt;")
+                        .replacingOccurrences(of: "\n", with: "<br>")
+                }
                 finalBody = "<div>\(userHTML)</div><br><br>\(quoted)"
                 finalIsHTML = true
             } else {

@@ -35,6 +35,9 @@ struct EmailDraft: Identifiable, Codable, Equatable {
     /// HTML signature (kept separate from body, combined at send time)
     var htmlSignature: String?
 
+    /// HTML body from the rich text editor (formatted user content, excluding signature)
+    var htmlBody: String?
+
     init(
         id: UUID = UUID(),
         from: String,
@@ -49,7 +52,8 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         messageId: String? = nil,
         quotedContent: String? = nil,
         quotedIsHTML: Bool = false,
-        htmlSignature: String? = nil
+        htmlSignature: String? = nil,
+        htmlBody: String? = nil
     ) {
         self.id = id
         self.from = from
@@ -65,6 +69,7 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         self.quotedContent = quotedContent
         self.quotedIsHTML = quotedIsHTML
         self.htmlSignature = htmlSignature
+        self.htmlBody = htmlBody
         self.createdAt = Date()
         self.modifiedAt = Date()
     }

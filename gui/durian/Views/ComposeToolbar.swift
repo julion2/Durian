@@ -10,9 +10,14 @@ import SwiftUI
 /// Formatting toolbar for the email composer
 /// Currently visual-only - formatting functionality will be added later
 struct ComposeToolbar: View {
+    var onFormat: ((String) -> Void)?
+    var boldActive: Bool = false
+    var italicActive: Bool = false
+    var underlineActive: Bool = false
+
     @State private var selectedFont: String = "Helvetica"
     @State private var selectedSize: Int = 13
-    
+
     private let availableFonts = ["Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"]
     private let availableSizes = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32]
     
@@ -125,9 +130,9 @@ struct ComposeToolbar: View {
     
     private var textStyleButtons: some View {
         HStack(spacing: 4) {
-            ToolbarIconButton(icon: "bold", action: {})
-            ToolbarIconButton(icon: "italic", action: {})
-            ToolbarIconButton(icon: "underline", action: {})
+            ToolbarIconButton(icon: "bold", action: { onFormat?("bold") }, isActive: boldActive)
+            ToolbarIconButton(icon: "italic", action: { onFormat?("italic") }, isActive: italicActive)
+            ToolbarIconButton(icon: "underline", action: { onFormat?("underline") }, isActive: underlineActive)
         }
     }
     
@@ -178,7 +183,7 @@ struct ToolbarIconButton: View {
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHovered ? Color(hex: "#f3f3f5") : Color.clear)
+                        .fill(isActive ? Color.accentColor.opacity(0.15) : (isHovered ? Color(hex: "#f3f3f5") : Color.clear))
                 )
         }
         .buttonStyle(.plain)
