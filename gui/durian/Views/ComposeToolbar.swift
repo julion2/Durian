@@ -16,6 +16,7 @@ struct ComposeToolbar: View {
     var boldActive: Bool = false
     var italicActive: Bool = false
     var underlineActive: Bool = false
+    var strikethroughActive: Bool = false
     var currentFontSize: Int = 13
     var currentFontFamily: String = "Helvetica"
     var currentAlignment: String = "left"
@@ -48,6 +49,12 @@ struct ComposeToolbar: View {
             
             // Lists
             listButtons
+
+            Divider()
+                .frame(height: 20)
+
+            // Clear Formatting
+            ToolbarIconButton(icon: "textformat.alt", action: { onFormat?("removeFormat") })
 
             Spacer()
         }
@@ -129,6 +136,7 @@ struct ComposeToolbar: View {
             ToolbarIconButton(icon: "bold", action: { onFormat?("bold") }, isActive: boldActive)
             ToolbarIconButton(icon: "italic", action: { onFormat?("italic") }, isActive: italicActive)
             ToolbarIconButton(icon: "underline", action: { onFormat?("underline") }, isActive: underlineActive)
+            ToolbarIconButton(icon: "strikethrough", action: { onFormat?("strikeThrough") }, isActive: strikethroughActive)
         }
     }
     

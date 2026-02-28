@@ -20,7 +20,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var fontSizeCommand: Int?
     @Binding var fontFamilyCommand: String?
     @Binding var htmlBody: String
-    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
+    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ strikethrough: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -349,6 +349,7 @@ struct EditableWebView: NSViewRepresentable {
                     const b = document.queryCommandState('bold');
                     const i = document.queryCommandState('italic');
                     const u = document.queryCommandState('underline');
+                    const s = document.queryCommandState('strikeThrough');
                     let fs = 13;
                     let ff = 'Helvetica';
                     const sel = window.getSelection();
@@ -369,7 +370,7 @@ struct EditableWebView: NSViewRepresentable {
                     if (document.queryCommandState('justifyCenter')) align = 'center';
                     else if (document.queryCommandState('justifyRight')) align = 'right';
                     else if (document.queryCommandState('justifyFull')) align = 'justify';
-                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs, fontFamily: ff, alignment: align});
+                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, strikethrough: s, fontSize: fs, fontFamily: ff, alignment: align});
                 }
 
                 editor.addEventListener('input', function(e) {
@@ -489,11 +490,12 @@ struct EditableWebView: NSViewRepresentable {
                     let bold = dict["bold"] as? Bool ?? false
                     let italic = dict["italic"] as? Bool ?? false
                     let underline = dict["underline"] as? Bool ?? false
+                    let strikethrough = dict["strikethrough"] as? Bool ?? false
                     let fontSize = dict["fontSize"] as? Int ?? 13
                     let fontFamily = dict["fontFamily"] as? String ?? "Helvetica"
                     let alignment = dict["alignment"] as? String ?? "left"
                     DispatchQueue.main.async {
-                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize, fontFamily, alignment)
+                        self.parent?.onFormatStateChange?(bold, italic, underline, strikethrough, fontSize, fontFamily, alignment)
                     }
                 }
             default:

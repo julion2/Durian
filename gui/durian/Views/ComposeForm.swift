@@ -36,6 +36,7 @@ struct ComposeForm: View {
     @State private var isBold: Bool = false
     @State private var isItalic: Bool = false
     @State private var isUnderline: Bool = false
+    @State private var isStrikethrough: Bool = false
     @State private var currentFontSize: Int = 13
     @State private var currentFontFamily: String = "Helvetica"
     @State private var currentAlignment: String = "left"
@@ -103,6 +104,7 @@ struct ComposeForm: View {
                 boldActive: isBold,
                 italicActive: isItalic,
                 underlineActive: isUnderline,
+                strikethroughActive: isStrikethrough,
                 currentFontSize: currentFontSize,
                 currentFontFamily: currentFontFamily,
                 currentAlignment: currentAlignment
@@ -429,10 +431,11 @@ struct ComposeForm: View {
                             get: { draft.htmlBody ?? "" },
                             set: { draft.htmlBody = $0.isEmpty ? nil : $0 }
                         ),
-                        onFormatStateChange: { bold, italic, underline, fontSize, fontFamily, alignment in
+                        onFormatStateChange: { bold, italic, underline, strikethrough, fontSize, fontFamily, alignment in
                             isBold = bold
                             isItalic = italic
                             isUnderline = underline
+                            isStrikethrough = strikethrough
                             currentFontSize = fontSize
                             currentFontFamily = fontFamily
                             currentAlignment = alignment
