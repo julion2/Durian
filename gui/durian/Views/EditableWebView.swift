@@ -20,7 +20,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var fontSizeCommand: Int?
     @Binding var fontFamilyCommand: String?
     @Binding var htmlBody: String
-    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int, _ fontFamily: String) -> Void)?
+    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -287,7 +287,11 @@ struct EditableWebView: NSViewRepresentable {
                             }
                         }
                     }
-                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs, fontFamily: ff});
+                    let align = 'left';
+                    if (document.queryCommandState('justifyCenter')) align = 'center';
+                    else if (document.queryCommandState('justifyRight')) align = 'right';
+                    else if (document.queryCommandState('justifyFull')) align = 'justify';
+                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs, fontFamily: ff, alignment: align});
                 }
 
                 editor.addEventListener('input', function() {
@@ -354,8 +358,9 @@ struct EditableWebView: NSViewRepresentable {
                     let underline = dict["underline"] as? Bool ?? false
                     let fontSize = dict["fontSize"] as? Int ?? 13
                     let fontFamily = dict["fontFamily"] as? String ?? "Helvetica"
+                    let alignment = dict["alignment"] as? String ?? "left"
                     DispatchQueue.main.async {
-                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize, fontFamily)
+                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize, fontFamily, alignment)
                     }
                 }
             default:

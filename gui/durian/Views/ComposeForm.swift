@@ -38,6 +38,7 @@ struct ComposeForm: View {
     @State private var isUnderline: Bool = false
     @State private var currentFontSize: Int = 13
     @State private var currentFontFamily: String = "Helvetica"
+    @State private var currentAlignment: String = "left"
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -103,7 +104,8 @@ struct ComposeForm: View {
                 italicActive: isItalic,
                 underlineActive: isUnderline,
                 currentFontSize: currentFontSize,
-                currentFontFamily: currentFontFamily
+                currentFontFamily: currentFontFamily,
+                currentAlignment: currentAlignment
             )
             
             // Message Editor
@@ -427,12 +429,13 @@ struct ComposeForm: View {
                             get: { draft.htmlBody ?? "" },
                             set: { draft.htmlBody = $0.isEmpty ? nil : $0 }
                         ),
-                        onFormatStateChange: { bold, italic, underline, fontSize, fontFamily in
+                        onFormatStateChange: { bold, italic, underline, fontSize, fontFamily, alignment in
                             isBold = bold
                             isItalic = italic
                             isUnderline = underline
                             currentFontSize = fontSize
                             currentFontFamily = fontFamily
+                            currentAlignment = alignment
                         }
                     )
                     .frame(height: editorHeight)

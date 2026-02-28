@@ -18,6 +18,7 @@ struct ComposeToolbar: View {
     var underlineActive: Bool = false
     var currentFontSize: Int = 13
     var currentFontFamily: String = "Helvetica"
+    var currentAlignment: String = "left"
 
     private let availableFonts = ["Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"]
     private let availableSizes = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32]
@@ -141,10 +142,10 @@ struct ComposeToolbar: View {
     
     private var alignmentButtons: some View {
         HStack(spacing: 4) {
-            ToolbarIconButton(icon: "text.alignleft", action: {})
-            ToolbarIconButton(icon: "text.aligncenter", action: {})
-            ToolbarIconButton(icon: "text.alignright", action: {})
-            ToolbarIconButton(icon: "text.justify", action: {})
+            ToolbarIconButton(icon: "text.alignleft", action: { onFormat?("justifyLeft") }, isActive: currentAlignment == "left")
+            ToolbarIconButton(icon: "text.aligncenter", action: { onFormat?("justifyCenter") }, isActive: currentAlignment == "center")
+            ToolbarIconButton(icon: "text.alignright", action: { onFormat?("justifyRight") }, isActive: currentAlignment == "right")
+            ToolbarIconButton(icon: "text.justify", action: { onFormat?("justifyFull") }, isActive: currentAlignment == "justify")
         }
     }
     
