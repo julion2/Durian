@@ -19,6 +19,14 @@ func writeJSON(w http.ResponseWriter, response any) {
 
 func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("query")
+	if query == "" {
+		http.Error(w, "Missing required 'query' parameter", http.StatusBadRequest)
+		return
+	}
+	if len(query) > 1024 {
+		http.Error(w, "Query too long (max 1024 characters)", http.StatusBadRequest)
+		return
+	}
 	limitStr := r.URL.Query().Get("limit")
 	var limit int
 	if limitStr != "" {
