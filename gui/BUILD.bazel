@@ -1,6 +1,11 @@
 load("@rules_swift//swift:swift.bzl", "swift_library")
 load("@rules_apple//apple:macos.bzl", "macos_application")
 
+config_setting(
+    name = "release",
+    values = {"compilation_mode": "opt"},
+)
+
 swift_library(
     name = "durian_lib",
     srcs = glob(["durian/**/*.swift"]),
@@ -15,7 +20,10 @@ swift_library(
 
 macos_application(
     name = "Durian",
-    app_icons = glob(["durian/AppIcon.icon/**"]),
+    app_icons = select({
+        ":release": glob(["durian/AppIcon.icon/**"]),
+        "//conditions:default": glob(["durian/AppIcon-Debug.icon/**"]),
+    }),
     bundle_id = "js-lab.durian",
     bundle_name = "Durian",
     entitlements = "durian/Durian.entitlements",

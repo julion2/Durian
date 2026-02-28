@@ -27,12 +27,14 @@ brew install notmuch bazel
 ```bash
 bazel build //...                # build everything
 bazel build //cli/...             # CLI only
-bazel build //gui:Durian         # GUI only
+bazel build //gui:Durian         # GUI only (debug)
+bazel build -c opt //gui:Durian  # GUI only (release)
 ```
 
 ### Run the app
 ```bash
-bazel build //gui:Durian && unzip -oq bazel-bin/gui/Durian.zip -d /tmp && open /tmp/Durian.app
+bazel run //gui:Durian # GUI only (debug)
+bazel run -c opt //gui:Durian  # GUI only (release)
 ```
 
 ## Keyboard Shortcuts
@@ -66,4 +68,3 @@ durian auth status
 - [docs/config-example.toml](docs/config-example.toml) – Full config example
 - [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) – OAuth setup for Gmail/Microsoft
 - [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md) – IMAP/notmuch setup
-
