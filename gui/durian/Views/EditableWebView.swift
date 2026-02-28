@@ -374,7 +374,7 @@ struct EditableWebView: NSViewRepresentable {
 
                 editor.addEventListener('input', function(e) {
                     // Auto-list: "- " → bullet list, "1. " → numbered list
-                    if (e.inputType === 'insertText' && e.data === ' ') {
+                    if (e.inputType === 'insertText' && /^\\s$/.test(e.data)) {
                         const sel = window.getSelection();
                         if (sel.rangeCount > 0 && sel.anchorNode && sel.anchorNode.nodeType === 3) {
                             const node = sel.anchorNode;
@@ -383,7 +383,7 @@ struct EditableWebView: NSViewRepresentable {
                             const before = text.substring(0, offset);
                             let listTag = null;
                             let prefixLen = 0;
-                            if (before === '- ') {
+                            if (/^-\\s$/.test(before)) {
                                 listTag = 'ul';
                                 prefixLen = 2;
                             } else if (/^\\d+\\.\\s$/.test(before)) {
