@@ -78,7 +78,12 @@ struct EditableWebView: NSViewRepresentable {
             DispatchQueue.main.async {
                 self.formatCommand = nil
             }
-            let js = "document.getElementById('editor').focus(); document.execCommand('\(cmd)', false, null);"
+            let js = """
+            document.getElementById('editor').focus();
+            document.execCommand('\(cmd)', false, null);
+            window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
+            notifyFormatState();
+            """
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
     }
@@ -204,6 +209,12 @@ struct EditableWebView: NSViewRepresentable {
 
                 // Track bold/italic/underline state on selection/cursor change
                 document.addEventListener('selectionchange', notifyFormatState);
+
+                // MutationObserver: catch all DOM changes (formatting, Cmd+B, etc.)
+                new MutationObserver(function() {
+                    window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
+                    notifyFormatState();
+                }).observe(editor, { childList: true, subtree: true, characterData: true, attributes: true });
 
                 // Initial height
                 setTimeout(notifyHeight, 50);
