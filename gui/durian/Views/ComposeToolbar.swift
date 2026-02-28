@@ -48,13 +48,7 @@ struct ComposeToolbar: View {
             
             // Lists
             listButtons
-            
-            Divider()
-                .frame(height: 20)
-            
-            // Link & Image
-            insertButtons
-            
+
             Spacer()
         }
         .padding(.horizontal, 24)
@@ -158,14 +152,6 @@ struct ComposeToolbar: View {
         }
     }
     
-    // MARK: - Insert Buttons (Link, Image)
-    
-    private var insertButtons: some View {
-        HStack(spacing: 4) {
-            ToolbarIconButton(icon: "link", action: {})
-            ToolbarIconButton(icon: "photo", action: {})
-        }
-    }
 }
 
 // MARK: - Toolbar Icon Button
