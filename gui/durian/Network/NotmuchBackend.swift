@@ -399,13 +399,16 @@ class NotmuchBackend: ObservableObject {
     func togglePin(id: String) async {
         guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
         let isCurrentlyPinned = emails[index].isPinned
-        
+
         let tags = isCurrentlyPinned ? "-flagged" : "+flagged"
         let success = await tag(query: "thread:\(id)", tags: tags)
-        
+
         if success {
+            // Immediately flip for responsive UI
             emails[index].isPinned = !isCurrentlyPinned
             print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
+            // Reload from notmuch to ensure state is consistent
+            await reload()
         }
     }
 

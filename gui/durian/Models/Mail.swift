@@ -195,9 +195,10 @@ struct MailMessage: Identifiable, Hashable {
         self.body = nil
         self.htmlBody = nil
         self.attributedBody = nil
-        self.isRead = !tags.contains("unread")
-        self.isPinned = tags.contains("flagged")
-        self.hasAttachment = tags.contains("attachment")
+        let tagSet = Set(tags.split(separator: ","))
+        self.isRead = !tagSet.contains("unread")
+        self.isPinned = tagSet.contains("flagged")
+        self.hasAttachment = tagSet.contains("attachment")
         self.bodyState = .notLoaded
         self.incomingAttachments = []
         self.threadMessages = nil
