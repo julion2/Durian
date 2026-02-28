@@ -214,6 +214,10 @@ class NotmuchBackend: ObservableObject {
             let (data, _) = try await URLSession.shared.data(for: request)
             let response = try decoder.decode(T.self, from: data)
             return response
+        } catch is CancellationError {
+            return nil
+        } catch let error as URLError where error.code == .cancelled {
+            return nil
         } catch {
             print("NOTMUCH ERROR: Request to \(endpoint) failed: \(error)")
             return nil
