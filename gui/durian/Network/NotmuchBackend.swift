@@ -139,7 +139,8 @@ class NotmuchBackend: ObservableObject {
             // Check if the server is reachable
             var request = URLRequest(url: baseURL)
             request.httpMethod = "HEAD" // Lightweight request to check server status
-            
+            request.timeoutInterval = 10
+
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 { // 404 is ok, means our base endpoint is handled
                 isConnected = true
@@ -202,6 +203,7 @@ class NotmuchBackend: ObservableObject {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.timeoutInterval = 10
 
         if let bodyData {
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
