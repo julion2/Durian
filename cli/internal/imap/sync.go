@@ -47,7 +47,7 @@ var specialUseFolderTags = map[string]FolderTagMapping{
 	"\\Drafts":  {AddTags: []string{"draft"}, RemoveTags: []string{}},
 	"\\Trash":   {AddTags: []string{"trash"}, RemoveTags: []string{"inbox"}},
 	"\\Junk":    {AddTags: []string{"spam"}, RemoveTags: []string{"inbox"}},
-	"\\Archive": {AddTags: []string{"archive"}, RemoveTags: []string{}},
+	"\\Archive": {AddTags: []string{"archive"}, RemoveTags: []string{"inbox"}},
 }
 
 // SyncOptions configures the sync behavior
@@ -389,6 +389,10 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					if err := s.notmuch.DeleteMessageFile(messageID); err != nil {
 						debug.Log("syncMailbox: failed to delete file for UID %d: %v", uid, err)
 					}
+					// Remove folder-specific tags when message disappears from this folder
+					if strings.EqualFold(mailboxName, "INBOX") {
+						_ = s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"})
+					}
 				} else {
 					debug.Log("syncMailbox: no Message-ID for deleted UID %d, skipping file deletion", uid)
 				}
@@ -453,10 +457,16 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					// Message exists! Update tags instead of downloading
 					debug.Log("syncMailbox: UID %d (Message-ID: %s) already exists, updating tags", uid, messageID)
 
+					query := fmt.Sprintf("id:%s", messageID)
 					if tagMapping != nil {
-						query := fmt.Sprintf("id:%s", messageID)
 						if err := s.notmuch.ModifyTags(query, tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
 							debug.Log("syncMailbox: failed to update tags for %s: %v", messageID, err)
+						}
+					} else if !strings.EqualFold(mailboxName, "INBOX") {
+						// Custom folder with no special-use mapping — remove inbox tag
+						// since the message was moved out of INBOX
+						if err := s.notmuch.ModifyTags(query, nil, []string{"inbox"}); err != nil {
+							debug.Log("syncMailbox: failed to remove inbox tag for %s: %v", messageID, err)
 						}
 					}
 

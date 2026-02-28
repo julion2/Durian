@@ -66,6 +66,7 @@ class NotmuchBackend: ObservableObject {
     @Published var loadingProgress = ""
 
     // Internal state
+    private var currentFolder = "inbox"
     private var currentQuery = "tag:inbox"
     
     // Cancellation support for prefetch
@@ -174,6 +175,7 @@ class NotmuchBackend: ObservableObject {
         prefetchTask?.cancel()
         prefetchTask = nil
         
+        currentFolder = name
         currentQuery = ProfileManager.shared.buildQuery(folderName: name)
         print("NOTMUCH selectFolder: \(currentQuery)")
         await search(currentQuery)
@@ -420,6 +422,7 @@ class NotmuchBackend: ObservableObject {
     }
     
     func reload() async {
+        currentQuery = ProfileManager.shared.buildQuery(folderName: currentFolder)
         await search(currentQuery)
     }
 
