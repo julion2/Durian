@@ -8,7 +8,6 @@ swift_library(
         ["durian/Assets.xcassets/**"],
         exclude = [
             "durian/Assets.xcassets/AppIcon.appiconset/**",
-            "durian/Assets.xcassets/AppIcon.icon/**",
         ],
     ),
     deps = ["@toml_decoder//:TOMLDecoder"],
@@ -16,6 +15,7 @@ swift_library(
 
 macos_application(
     name = "Durian",
+    app_icons = glob(["durian/AppIcon.icon/**"]),
     bundle_id = "js-lab.durian",
     bundle_name = "Durian",
     entitlements = "durian/Durian.entitlements",
