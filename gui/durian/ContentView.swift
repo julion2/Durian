@@ -442,7 +442,7 @@ struct ContentView: View {
     
     private func openNewCompose() {
         guard !ConfigManager.shared.getAccounts().isEmpty else { return }
-        let draftId = DraftService.shared.createDraft()
+        let draftId = DraftService.shared.createDraft(from: defaultFromAccount)
         openWindow(value: draftId)
     }
     
@@ -456,7 +456,7 @@ struct ContentView: View {
            accountName != "*" {
             // Find matching account by name
             return ConfigManager.shared.getAccounts()
-                .first(where: { $0.name == accountName })?.email
+                .first(where: { $0.name.caseInsensitiveCompare(accountName) == .orderedSame })?.email
         }
         // Fallback to first configured account
         return ConfigManager.shared.getAccounts().first?.email
