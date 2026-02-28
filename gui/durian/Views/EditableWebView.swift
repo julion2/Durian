@@ -202,6 +202,7 @@ struct EditableWebView: NSViewRepresentable {
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
                 ul, ol { padding-left: 1.5em; margin: 0.3em 0; }
+                li > ul, li > ol { margin: 0; }
                 html, body {
                     background-color: transparent;
                     overflow: hidden;
@@ -409,6 +410,29 @@ struct EditableWebView: NSViewRepresentable {
                     window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
                     setTimeout(notifyHeight, 10);
                     notifyFormatState();
+                });
+
+                // Tab key: indent/outdent in lists, insert tab otherwise
+                editor.addEventListener('keydown', function(e) {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        // Check if cursor is inside a list
+                        let node = window.getSelection().anchorNode;
+                        let inList = false;
+                        while (node && node !== editor) {
+                            if (node.nodeName === 'UL' || node.nodeName === 'OL') { inList = true; break; }
+                            node = node.parentNode;
+                        }
+                        if (inList) {
+                            if (e.shiftKey) {
+                                document.execCommand('outdent', false, null);
+                            } else {
+                                document.execCommand('indent', false, null);
+                            }
+                        } else {
+                            document.execCommand('insertText', false, '\\t');
+                        }
+                    }
                 });
 
                 // Track bold/italic/underline state on selection/cursor change
