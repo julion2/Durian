@@ -87,14 +87,7 @@ struct ComposeForm: View {
             // Formatting Toolbar
             ComposeToolbar(
                 onFormat: { command in
-                    if draft.htmlSignature == nil {
-                        // Switch from plain TextEditor to EditableWebView
-                        draft.htmlSignature = ""
-                    }
-                    // Delay briefly so EditableWebView can mount before receiving the command
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        formatCommand = command
-                    }
+                    formatCommand = command
                 },
                 boldActive: isBold,
                 italicActive: isItalic,
@@ -407,8 +400,7 @@ struct ComposeForm: View {
     private var messageEditor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if draft.htmlSignature != nil {
-                    // Rich editor: contentEditable WebView with rendered HTML signature
+                ZStack(alignment: .topLeading) {
                     EditableWebView(
                         plainText: $draft.body,
                         htmlSignature: draft.htmlSignature,
@@ -428,37 +420,22 @@ struct ComposeForm: View {
                         }
                     )
                     .frame(height: editorHeight)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .onChange(of: draft.body) {
-                        scheduleAutoSave()
-                    }
-                } else {
-                    // Plain text editor
-                    ZStack(alignment: .topLeading) {
-                        // Placeholder
-                        if draft.body.isEmpty && draft.quotedContent == nil {
-                            Text("Message")
-                                .font(.system(size: 14))
-                                .foregroundColor(placeholderColor)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 8)
-                        }
 
-                        // Text Editor - grows with content
-                        TextEditor(text: $draft.body)
+                    // Native placeholder (instant, no WebView load delay)
+                    if draft.body.isEmpty && (draft.htmlSignature == nil || draft.htmlSignature!.isEmpty) {
+                        Text("Message")
                             .font(.system(size: 14))
-                            .foregroundColor(textColor)
-                            .scrollContentBackground(.hidden)
-                            .scrollDisabled(true)
-                            .frame(minHeight: 100)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .onChange(of: draft.body) {
-                                scheduleAutoSave()
-                            }
+                            .foregroundColor(placeholderColor)
+                            .padding(.leading, 6)
+                            .padding(.top, 9)
+                            .allowsHitTesting(false)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 0)
+                .padding(.bottom, 8)
+                .onChange(of: draft.body) {
+                    scheduleAutoSave()
                 }
 
                 // Quoted content (for reply/forward) - rendered with full HTML fidelity
@@ -613,10 +590,12 @@ struct ComposeForm: View {
             } else {
                 // Plain text — embed in body as before
                 draft.htmlSignature = nil
+                draft.htmlBody = nil
                 newBody += "\n\n" + signatureText
             }
         } else {
             draft.htmlSignature = nil
+            draft.htmlBody = nil
         }
 
         if !sections.quotedContent.isEmpty {

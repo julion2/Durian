@@ -90,8 +90,9 @@ struct EditableWebView: NSViewRepresentable {
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\n", with: "<br>")
 
-        // Build content: user text + two blank lines + signature in one editable area
-        var content = escapedText.isEmpty ? "<br>" : escapedText
+        // Build content: user text + signature in one editable area
+        let hasSignature = signature != nil && !signature!.isEmpty
+        var content = escapedText.isEmpty && !hasSignature ? "" : (escapedText.isEmpty ? "<br>" : escapedText)
         if let sig = signature {
             content += "<br><span id=\"sig\">\(sig)</span>"
         }
@@ -116,20 +117,16 @@ struct EditableWebView: NSViewRepresentable {
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
                     font-size: \(font.pointSize)px;
-                    line-height: 1.5;
+                    line-height: 1.47;
                     color: \(colorHex);
                     color-scheme: light dark;
-                    padding: 8px 4px;
+                    padding: 0;
                 }
                 #editor {
                     outline: none;
-                    min-height: 80px;
+                    min-height: 100px;
                     word-wrap: break-word;
-                }
-                #editor:empty::before {
-                    content: "\(placeholder)";
-                    color: #717182;
-                    pointer-events: none;
+                    padding: 8px 5px;
                 }
             </style>
         </head>

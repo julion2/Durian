@@ -85,7 +85,7 @@ class EmailSendingManager: ObservableObject {
         var finalBody = draft.body
         var finalIsHTML = draft.isHTML
 
-        if let htmlSig = draft.htmlSignature {
+        if let htmlSig = draft.htmlSignature, !htmlSig.isEmpty {
             // HTML signature — use rich HTML body if available, otherwise escape plain text
             let userHTML: String
             if let richHTML = draft.htmlBody, !richHTML.isEmpty {
@@ -121,9 +121,19 @@ class EmailSendingManager: ObservableObject {
                 finalBody = "<div>\(userHTML)</div><br><br>\(quoted)"
                 finalIsHTML = true
             } else {
-                // Plain text: just concatenate
-                finalBody = draft.body + "\n\n" + quoted
+                // Plain text quoted — check if user body has formatting
+                if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+                    let quotedHTML = Self.plainTextToHTML(quoted)
+                    finalBody = "<div>\(richHTML)</div><br><br>\(quotedHTML)"
+                    finalIsHTML = true
+                } else {
+                    finalBody = draft.body + "\n\n" + quoted
+                }
             }
+        } else if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+            // No signature, no quoted content, but user used formatting
+            finalBody = "<div>\(richHTML)</div>"
+            finalIsHTML = true
         }
         
         // HTML flag
