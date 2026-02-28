@@ -703,7 +703,7 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 // This now works for ALL messages on the server, not just those downloaded by durian.
 // It builds a UID<->Message-ID mapping on first run (cached in state).
 func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs []uint32) (int, int) {
-	var uploaded, downloaded int
+	var uploaded, downloaded, flagErrors int
 
 	if len(allUIDs) == 0 {
 		return 0, 0
@@ -773,7 +773,10 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			}
 
 			if !localState.Equal(serverState) && s.options.Mode != SyncUploadOnly {
-				if err := s.downloadFlagChanges(messageID, localState, serverState); err == nil {
+				if err := s.downloadFlagChanges(messageID, localState, serverState); err != nil {
+					debug.Log("syncFlags: error downloading flags for UID %d: %v", uid, err)
+					flagErrors++
+				} else {
 					downloaded++
 					debug.Log("syncFlags: first-sync downloaded flags for UID %d (Message-ID: %s): %+v", uid, messageID, serverState)
 				}
@@ -783,7 +786,10 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 		// Check for local changes (local differs from stored)
 		if NeedsUpload(localState, storedState) && s.options.Mode != SyncDownloadOnly {
-			if err := s.uploadFlagChanges(uid, localState, serverState); err == nil {
+			if err := s.uploadFlagChanges(uid, localState, serverState); err != nil {
+				debug.Log("syncFlags: error uploading flags for UID %d: %v", uid, err)
+				flagErrors++
+			} else {
 				uploaded++
 				debug.Log("syncFlags: uploaded flags for UID %d: %+v -> %+v", uid, storedState, localState)
 				// Update stored state (skip in dry-run)
@@ -809,7 +815,10 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			}
 
 			if !targetState.Equal(localState) {
-				if err := s.downloadFlagChanges(messageID, localState, targetState); err == nil {
+				if err := s.downloadFlagChanges(messageID, localState, targetState); err != nil {
+					debug.Log("syncFlags: error downloading flags for UID %d: %v", uid, err)
+					flagErrors++
+				} else {
 					downloaded++
 					debug.Log("syncFlags: downloaded flags for UID %d: %+v -> %+v", uid, localState, targetState)
 				}
@@ -821,11 +830,13 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		}
 	}
 
-	debug.Log("syncFlags: checked %d messages, uploaded %d, downloaded %d", checkedCount, uploaded, downloaded)
+	debug.Log("syncFlags: checked %d messages, uploaded %d, downloaded %d, errors %d", checkedCount, uploaded, downloaded, flagErrors)
 
-	if uploaded > 0 || downloaded > 0 {
+	if uploaded > 0 || downloaded > 0 || flagErrors > 0 {
 		if s.options.DryRun {
 			fmt.Fprintf(s.output, "    ⚑ Flags: %d would upload, %d would download (dry-run)\n", uploaded, downloaded)
+		} else if flagErrors > 0 {
+			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded, %d errors\n", uploaded, downloaded, flagErrors)
 		} else {
 			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded\n", uploaded, downloaded)
 		}
