@@ -80,12 +80,22 @@ struct EditableWebView: NSViewRepresentable {
             DispatchQueue.main.async {
                 self.formatCommand = nil
             }
-            let js = """
-            document.getElementById('editor').focus();
-            document.execCommand('\(cmd)', false, null);
-            window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
-            notifyFormatState();
-            """
+            let js: String
+            if cmd == "insertUnorderedList" || cmd == "insertOrderedList" {
+                let tag = cmd == "insertUnorderedList" ? "ul" : "ol"
+                js = """
+                restoreSelection();
+                toggleList('\(tag)');
+                """
+            } else {
+                js = """
+                document.getElementById('editor').focus();
+                restoreSelection();
+                document.execCommand('\(cmd)', false, null);
+                window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
+                notifyFormatState();
+                """
+            }
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
 
@@ -98,6 +108,7 @@ struct EditableWebView: NSViewRepresentable {
             (function() {
                 const editor = document.getElementById('editor');
                 editor.focus();
+                restoreSelection();
                 const sel = window.getSelection();
                 if (!sel.rangeCount || sel.isCollapsed) return;
                 const range = sel.getRangeAt(0);
@@ -139,6 +150,7 @@ struct EditableWebView: NSViewRepresentable {
             (function() {
                 const editor = document.getElementById('editor');
                 editor.focus();
+                restoreSelection();
                 const sel = window.getSelection();
                 if (!sel.rangeCount || sel.isCollapsed) return;
                 const range = sel.getRangeAt(0);
@@ -189,6 +201,7 @@ struct EditableWebView: NSViewRepresentable {
             <meta charset="UTF-8">
             <style>
                 * { margin: 0; padding: 0; box-sizing: border-box; }
+                ul, ol { padding-left: 1.5em; margin: 0.3em 0; }
                 html, body {
                     background-color: transparent;
                     overflow: hidden;
@@ -267,6 +280,70 @@ struct EditableWebView: NSViewRepresentable {
                     return editor.innerHTML;
                 }
 
+                // Save selection on every change so toolbar clicks can restore it
+                var savedRange = null;
+                document.addEventListener('selectionchange', function() {
+                    const sel = window.getSelection();
+                    if (sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+                        savedRange = sel.getRangeAt(0).cloneRange();
+                    }
+                });
+                function restoreSelection() {
+                    if (!savedRange) return;
+                    editor.focus();
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(savedRange);
+                }
+
+                function toggleList(tag) {
+                    const sel = window.getSelection();
+                    if (!sel.rangeCount) return;
+                    // Check if cursor is already inside a list of this type
+                    let node = sel.anchorNode;
+                    while (node && node !== editor) {
+                        if (node.nodeName === tag.toUpperCase()) {
+                            // Unwrap: replace each <li> with a <div>
+                            const parent = node.parentNode;
+                            Array.from(node.children).forEach(function(li) {
+                                const div = document.createElement('div');
+                                div.innerHTML = li.innerHTML;
+                                parent.insertBefore(div, node);
+                            });
+                            parent.removeChild(node);
+                            notifyFormatState();
+                            return;
+                        }
+                        node = node.parentNode;
+                    }
+                    // Create list from selection or current line
+                    const range = sel.getRangeAt(0);
+                    const text = range.toString();
+                    const list = document.createElement(tag);
+                    if (text.trim()) {
+                        const lines = text.split('\\n');
+                        lines.forEach(function(line) {
+                            const li = document.createElement('li');
+                            li.textContent = line || '';
+                            list.appendChild(li);
+                        });
+                    } else {
+                        const li = document.createElement('li');
+                        li.innerHTML = '<br>';
+                        list.appendChild(li);
+                    }
+                    range.deleteContents();
+                    range.insertNode(list);
+                    // Place cursor in first li
+                    const firstLi = list.querySelector('li');
+                    const nr = document.createRange();
+                    nr.setStart(firstLi, firstLi.childNodes.length);
+                    nr.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(nr);
+                    notifyFormatState();
+                }
+
                 function notifyFormatState() {
                     const b = document.queryCommandState('bold');
                     const i = document.queryCommandState('italic');
@@ -294,7 +371,39 @@ struct EditableWebView: NSViewRepresentable {
                     window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs, fontFamily: ff, alignment: align});
                 }
 
-                editor.addEventListener('input', function() {
+                editor.addEventListener('input', function(e) {
+                    // Auto-list: "- " → bullet list, "1. " → numbered list
+                    if (e.inputType === 'insertText' && e.data === ' ') {
+                        const sel = window.getSelection();
+                        if (sel.rangeCount > 0 && sel.anchorNode && sel.anchorNode.nodeType === 3) {
+                            const node = sel.anchorNode;
+                            const text = node.textContent;
+                            const offset = sel.anchorOffset;
+                            const before = text.substring(0, offset);
+                            let listTag = null;
+                            let prefixLen = 0;
+                            if (before === '- ') {
+                                listTag = 'ul';
+                                prefixLen = 2;
+                            } else if (/^\\d+\\.\\s$/.test(before)) {
+                                listTag = 'ol';
+                                prefixLen = before.length;
+                            }
+                            if (listTag) {
+                                // Remove the prefix text, then create the list
+                                const rest = text.substring(prefixLen);
+                                node.textContent = rest;
+                                // Place cursor at start
+                                const r = document.createRange();
+                                r.setStart(node, 0);
+                                r.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(r);
+                                toggleList(listTag);
+                                return;
+                            }
+                        }
+                    }
                     const text = getPlainText();
                     window.webkit.messageHandlers.textChanged.postMessage(text);
                     window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());

@@ -153,8 +153,8 @@ struct ComposeToolbar: View {
     
     private var listButtons: some View {
         HStack(spacing: 4) {
-            ToolbarIconButton(icon: "list.bullet", action: {})
-            ToolbarIconButton(icon: "list.number", action: {})
+            ToolbarIconButton(icon: "list.bullet", action: { onFormat?("insertUnorderedList") })
+            ToolbarIconButton(icon: "list.number", action: { onFormat?("insertOrderedList") })
         }
     }
     
