@@ -32,10 +32,12 @@ struct ComposeForm: View {
     @State private var editorHeight: CGFloat = 100        // Dynamic height for EditableWebView
     @State private var formatCommand: String?             // Pending format command for EditableWebView
     @State private var fontSizeCommand: Int?              // Pending font size command for EditableWebView
+    @State private var fontFamilyCommand: String?         // Pending font family command for EditableWebView
     @State private var isBold: Bool = false
     @State private var isItalic: Bool = false
     @State private var isUnderline: Bool = false
     @State private var currentFontSize: Int = 13
+    @State private var currentFontFamily: String = "Helvetica"
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -94,10 +96,14 @@ struct ComposeForm: View {
                 onFontSize: { size in
                     fontSizeCommand = size
                 },
+                onFontFamily: { family in
+                    fontFamilyCommand = family
+                },
                 boldActive: isBold,
                 italicActive: isItalic,
                 underlineActive: isUnderline,
-                currentFontSize: currentFontSize
+                currentFontSize: currentFontSize,
+                currentFontFamily: currentFontFamily
             )
             
             // Message Editor
@@ -416,15 +422,17 @@ struct ComposeForm: View {
                         placeholderText: "Message",
                         formatCommand: $formatCommand,
                         fontSizeCommand: $fontSizeCommand,
+                        fontFamilyCommand: $fontFamilyCommand,
                         htmlBody: Binding(
                             get: { draft.htmlBody ?? "" },
                             set: { draft.htmlBody = $0.isEmpty ? nil : $0 }
                         ),
-                        onFormatStateChange: { bold, italic, underline, fontSize in
+                        onFormatStateChange: { bold, italic, underline, fontSize, fontFamily in
                             isBold = bold
                             isItalic = italic
                             isUnderline = underline
                             currentFontSize = fontSize
+                            currentFontFamily = fontFamily
                         }
                     )
                     .frame(height: editorHeight)

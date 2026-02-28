@@ -18,8 +18,9 @@ struct EditableWebView: NSViewRepresentable {
     let placeholderText: String
     @Binding var formatCommand: String?
     @Binding var fontSizeCommand: Int?
+    @Binding var fontFamilyCommand: String?
     @Binding var htmlBody: String
-    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int) -> Void)?
+    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int, _ fontFamily: String) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -110,6 +111,46 @@ struct EditableWebView: NSViewRepresentable {
                     if (!el.getAttribute('style') || !el.getAttribute('style').trim()) el.removeAttribute('style');
                 });
                 span.querySelectorAll('font[size]').forEach(function(f) { f.removeAttribute('size'); });
+                range.insertNode(span);
+                sel.removeAllRanges();
+                const nr = document.createRange();
+                nr.selectNodeContents(span);
+                sel.addRange(nr);
+                notifyFormatState();
+            })();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        // Execute font family command if requested
+        if let family = fontFamilyCommand {
+            DispatchQueue.main.async {
+                self.fontFamilyCommand = nil
+            }
+            let stacks: [String: String] = [
+                "Helvetica": "'Helvetica Neue', Helvetica, Arial, sans-serif",
+                "Arial": "Arial, Helvetica, sans-serif",
+                "Times New Roman": "'Times New Roman', Times, serif",
+                "Georgia": "Georgia, 'Times New Roman', serif",
+                "Courier": "'Courier New', Courier, monospace",
+            ]
+            let stack = stacks[family] ?? "'\(family)', sans-serif"
+            let js = """
+            (function() {
+                const editor = document.getElementById('editor');
+                editor.focus();
+                const sel = window.getSelection();
+                if (!sel.rangeCount || sel.isCollapsed) return;
+                const range = sel.getRangeAt(0);
+                const fragment = range.extractContents();
+                const span = document.createElement('span');
+                span.style.fontFamily = "\(stack)";
+                span.appendChild(fragment);
+                span.querySelectorAll('[style]').forEach(function(el) {
+                    el.style.removeProperty('font-family');
+                    if (!el.getAttribute('style') || !el.getAttribute('style').trim()) el.removeAttribute('style');
+                });
+                span.querySelectorAll('font[face]').forEach(function(f) { f.removeAttribute('face'); });
                 range.insertNode(span);
                 sel.removeAllRanges();
                 const nr = document.createRange();
@@ -231,16 +272,22 @@ struct EditableWebView: NSViewRepresentable {
                     const i = document.queryCommandState('italic');
                     const u = document.queryCommandState('underline');
                     let fs = 13;
+                    let ff = 'Helvetica';
                     const sel = window.getSelection();
                     if (sel && sel.rangeCount > 0) {
                         let node = sel.anchorNode;
                         if (node && node.nodeType === 3) node = node.parentNode;
                         if (node && node.nodeType === 1) {
-                            const computed = window.getComputedStyle(node).fontSize;
-                            fs = Math.round(parseFloat(computed)) || 13;
+                            const cs = window.getComputedStyle(node);
+                            fs = Math.round(parseFloat(cs.fontSize)) || 13;
+                            const raw = cs.fontFamily;
+                            const known = ['Helvetica', 'Arial', 'Times New Roman', 'Georgia', 'Courier'];
+                            for (const k of known) {
+                                if (raw.indexOf(k) !== -1) { ff = k; break; }
+                            }
                         }
                     }
-                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs});
+                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs, fontFamily: ff});
                 }
 
                 editor.addEventListener('input', function() {
@@ -306,8 +353,9 @@ struct EditableWebView: NSViewRepresentable {
                     let italic = dict["italic"] as? Bool ?? false
                     let underline = dict["underline"] as? Bool ?? false
                     let fontSize = dict["fontSize"] as? Int ?? 13
+                    let fontFamily = dict["fontFamily"] as? String ?? "Helvetica"
                     DispatchQueue.main.async {
-                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize)
+                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize, fontFamily)
                     }
                 }
             default:
