@@ -31,9 +31,11 @@ struct ComposeForm: View {
     @State private var quotedContentHeight: CGFloat = 100  // Dynamic height for WebView
     @State private var editorHeight: CGFloat = 100        // Dynamic height for EditableWebView
     @State private var formatCommand: String?             // Pending format command for EditableWebView
+    @State private var fontSizeCommand: Int?              // Pending font size command for EditableWebView
     @State private var isBold: Bool = false
     @State private var isItalic: Bool = false
     @State private var isUnderline: Bool = false
+    @State private var currentFontSize: Int = 13
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -89,9 +91,13 @@ struct ComposeForm: View {
                 onFormat: { command in
                     formatCommand = command
                 },
+                onFontSize: { size in
+                    fontSizeCommand = size
+                },
                 boldActive: isBold,
                 italicActive: isItalic,
-                underlineActive: isUnderline
+                underlineActive: isUnderline,
+                currentFontSize: currentFontSize
             )
             
             // Message Editor
@@ -409,14 +415,16 @@ struct ComposeForm: View {
                         textColor: NSColor(textColor),
                         placeholderText: "Message",
                         formatCommand: $formatCommand,
+                        fontSizeCommand: $fontSizeCommand,
                         htmlBody: Binding(
                             get: { draft.htmlBody ?? "" },
                             set: { draft.htmlBody = $0.isEmpty ? nil : $0 }
                         ),
-                        onFormatStateChange: { bold, italic, underline in
+                        onFormatStateChange: { bold, italic, underline, fontSize in
                             isBold = bold
                             isItalic = italic
                             isUnderline = underline
+                            currentFontSize = fontSize
                         }
                     )
                     .frame(height: editorHeight)

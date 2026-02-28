@@ -17,8 +17,9 @@ struct EditableWebView: NSViewRepresentable {
     let textColor: NSColor
     let placeholderText: String
     @Binding var formatCommand: String?
+    @Binding var fontSizeCommand: Int?
     @Binding var htmlBody: String
-    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool) -> Void)?
+    var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ fontSize: Int) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -83,6 +84,39 @@ struct EditableWebView: NSViewRepresentable {
             document.execCommand('\(cmd)', false, null);
             window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
             notifyFormatState();
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+
+        // Execute font size command if requested
+        if let size = fontSizeCommand {
+            DispatchQueue.main.async {
+                self.fontSizeCommand = nil
+            }
+            let js = """
+            (function() {
+                const editor = document.getElementById('editor');
+                editor.focus();
+                const sel = window.getSelection();
+                if (!sel.rangeCount || sel.isCollapsed) return;
+                const range = sel.getRangeAt(0);
+                const fragment = range.extractContents();
+                const span = document.createElement('span');
+                span.style.fontSize = '\(size)px';
+                span.appendChild(fragment);
+                // Strip inherited font-size from extracted ancestors so our size wins
+                span.querySelectorAll('[style]').forEach(function(el) {
+                    el.style.removeProperty('font-size');
+                    if (!el.getAttribute('style') || !el.getAttribute('style').trim()) el.removeAttribute('style');
+                });
+                span.querySelectorAll('font[size]').forEach(function(f) { f.removeAttribute('size'); });
+                range.insertNode(span);
+                sel.removeAllRanges();
+                const nr = document.createRange();
+                nr.selectNodeContents(span);
+                sel.addRange(nr);
+                notifyFormatState();
+            })();
             """
             webView.evaluateJavaScript(js, completionHandler: nil)
         }
@@ -196,7 +230,17 @@ struct EditableWebView: NSViewRepresentable {
                     const b = document.queryCommandState('bold');
                     const i = document.queryCommandState('italic');
                     const u = document.queryCommandState('underline');
-                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u});
+                    let fs = 13;
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0) {
+                        let node = sel.anchorNode;
+                        if (node && node.nodeType === 3) node = node.parentNode;
+                        if (node && node.nodeType === 1) {
+                            const computed = window.getComputedStyle(node).fontSize;
+                            fs = Math.round(parseFloat(computed)) || 13;
+                        }
+                    }
+                    window.webkit.messageHandlers.formatState.postMessage({bold: b, italic: i, underline: u, fontSize: fs});
                 }
 
                 editor.addEventListener('input', function() {
@@ -257,12 +301,13 @@ struct EditableWebView: NSViewRepresentable {
                     }
                 }
             case "formatState":
-                if let dict = message.body as? [String: Bool] {
-                    let bold = dict["bold"] ?? false
-                    let italic = dict["italic"] ?? false
-                    let underline = dict["underline"] ?? false
+                if let dict = message.body as? [String: Any] {
+                    let bold = dict["bold"] as? Bool ?? false
+                    let italic = dict["italic"] as? Bool ?? false
+                    let underline = dict["underline"] as? Bool ?? false
+                    let fontSize = dict["fontSize"] as? Int ?? 13
                     DispatchQueue.main.async {
-                        self.parent?.onFormatStateChange?(bold, italic, underline)
+                        self.parent?.onFormatStateChange?(bold, italic, underline, fontSize)
                     }
                 }
             default:

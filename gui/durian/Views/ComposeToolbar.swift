@@ -11,12 +11,13 @@ import SwiftUI
 /// Currently visual-only - formatting functionality will be added later
 struct ComposeToolbar: View {
     var onFormat: ((String) -> Void)?
+    var onFontSize: ((Int) -> Void)?
     var boldActive: Bool = false
     var italicActive: Bool = false
     var underlineActive: Bool = false
+    var currentFontSize: Int = 13
 
     @State private var selectedFont: String = "Helvetica"
-    @State private var selectedSize: Int = 13
 
     private let availableFonts = ["Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"]
     private let availableSizes = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32]
@@ -98,10 +99,10 @@ struct ComposeToolbar: View {
     private var sizePicker: some View {
         Menu {
             ForEach(availableSizes, id: \.self) { size in
-                Button(action: { selectedSize = size }) {
+                Button(action: { onFontSize?(size) }) {
                     HStack {
                         Text("\(size)")
-                        if size == selectedSize {
+                        if size == currentFontSize {
                             Spacer()
                             Image(systemName: "checkmark")
                         }
@@ -110,7 +111,7 @@ struct ComposeToolbar: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Text("\(selectedSize)")
+                Text("\(currentFontSize)")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Color(hex: "#0a0a0a"))
                 Image(systemName: "chevron.down")
