@@ -95,18 +95,31 @@ func NewClient(host string, port int, auth Auth) *Client {
 func (c *Client) Send(msg *Message) error {
 	addr := fmt.Sprintf("%s:%d", c.Host, c.Port)
 
-	// Connect with timeout
-	conn, err := net.DialTimeout("tcp", addr, c.Timeout)
+	// Connect with timeout — try IPv4 first, fall back to IPv6
+	conn, err := net.DialTimeout("tcp4", addr, c.Timeout)
 	if err != nil {
-		return fmt.Errorf("failed to connect to %s: %w", addr, err)
+		conn, err = net.DialTimeout("tcp6", addr, c.Timeout)
+		if err != nil {
+			return fmt.Errorf("failed to connect to %s: %w", addr, err)
+		}
 	}
 	defer conn.Close()
 
 	// Set read/write deadline
 	conn.SetDeadline(time.Now().Add(c.Timeout))
 
-	// Create SMTP client
-	client, err := smtp.NewClient(conn, c.Host)
+	var client *smtp.Client
+
+	if c.Port == 465 {
+		// Port 465: implicit TLS — wrap connection in TLS before SMTP handshake
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: c.Host})
+		if err := tlsConn.Handshake(); err != nil {
+			return fmt.Errorf("TLS handshake failed: %w", err)
+		}
+		client, err = smtp.NewClient(tlsConn, c.Host)
+	} else {
+		client, err = smtp.NewClient(conn, c.Host)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
@@ -117,17 +130,19 @@ func (c *Client) Send(msg *Message) error {
 		return fmt.Errorf("HELO failed: %w", err)
 	}
 
-	// Check for STARTTLS support
-	if ok, _ := client.Extension("STARTTLS"); ok {
-		config := &tls.Config{
-			ServerName: c.Host,
+	// Check for STARTTLS support (not needed for port 465 which is already TLS)
+	if c.Port != 465 {
+		if ok, _ := client.Extension("STARTTLS"); ok {
+			config := &tls.Config{
+				ServerName: c.Host,
+			}
+			if err := client.StartTLS(config); err != nil {
+				return fmt.Errorf("STARTTLS failed: %w", err)
+			}
+		} else if c.Port == 587 {
+			// Port 587 should support STARTTLS
+			return fmt.Errorf("server does not support STARTTLS")
 		}
-		if err := client.StartTLS(config); err != nil {
-			return fmt.Errorf("STARTTLS failed: %w", err)
-		}
-	} else if c.Port == 587 {
-		// Port 587 should support STARTTLS
-		return fmt.Errorf("server does not support STARTTLS")
 	}
 
 	// Authenticate
