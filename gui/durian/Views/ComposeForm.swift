@@ -315,6 +315,7 @@ struct ComposeForm: View {
                         if let defaultSig = account.defaultSignature {
                             selectedSignature = defaultSig
                         }
+                        updateBodyWithSignature()
                         scheduleAutoSave()
                     }) {
                         HStack {
