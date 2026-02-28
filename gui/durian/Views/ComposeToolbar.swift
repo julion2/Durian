@@ -54,7 +54,7 @@ struct ComposeToolbar: View {
                 .frame(height: 20)
 
             // Clear Formatting
-            ToolbarIconButton(icon: "textformat.alt", action: { onFormat?("removeFormat") })
+            clearFormattingButton
 
             Spacer()
         }
@@ -152,14 +152,49 @@ struct ComposeToolbar: View {
     }
     
     // MARK: - List Buttons
-    
+
     private var listButtons: some View {
         HStack(spacing: 4) {
             ToolbarIconButton(icon: "list.bullet", action: { onFormat?("insertUnorderedList") })
             ToolbarIconButton(icon: "list.number", action: { onFormat?("insertOrderedList") })
         }
     }
-    
+
+    // MARK: - Clear Formatting Button
+
+    private var clearFormattingButton: some View {
+        ClearFormattingButton(action: { onFormat?("removeFormat") })
+    }
+
+}
+
+// MARK: - Clear Formatting Button (textformat + diagonal line)
+
+struct ClearFormattingButton: View {
+    let action: () -> Void
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Image(systemName: "textformat")
+                    .font(.system(size: 14))
+                Rectangle()
+                    .frame(width: 18, height: 1.5)
+                    .rotationEffect(.degrees(-30))
+            }
+            .foregroundColor(Color(hex: "#4a5565"))
+            .frame(width: 28, height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? Color(hex: "#f3f3f5") : Color.clear)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
 }
 
 // MARK: - Toolbar Icon Button

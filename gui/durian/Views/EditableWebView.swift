@@ -87,6 +87,39 @@ struct EditableWebView: NSViewRepresentable {
                 restoreSelection();
                 toggleList('\(tag)');
                 """
+            } else if cmd == "removeFormat" {
+                js = """
+                (function() {
+                    const editor = document.getElementById('editor');
+                    editor.focus();
+                    restoreSelection();
+                    const sel = window.getSelection();
+                    if (!sel.rangeCount) return;
+                    const range = sel.getRangeAt(0);
+                    if (range.collapsed) return;
+                    const fragment = range.extractContents();
+                    const tmp = document.createElement('div');
+                    tmp.appendChild(fragment);
+                    // Strip all attributes from every element
+                    tmp.querySelectorAll('*').forEach(function(el) {
+                        while (el.attributes.length > 0) {
+                            el.removeAttribute(el.attributes[0].name);
+                        }
+                    });
+                    // Unwrap inline/presentational elements, keep block structure (div, p, br, ul, ol, li)
+                    const inline = ['SPAN','FONT','B','I','U','S','STRIKE','STRONG','EM','SUB','SUP','MARK','A','ABBR','CITE','CODE','SMALL','BIG','DEL','INS'];
+                    tmp.querySelectorAll(inline.join(',')).forEach(function(el) {
+                        while (el.firstChild) el.parentNode.insertBefore(el.firstChild, el);
+                        el.parentNode.removeChild(el);
+                    });
+                    // Re-insert cleaned fragment
+                    const cleaned = document.createDocumentFragment();
+                    while (tmp.firstChild) cleaned.appendChild(tmp.firstChild);
+                    range.insertNode(cleaned);
+                    window.webkit.messageHandlers.htmlChanged.postMessage(getEditorHTML());
+                    notifyFormatState();
+                })();
+                """
             } else {
                 js = """
                 document.getElementById('editor').focus();
