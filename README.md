@@ -31,6 +31,11 @@ bazel build //gui:Durian         # GUI only (debug)
 bazel build -c opt //gui:Durian  # GUI only (release)
 ```
 
+### Install CLI
+```bash
+./cli/install.sh                  # builds & copies to /usr/local/bin/durian
+```
+
 ### Run the app
 ```bash
 bazel run //gui:Durian # GUI only (debug)
