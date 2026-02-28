@@ -7,8 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
+
+	"github.com/emersion/go-imap"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	imapClient "github.com/durian-dev/durian/cli/internal/imap"
 	"github.com/durian-dev/durian/cli/internal/keychain"
 	"github.com/durian-dev/durian/cli/internal/oauth"
 	"github.com/durian-dev/durian/cli/internal/smtp"
@@ -227,6 +231,45 @@ func runSend(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Fprintf(os.Stderr, "✓ Email sent successfully to %s\n", to)
+
+	// Save a copy to the IMAP Sent folder
+	// Skip for providers that auto-save sent mail (Google, Microsoft)
+	if account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft" {
+		fmt.Fprintf(os.Stderr, "✓ %s saves sent mail automatically\n", account.OAuth.Provider)
+		return nil
+	}
+
+	messageData, err := msg.Build()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to build message for Sent folder: %v\n", err)
+		return nil
+	}
+
+	imapConn := imapClient.NewClient(account)
+	if err := imapConn.Connect(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to connect to IMAP for Sent folder: %v\n", err)
+		return nil
+	}
+	defer imapConn.Close()
+
+	if err := imapConn.Authenticate(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to authenticate IMAP for Sent folder: %v\n", err)
+		return nil
+	}
+
+	sentMailbox, err := imapConn.FindSentMailbox()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not find Sent mailbox: %v\n", err)
+		return nil
+	}
+
+	flags := []string{imap.SeenFlag}
+	if _, err := imapConn.Append(sentMailbox, flags, time.Now(), messageData); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to save to Sent folder: %v\n", err)
+		return nil
+	}
+
+	fmt.Fprintf(os.Stderr, "✓ Saved to %s\n", sentMailbox)
 	return nil
 }
 

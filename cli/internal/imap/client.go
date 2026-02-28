@@ -615,6 +615,12 @@ func (c *Client) FindDraftsMailbox() (string, error) {
 	return c.FindMailboxByRole(RoleDrafts)
 }
 
+// FindSentMailbox finds the Sent mailbox using SPECIAL-USE attributes
+// Falls back to common names if SPECIAL-USE is not available
+func (c *Client) FindSentMailbox() (string, error) {
+	return c.FindMailboxByRole(RoleSent)
+}
+
 // FindTrashMailbox finds the Trash mailbox using SPECIAL-USE attributes
 // Falls back to common names if SPECIAL-USE is not available
 func (c *Client) FindTrashMailbox() (string, error) {
