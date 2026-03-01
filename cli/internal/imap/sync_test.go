@@ -1,6 +1,7 @@
 package imap
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -84,6 +85,122 @@ func TestMatchMailbox(t *testing.T) {
 			if got != tt.expected {
 				t.Errorf("matchMailbox(%q, %q) = %v, want %v",
 					tt.mailbox, tt.pattern, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestMatchMailbox_WordBoundary(t *testing.T) {
+	// Specifically test the word boundary fix
+	tests := []struct {
+		name     string
+		mailbox  string
+		pattern  string
+		expected bool
+	}{
+		{
+			name:     "SentBackup should not match Sent",
+			mailbox:  "SentBackup",
+			pattern:  "Sent",
+			expected: false,
+		},
+		{
+			name:     "Sent Items should match Sent",
+			mailbox:  "Sent Items",
+			pattern:  "Sent",
+			expected: true,
+		},
+		{
+			name:     "Drafts/sub should match Drafts",
+			mailbox:  "Drafts/subfolder",
+			pattern:  "Drafts",
+			expected: true,
+		},
+		{
+			name:     "DraftsOld should not match Drafts",
+			mailbox:  "DraftsOld",
+			pattern:  "Drafts",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := matchMailbox(tt.mailbox, tt.pattern)
+			if got != tt.expected {
+				t.Errorf("matchMailbox(%q, %q) = %v, want %v",
+					tt.mailbox, tt.pattern, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestIsConnectionError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{"nil error", nil, false},
+		{"connection closed", fmt.Errorf("connection closed"), true},
+		{"connection reset", fmt.Errorf("connection reset by peer"), true},
+		{"broken pipe", fmt.Errorf("write: broken pipe"), true},
+		{"EOF", fmt.Errorf("unexpected EOF"), true},
+		{"timeout", fmt.Errorf("i/o timeout"), true},
+		{"closed connection", fmt.Errorf("use of closed network connection"), true},
+		{"auth error", fmt.Errorf("authentication failed"), false},
+		{"generic error", fmt.Errorf("something went wrong"), false},
+		{"wrapped connection error", fmt.Errorf("fetch: %w", fmt.Errorf("connection closed")), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isConnectionError(tt.err)
+			if got != tt.expected {
+				t.Errorf("isConnectionError(%v) = %v, want %v", tt.err, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExtractMessageIDFromBody(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected string
+	}{
+		{
+			name:     "standard Message-ID",
+			body:     "From: test@test.com\r\nMessage-ID: <abc123@example.com>\r\nSubject: Test\r\n\r\nBody",
+			expected: "abc123@example.com",
+		},
+		{
+			name:     "Message-Id lowercase d",
+			body:     "From: test@test.com\r\nMessage-Id: <def456@example.com>\r\nSubject: Test\r\n\r\nBody",
+			expected: "def456@example.com",
+		},
+		{
+			name:     "no Message-ID header",
+			body:     "From: test@test.com\r\nSubject: Test\r\n\r\nBody",
+			expected: "",
+		},
+		{
+			name:     "empty body",
+			body:     "",
+			expected: "",
+		},
+		{
+			name:     "malformed email",
+			body:     "not a valid email",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractMessageIDFromBody([]byte(tt.body))
+			if got != tt.expected {
+				t.Errorf("extractMessageIDFromBody() = %q, want %q", got, tt.expected)
 			}
 		})
 	}

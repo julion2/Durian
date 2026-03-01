@@ -962,6 +962,57 @@ func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
 }
 
+func TestIsIMAPMailboxExcluded(t *testing.T) {
+	tests := []struct {
+		name     string
+		mailbox  string
+		expected bool
+	}{
+		// Exact matches (excluded)
+		{"Junk exact", "Junk", true},
+		{"Spam exact", "Spam", true},
+		{"Trash exact", "Trash", true},
+		{"Deleted exact", "Deleted", true},
+		{"Deleted Items exact", "Deleted Items", true},
+		{"Deleted Messages exact", "Deleted Messages", true},
+
+		// Case insensitive
+		{"junk lowercase", "junk", true},
+		{"TRASH uppercase", "TRASH", true},
+		{"deleted items mixed", "deleted items", true},
+
+		// Prefix with word boundary (space)
+		{"Deleted Items variant", "Deleted Elements", true},
+		{"Junk Mail", "Junk Mail", true},
+		{"Trash Items", "Trash Items", true},
+
+		// Prefix with path separator
+		{"Trash subfolder", "Trash/Old", true},
+		{"Junk subfolder", "Junk/Reports", true},
+
+		// NOT excluded — no word boundary
+		{"DeletedArchive no boundary", "DeletedArchive", false},
+		{"JunkYard no boundary", "JunkYard", false},
+		{"TrashCan no boundary", "TrashCan", false},
+		{"SpamFilter no boundary", "SpamFilter", false},
+
+		// NOT excluded — different names
+		{"INBOX", "INBOX", false},
+		{"Sent", "Sent", false},
+		{"Archive", "Archive", false},
+		{"Drafts", "Drafts", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := IsIMAPMailboxExcluded(tt.mailbox)
+			if got != tt.expected {
+				t.Errorf("IsIMAPMailboxExcluded(%q) = %v, want %v", tt.mailbox, got, tt.expected)
+			}
+		})
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

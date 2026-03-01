@@ -301,6 +301,299 @@ func TestStateManager_LoadSave(t *testing.T) {
 	}
 }
 
+func TestMailboxState_GetDeletedUIDs(t *testing.T) {
+	tests := []struct {
+		name       string
+		synced     []uint32
+		serverUIDs []uint32
+		expected   []uint32
+	}{
+		{
+			name:       "no deletions",
+			synced:     []uint32{100, 200, 300},
+			serverUIDs: []uint32{100, 200, 300},
+			expected:   nil,
+		},
+		{
+			name:       "all deleted",
+			synced:     []uint32{100, 200, 300},
+			serverUIDs: []uint32{},
+			expected:   []uint32{100, 200, 300},
+		},
+		{
+			name:       "partial deletion",
+			synced:     []uint32{100, 200, 300},
+			serverUIDs: []uint32{200},
+			expected:   []uint32{100, 300},
+		},
+		{
+			name:       "empty synced",
+			synced:     []uint32{},
+			serverUIDs: []uint32{100, 200},
+			expected:   nil,
+		},
+		{
+			name:       "server has extra UIDs",
+			synced:     []uint32{100, 200},
+			serverUIDs: []uint32{100, 200, 300, 400},
+			expected:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &MailboxState{SyncedUIDs: tt.synced}
+			got := ms.GetDeletedUIDs(tt.serverUIDs)
+			if len(got) != len(tt.expected) {
+				t.Errorf("GetDeletedUIDs() = %v, want %v", got, tt.expected)
+				return
+			}
+			for i, uid := range got {
+				if uid != tt.expected[i] {
+					t.Errorf("got[%d] = %d, want %d", i, uid, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMailboxState_RemoveSyncedUID(t *testing.T) {
+	t.Run("removes from all maps", func(t *testing.T) {
+		ms := &MailboxState{
+			SyncedUIDs:     []uint32{100, 200, 300},
+			MessageFlags:   map[uint32]FlagState{100: {Seen: true}, 200: {Flagged: true}, 300: {}},
+			UIDToMessageID: map[uint32]string{100: "msg100@test", 200: "msg200@test", 300: "msg300@test"},
+			MessageIDToUID: map[string]uint32{"msg100@test": 100, "msg200@test": 200, "msg300@test": 300},
+		}
+
+		ms.RemoveSyncedUID(200)
+
+		if ms.IsUIDSynced(200) {
+			t.Error("UID 200 should no longer be synced")
+		}
+		if len(ms.SyncedUIDs) != 2 {
+			t.Errorf("expected 2 SyncedUIDs, got %d", len(ms.SyncedUIDs))
+		}
+		if _, ok := ms.MessageFlags[200]; ok {
+			t.Error("MessageFlags for UID 200 should be removed")
+		}
+		if _, ok := ms.UIDToMessageID[200]; ok {
+			t.Error("UIDToMessageID for UID 200 should be removed")
+		}
+		if _, ok := ms.MessageIDToUID["msg200@test"]; ok {
+			t.Error("MessageIDToUID for msg200@test should be removed")
+		}
+
+		// Other UIDs untouched
+		if !ms.IsUIDSynced(100) || !ms.IsUIDSynced(300) {
+			t.Error("other UIDs should remain synced")
+		}
+	})
+
+	t.Run("remove non-existent UID", func(t *testing.T) {
+		ms := &MailboxState{
+			SyncedUIDs:     []uint32{100},
+			MessageFlags:   make(map[uint32]FlagState),
+			UIDToMessageID: make(map[uint32]string),
+			MessageIDToUID: make(map[string]uint32),
+		}
+
+		// Should not panic
+		ms.RemoveSyncedUID(999)
+		if len(ms.SyncedUIDs) != 1 {
+			t.Errorf("expected 1 SyncedUID, got %d", len(ms.SyncedUIDs))
+		}
+	})
+}
+
+func TestMailboxState_MessageIDMapping(t *testing.T) {
+	ms := &MailboxState{}
+
+	// Get from nil maps
+	_, ok := ms.GetMessageID(100)
+	if ok {
+		t.Error("expected false from nil map")
+	}
+	_, ok = ms.GetUIDByMessageID("msg@test")
+	if ok {
+		t.Error("expected false from nil map")
+	}
+
+	// Set creates maps and stores bidirectionally
+	ms.SetMessageID(100, "msg100@test")
+	ms.SetMessageID(200, "msg200@test")
+
+	id, ok := ms.GetMessageID(100)
+	if !ok || id != "msg100@test" {
+		t.Errorf("GetMessageID(100) = %q, %v; want %q, true", id, ok, "msg100@test")
+	}
+
+	uid, ok := ms.GetUIDByMessageID("msg200@test")
+	if !ok || uid != 200 {
+		t.Errorf("GetUIDByMessageID(msg200@test) = %d, %v; want 200, true", uid, ok)
+	}
+
+	// Overwrite
+	ms.SetMessageID(100, "new@test")
+	id, _ = ms.GetMessageID(100)
+	if id != "new@test" {
+		t.Errorf("expected overwritten ID, got %q", id)
+	}
+
+	// GetMappedUIDCount
+	if ms.GetMappedUIDCount() != 2 {
+		t.Errorf("expected 2 mapped UIDs, got %d", ms.GetMappedUIDCount())
+	}
+}
+
+func TestMailboxState_GetMissingMappingUIDs(t *testing.T) {
+	tests := []struct {
+		name     string
+		mapped   map[uint32]string
+		allUIDs  []uint32
+		expected []uint32
+	}{
+		{
+			name:     "nil map returns all",
+			mapped:   nil,
+			allUIDs:  []uint32{100, 200, 300},
+			expected: []uint32{100, 200, 300},
+		},
+		{
+			name:     "all mapped",
+			mapped:   map[uint32]string{100: "a", 200: "b", 300: "c"},
+			allUIDs:  []uint32{100, 200, 300},
+			expected: nil,
+		},
+		{
+			name:     "partial",
+			mapped:   map[uint32]string{100: "a"},
+			allUIDs:  []uint32{100, 200, 300},
+			expected: []uint32{200, 300},
+		},
+		{
+			name:     "empty input",
+			mapped:   map[uint32]string{100: "a"},
+			allUIDs:  []uint32{},
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms := &MailboxState{UIDToMessageID: tt.mapped}
+			got := ms.GetMissingMappingUIDs(tt.allUIDs)
+			if len(got) != len(tt.expected) {
+				t.Errorf("got %v, want %v", got, tt.expected)
+				return
+			}
+			for i, uid := range got {
+				if uid != tt.expected[i] {
+					t.Errorf("got[%d] = %d, want %d", i, uid, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMailboxState_MessageFlags(t *testing.T) {
+	ms := &MailboxState{}
+
+	// Get from nil map
+	_, ok := ms.GetMessageFlags(100)
+	if ok {
+		t.Error("expected false from nil map")
+	}
+
+	// Set creates map
+	flags := FlagState{Seen: true, Flagged: true}
+	ms.SetMessageFlags(100, flags)
+
+	got, ok := ms.GetMessageFlags(100)
+	if !ok {
+		t.Error("expected flag state to exist")
+	}
+	if !got.Equal(flags) {
+		t.Errorf("got %+v, want %+v", got, flags)
+	}
+
+	// GetUIDsWithFlags
+	ms.SetMessageFlags(200, FlagState{Seen: true})
+	uids := ms.GetUIDsWithFlags()
+	if len(uids) != 2 {
+		t.Errorf("expected 2 UIDs with flags, got %d", len(uids))
+	}
+}
+
+func TestMailboxState_EnsureSyncedSet(t *testing.T) {
+	// Simulates what happens after JSON deserialization: slice populated, set is nil
+	ms := &MailboxState{
+		SyncedUIDs: []uint32{100, 200, 300},
+	}
+
+	// syncedSet should be nil before first access
+	if ms.syncedSet != nil {
+		t.Error("expected nil syncedSet before first access")
+	}
+
+	// First lookup triggers lazy init
+	if !ms.IsUIDSynced(200) {
+		t.Error("expected UID 200 to be synced after lazy init")
+	}
+
+	// Set should now be populated
+	if ms.syncedSet == nil {
+		t.Error("expected syncedSet to be initialized")
+	}
+	if len(ms.syncedSet) != 3 {
+		t.Errorf("expected 3 entries in syncedSet, got %d", len(ms.syncedSet))
+	}
+
+	// Add a new UID — should update both slice and set
+	ms.AddSyncedUID(400)
+	if !ms.IsUIDSynced(400) {
+		t.Error("expected UID 400 to be synced")
+	}
+	if len(ms.SyncedUIDs) != 4 {
+		t.Errorf("expected 4 SyncedUIDs, got %d", len(ms.SyncedUIDs))
+	}
+}
+
+func TestStateManager_SaveAtomicAndPermissions(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "durian-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sm := &StateManager{cacheDir: tmpDir}
+	email := "test@example.com"
+
+	state := NewState()
+	state.GetMailboxState("INBOX").UIDValidity = 123
+
+	if err := sm.Save(email, state); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Verify no temp file left behind
+	tmpPath := filepath.Join(tmpDir, email+"-imap-state.json.tmp")
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Error("temp file should not exist after successful save")
+	}
+
+	// Verify permissions are 0600
+	statePath := filepath.Join(tmpDir, email+"-imap-state.json")
+	info, err := os.Stat(statePath)
+	if err != nil {
+		t.Fatalf("stat failed: %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("expected permissions 0600, got %04o", perm)
+	}
+}
+
 func TestStateManager_Delete(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "durian-test-*")
 	if err != nil {
