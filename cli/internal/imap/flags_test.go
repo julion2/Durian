@@ -32,6 +32,16 @@ func TestFlagStateFromIMAP(t *testing.T) {
 			flags:    []string{imap.SeenFlag, "\\Custom", imap.FlaggedFlag},
 			expected: FlagState{Seen: true, Flagged: true},
 		},
+		{
+			name:     "completed keyword",
+			flags:    []string{imap.SeenFlag, imap.FlaggedFlag, "$Completed"},
+			expected: FlagState{Seen: true, Flagged: true, Completed: true},
+		},
+		{
+			name:     "completed without flagged",
+			flags:    []string{imap.SeenFlag, "$Completed"},
+			expected: FlagState{Seen: true, Completed: true},
+		},
 	}
 
 	for _, tt := range tests {
@@ -155,6 +165,18 @@ func TestFlagStateToNotmuchTags(t *testing.T) {
 			state:          FlagState{Seen: false, Flagged: true},
 			expectedAdd:    []string{"unread", "flagged"},
 			expectedRemove: []string{"replied"},
+		},
+		{
+			name:           "flagged and completed - no flagged tag",
+			state:          FlagState{Seen: true, Flagged: true, Completed: true},
+			expectedAdd:    nil,
+			expectedRemove: []string{"unread", "flagged", "replied"},
+		},
+		{
+			name:           "flagged without completed - flagged tag set",
+			state:          FlagState{Seen: true, Flagged: true},
+			expectedAdd:    []string{"flagged"},
+			expectedRemove: []string{"unread", "replied"},
 		},
 	}
 

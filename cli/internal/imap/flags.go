@@ -6,10 +6,11 @@ import (
 
 // FlagState represents the sync-relevant flags for a message
 type FlagState struct {
-	Seen     bool `json:"seen"`
-	Flagged  bool `json:"flagged"`
-	Answered bool `json:"answered"`
-	Deleted  bool `json:"deleted"`
+	Seen      bool `json:"seen"`
+	Flagged   bool `json:"flagged"`
+	Answered  bool `json:"answered"`
+	Deleted   bool `json:"deleted"`
+	Completed bool `json:"completed"` // Outlook $Completed keyword — marks completed follow-ups
 }
 
 // Equal checks if two FlagStates are equal
@@ -17,21 +18,23 @@ func (f FlagState) Equal(other FlagState) bool {
 	return f.Seen == other.Seen &&
 		f.Flagged == other.Flagged &&
 		f.Answered == other.Answered &&
-		f.Deleted == other.Deleted
+		f.Deleted == other.Deleted &&
+		f.Completed == other.Completed
 }
 
 // IsEmpty checks if all flags are false
 func (f FlagState) IsEmpty() bool {
-	return !f.Seen && !f.Flagged && !f.Answered && !f.Deleted
+	return !f.Seen && !f.Flagged && !f.Answered && !f.Deleted && !f.Completed
 }
 
 // Merge combines two FlagStates using OR logic (except Deleted which uses server value)
 func (f FlagState) Merge(server FlagState) FlagState {
 	return FlagState{
-		Seen:     f.Seen || server.Seen,
-		Flagged:  f.Flagged || server.Flagged,
-		Answered: f.Answered || server.Answered,
-		Deleted:  server.Deleted, // Server wins for deletes
+		Seen:      f.Seen || server.Seen,
+		Flagged:   f.Flagged || server.Flagged,
+		Answered:  f.Answered || server.Answered,
+		Deleted:   server.Deleted,   // Server wins for deletes
+		Completed: server.Completed, // Server wins for completed (server-only concept)
 	}
 }
 
@@ -66,6 +69,8 @@ func FlagStateFromIMAP(flags []string) FlagState {
 			state.Answered = true
 		case imap.DeletedFlag:
 			state.Deleted = true
+		case "$Completed":
+			state.Completed = true
 		}
 	}
 	return state
@@ -104,7 +109,7 @@ func (f FlagState) ToNotmuchTags() (add []string, remove []string) {
 		add = append(add, "unread")
 	}
 
-	if f.Flagged {
+	if f.Flagged && !f.Completed {
 		add = append(add, "flagged")
 	} else {
 		remove = append(remove, "flagged")
@@ -170,5 +175,6 @@ func NeedsDownload(server, stored FlagState) bool {
 	return server.Seen != stored.Seen ||
 		server.Flagged != stored.Flagged ||
 		server.Answered != stored.Answered ||
-		server.Deleted != stored.Deleted
+		server.Deleted != stored.Deleted ||
+		server.Completed != stored.Completed
 }

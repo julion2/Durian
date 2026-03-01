@@ -840,6 +840,40 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		}
 	}
 
+	// Clean up stale inbox tags for messages no longer on server.
+	// This catches messages that existed before durian (e.g., from mbsync) which
+	// have no SyncedUID and thus aren't caught by GetDeletedUIDs.
+	if strings.EqualFold(mailboxName, "INBOX") && !s.options.DryRun {
+		serverMessageIDs := make(map[string]bool)
+		for _, uid := range allUIDs {
+			if messageID, ok := mboxState.GetMessageID(uid); ok && messageID != "" {
+				serverMessageIDs[messageID] = true
+			}
+		}
+
+		cleaned := 0
+		for messageID, tags := range localMessages {
+			hasInbox := false
+			for _, tag := range tags {
+				if tag == "inbox" {
+					hasInbox = true
+					break
+				}
+			}
+			if hasInbox && !serverMessageIDs[messageID] {
+				if err := s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"}); err != nil {
+					debug.Log("syncFlags: failed to remove stale inbox tag for %s: %v", messageID, err)
+				} else {
+					cleaned++
+				}
+			}
+		}
+		if cleaned > 0 {
+			debug.Log("syncFlags: removed stale inbox tag from %d messages", cleaned)
+			fmt.Fprintf(s.output, "    ✗ Removed stale inbox tag from %d messages\n", cleaned)
+		}
+	}
+
 	debug.Log("syncFlags: checked %d messages, uploaded %d, downloaded %d, errors %d", checkedCount, uploaded, downloaded, flagErrors)
 
 	if uploaded > 0 || downloaded > 0 || flagErrors > 0 {
