@@ -32,6 +32,9 @@ type MailboxState struct {
 	// MessageIDToUID is the reverse mapping for quick lookup
 	// Used to find UID when we only have Message-ID from notmuch
 	MessageIDToUID map[string]uint32 `json:"message_id_to_uid,omitempty"`
+
+	// Transient set for O(1) UID lookups (not serialized)
+	syncedSet map[uint32]struct{} `json:"-"`
 }
 
 // NewState creates a new empty state
@@ -70,19 +73,28 @@ func (s *State) GetMailboxState(mailbox string) *MailboxState {
 	return s.Mailboxes[mailbox]
 }
 
-// IsUIDSynced checks if a UID has been synced
-func (ms *MailboxState) IsUIDSynced(uid uint32) bool {
-	for _, u := range ms.SyncedUIDs {
-		if u == uid {
-			return true
+// ensureSyncedSet lazily builds the transient set from the SyncedUIDs slice
+func (ms *MailboxState) ensureSyncedSet() {
+	if ms.syncedSet == nil {
+		ms.syncedSet = make(map[uint32]struct{}, len(ms.SyncedUIDs))
+		for _, uid := range ms.SyncedUIDs {
+			ms.syncedSet[uid] = struct{}{}
 		}
 	}
-	return false
+}
+
+// IsUIDSynced checks if a UID has been synced
+func (ms *MailboxState) IsUIDSynced(uid uint32) bool {
+	ms.ensureSyncedSet()
+	_, ok := ms.syncedSet[uid]
+	return ok
 }
 
 // AddSyncedUID marks a UID as synced
 func (ms *MailboxState) AddSyncedUID(uid uint32) {
-	if !ms.IsUIDSynced(uid) {
+	ms.ensureSyncedSet()
+	if _, ok := ms.syncedSet[uid]; !ok {
+		ms.syncedSet[uid] = struct{}{}
 		ms.SyncedUIDs = append(ms.SyncedUIDs, uid)
 		if uid > ms.LastUID {
 			ms.LastUID = uid
@@ -92,14 +104,11 @@ func (ms *MailboxState) AddSyncedUID(uid uint32) {
 
 // GetUnsyncedUIDs returns UIDs that haven't been synced yet
 func (ms *MailboxState) GetUnsyncedUIDs(allUIDs []uint32) []uint32 {
-	syncedSet := make(map[uint32]bool)
-	for _, uid := range ms.SyncedUIDs {
-		syncedSet[uid] = true
-	}
+	ms.ensureSyncedSet()
 
 	var unsynced []uint32
 	for _, uid := range allUIDs {
-		if !syncedSet[uid] {
+		if _, ok := ms.syncedSet[uid]; !ok {
 			unsynced = append(unsynced, uid)
 		}
 	}
@@ -127,14 +136,16 @@ func (ms *MailboxState) GetDeletedUIDs(serverUIDs []uint32) []uint32 {
 
 // RemoveSyncedUID removes a UID from the synced list and cleans up related maps
 func (ms *MailboxState) RemoveSyncedUID(uid uint32) {
+	ms.ensureSyncedSet()
+	delete(ms.syncedSet, uid)
+
 	// Remove from SyncedUIDs slice
-	var newUIDs []uint32
-	for _, u := range ms.SyncedUIDs {
-		if u != uid {
-			newUIDs = append(newUIDs, u)
+	for i, u := range ms.SyncedUIDs {
+		if u == uid {
+			ms.SyncedUIDs = append(ms.SyncedUIDs[:i], ms.SyncedUIDs[i+1:]...)
+			break
 		}
 	}
-	ms.SyncedUIDs = newUIDs
 
 	// Clean up MessageFlags
 	delete(ms.MessageFlags, uid)
@@ -349,8 +360,14 @@ func (sm *StateManager) Save(email string, state *State) error {
 		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	// Atomic write: temp file + rename to prevent corruption on crash
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write state file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath) // Clean up on failure
+		return fmt.Errorf("failed to rename state file: %w", err)
 	}
 
 	return nil

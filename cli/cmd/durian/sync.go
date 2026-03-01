@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -176,12 +177,18 @@ func runSyncWatch(accounts []*config.AccountConfig, options *imap.SyncOptions) e
 	_, _ = imap.SyncAccounts(accounts, options)
 
 	// Start watching each account
+	var wg sync.WaitGroup
 	for _, account := range accounts {
-		go watchAccount(ctx, account, options)
+		wg.Add(1)
+		go func(acc *config.AccountConfig) {
+			defer wg.Done()
+			watchAccount(ctx, acc, options)
+		}(account)
 	}
 
-	// Wait for cancellation
+	// Wait for cancellation, then wait for goroutines to finish
 	<-ctx.Done()
+	wg.Wait()
 	return nil
 }
 
@@ -228,14 +235,16 @@ func watchAccount(ctx context.Context, account *config.AccountConfig, options *i
 		// Start IDLE
 		stopIdle := make(chan struct{})
 		updates := make(chan bool, 10)
+		idleDone := make(chan struct{})
 
 		go func() {
+			defer close(idleDone)
 			if err := client.Idle(stopIdle, updates); err != nil {
 				fmt.Fprintf(os.Stderr, "[%s] IDLE error: %v\n", account.Email, err)
 			}
 		}()
 
-		// Wait for updates or context cancellation
+		// Wait for updates, IDLE error, or context cancellation
 		select {
 		case <-ctx.Done():
 			close(stopIdle)
@@ -255,6 +264,9 @@ func watchAccount(ctx context.Context, account *config.AccountConfig, options *i
 			} else if result.TotalNew > 0 {
 				fmt.Fprintf(os.Stderr, "[%s] Synced %d new messages\n", account.Email, result.TotalNew)
 			}
+		case <-idleDone:
+			// IDLE goroutine exited (error or connection lost) — reconnect
+			client.Close()
 		}
 	}
 }

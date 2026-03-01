@@ -325,8 +325,16 @@ func (a *AccountConfig) GetIMAPMailboxes() []string {
 func IsIMAPMailboxExcluded(name string) bool {
 	nameLower := strings.ToLower(name)
 	for _, excluded := range ExcludedIMAPMailboxes {
-		if strings.ToLower(excluded) == nameLower || strings.HasPrefix(nameLower, strings.ToLower(excluded)) {
+		excludedLower := strings.ToLower(excluded)
+		if nameLower == excludedLower {
 			return true
+		}
+		// Prefix match with word boundary (e.g., "Deleted" matches "Deleted Items" but not "DeletedArchive")
+		if strings.HasPrefix(nameLower, excludedLower) && len(nameLower) > len(excludedLower) {
+			next := nameLower[len(excludedLower)]
+			if next == ' ' || next == '/' {
+				return true
+			}
 		}
 	}
 	return false

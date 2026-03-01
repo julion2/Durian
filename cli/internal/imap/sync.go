@@ -212,13 +212,13 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		fmt.Fprintf(s.output, "  Running notmuch new...\n")
 		if err := runNotmuchNew(); err != nil {
 			fmt.Fprintf(s.output, "  Warning: notmuch new failed: %v\n", err)
-		}
-
-		// Apply folder-based tags after notmuch new has indexed the messages
-		// This sets inbox/trash/spam/sent/draft tags based on SPECIAL-USE folders
-		for _, mboxResult := range result.Mailboxes {
-			if mboxResult.NewMsgs > 0 {
-				s.applyFolderTags(mboxResult.Name)
+		} else {
+			// Apply folder-based tags only after successful indexing
+			// This sets inbox/trash/spam/sent/draft tags based on SPECIAL-USE folders
+			for _, mboxResult := range result.Mailboxes {
+				if mboxResult.NewMsgs > 0 {
+					s.applyFolderTags(mboxResult.Name)
+				}
 			}
 		}
 	}
@@ -320,9 +320,12 @@ func matchMailbox(name, pattern string) bool {
 		return true
 	}
 
-	// Prefix match (e.g., "Sent" matches "Sent Items")
-	if strings.HasPrefix(nameLower, patternLower) {
-		return true
+	// Prefix match with word boundary (e.g., "Sent" matches "Sent Items" but not "SentBackup")
+	if strings.HasPrefix(nameLower, patternLower) && len(nameLower) > len(patternLower) {
+		next := nameLower[len(patternLower)]
+		if next == ' ' || next == '/' {
+			return true
+		}
 	}
 
 	return false
@@ -440,6 +443,14 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			// Fall back to downloading everything
 			toDownload = unsyncedUIDs
 		} else {
+			// Store ALL Message-IDs from envelopes now, so ensureMessageIDMapping
+			// in syncFlags doesn't re-fetch them from the server
+			for uid, messageID := range envelopes {
+				if messageID != "" {
+					mboxState.SetMessageID(uid, messageID)
+				}
+			}
+
 			// Get folder tag mapping for this mailbox
 			tagMapping := s.getFolderTagMapping(mailboxName)
 
@@ -926,8 +937,8 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 			debug.Log("uploadFlagChanges: copied UID %d to %s", uid, s.trashMailbox)
 		}
 
-		// Set \Deleted flag
-		if err := s.client.StoreFlags(uid, local.ToIMAPFlags()); err != nil {
+		// Set \Deleted flag (use AddFlags to preserve server-only keywords like $Completed)
+		if err := s.client.AddFlags(uid, []string{goimap.DeletedFlag}); err != nil {
 			return err
 		}
 
@@ -939,15 +950,19 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 		return nil
 	}
 
-	// Regular flag update (not a delete)
-	newFlags := local.ToIMAPFlags()
+	// Regular flag update — use AddFlags/RemoveFlags to preserve server-only
+	// keywords like $Completed that ToIMAPFlags() doesn't include
+	toAdd, toRemove := DiffFlags(local, server)
 
 	if s.options.DryRun {
-		debug.Log("syncFlags: [dry-run] would upload flags for UID %d: %v", uid, newFlags)
+		debug.Log("syncFlags: [dry-run] would upload flags for UID %d: add=%v remove=%v", uid, toAdd, toRemove)
 		return nil
 	}
 
-	return s.client.StoreFlags(uid, newFlags)
+	if err := s.client.AddFlags(uid, toAdd); err != nil {
+		return err
+	}
+	return s.client.RemoveFlags(uid, toRemove)
 }
 
 // downloadFlagChanges downloads flag changes to notmuch
@@ -964,21 +979,7 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 		return nil
 	}
 
-	query := "id:" + messageID
-
-	if len(addTags) > 0 {
-		if err := s.notmuch.AddTags(query, addTags...); err != nil {
-			return err
-		}
-	}
-
-	if len(removeTags) > 0 {
-		if err := s.notmuch.RemoveTags(query, removeTags...); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return s.notmuch.ModifyTags("id:"+messageID, addTags, removeTags)
 }
 
 // extractMessageIDFromBody extracts Message-ID from raw email body using net/mail
