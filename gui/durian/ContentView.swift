@@ -418,7 +418,7 @@ struct ContentView: View {
     
     private func handleNotmuchEmailSelection(_ emailId: String) {
         detailMode = .notmuchEmailDetail(emailId: emailId)
-        
+
         // Auto-load body if not loaded or previously failed
         if let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
             switch email.bodyState {
@@ -429,12 +429,17 @@ struct ContentView: View {
             case .loading, .loaded:
                 break // Already loading or loaded
             }
-            
+
             // Mark as read
             if !email.isRead {
                 Task {
                     await accountManager.markNotmuchAsRead(id: emailId)
                 }
+            }
+        } else {
+            // Email not in current folder (e.g. opened from search) — fetch it
+            Task {
+                await accountManager.fetchNotmuchEmailBody(id: emailId)
             }
         }
     }

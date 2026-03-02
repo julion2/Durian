@@ -253,6 +253,21 @@ class NotmuchBackend: ObservableObject {
             return
         }
 
+        // If thread isn't in the current list (e.g. opened from search), add it
+        if emails.firstIndex(where: { $0.id == id }) == nil {
+            guard let firstMsg = thread.messages.first else { return }
+            let tagString = firstMsg.tags?.joined(separator: ",") ?? ""
+            let mail = MailMessage(
+                threadId: id,
+                subject: thread.subject,
+                from: firstMsg.from,
+                date: firstMsg.date,
+                timestamp: firstMsg.timestamp,
+                tags: tagString
+            )
+            emails.append(mail)
+        }
+
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].threadMessages = thread.messages
             if let newestMessage = thread.messages.last {
