@@ -47,7 +47,8 @@ class SearchManager: ObservableObject {
                 return
             }
             
-            let searchResults = await backend.searchAll(query: query, limit: resultLimit)
+            let filteredQuery = ProfileManager.shared.applyProfileFilter(to: query)
+            let searchResults = await backend.searchAll(query: filteredQuery, limit: resultLimit)
             
             guard !Task.isCancelled else { return }
             

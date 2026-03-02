@@ -146,6 +146,11 @@ class ProfileManager: ObservableObject {
         return buildQueryWithProfileFilter(baseQuery: baseQuery)
     }
     
+    /// Add profile path filter to an arbitrary query (e.g. from the search popup)
+    func applyProfileFilter(to query: String) -> String {
+        return buildQueryWithProfileFilter(baseQuery: query)
+    }
+
     /// Add profile path filter to a base query
     private func buildQueryWithProfileFilter(baseQuery: String) -> String {
         guard let profile = currentProfile, !profile.isAll else {
