@@ -275,7 +275,13 @@ struct ContentView: View {
                                 await accountManager.fetchNotmuchEmailBody(id: email.id)
                             }
                         },
-                        onEditDraft: email.isDraft ? editSelectedDraft : nil
+                        onEditDraft: email.isDraft ? editSelectedDraft : nil,
+                        onAddTag: { tag in
+                            Task { await accountManager.addTag(id: email.id, tag: tag) }
+                        },
+                        onRemoveTag: { tag in
+                            Task { await accountManager.removeTag(id: email.id, tag: tag) }
+                        }
                     )
                     .id(email.id)  // Force new View instance on email change to reset @State
                     

@@ -17,6 +17,8 @@ struct EmailDetailView: View {
     let onForward: () -> Void
     let onLoadBody: () -> Void
     var onEditDraft: (() -> Void)? = nil
+    var onAddTag: ((String) -> Void)? = nil
+    var onRemoveTag: ((String) -> Void)? = nil
     
     // MARK: - State
     
@@ -201,6 +203,10 @@ struct EmailDetailView: View {
     
     // MARK: - Header Section
     
+    private var parsedTags: [String] {
+        email.tags?.split(separator: ",").map(String.init) ?? []
+    }
+
     @ViewBuilder
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -211,6 +217,16 @@ struct EmailDetailView: View {
                 .padding(.horizontal, 32)
                 .padding(.top, 32)
                 .padding(.bottom, 8)
+
+            if !parsedTags.isEmpty || onAddTag != nil {
+                TagChipsView(
+                    tags: parsedTags,
+                    onRemoveTag: { tag in onRemoveTag?(tag) },
+                    onAddTag: { tag in onAddTag?(tag) }
+                )
+                .padding(.horizontal, 32)
+                .padding(.bottom, 8)
+            }
         }
     }
     

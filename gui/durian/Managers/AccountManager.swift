@@ -122,6 +122,18 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
+    func addTag(id: String, tag: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.addTag(id: id, tag: tag)
+        syncFromNotmuch()
+    }
+
+    func removeTag(id: String, tag: String) async {
+        guard let backend = notmuchBackend else { return }
+        await backend.removeTag(id: id, tag: tag)
+        syncFromNotmuch()
+    }
+
     func toggleNotmuchPin(id: String) async {
         guard let backend = notmuchBackend else { return }
         await backend.togglePin(id: id)

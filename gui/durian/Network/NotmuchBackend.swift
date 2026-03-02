@@ -414,6 +414,16 @@ class NotmuchBackend: ObservableObject {
         }
     }
 
+    func addTag(id: String, tag: String) async {
+        let success = await self.tag(query: "thread:\(id)", tags: "+\(tag)")
+        if success { await reload() }
+    }
+
+    func removeTag(id: String, tag: String) async {
+        let success = await self.tag(query: "thread:\(id)", tags: "-\(tag)")
+        if success { await reload() }
+    }
+
     func deleteMessage(id: String) async throws {
         let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
         if success {
