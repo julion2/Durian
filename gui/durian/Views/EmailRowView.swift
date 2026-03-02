@@ -14,7 +14,9 @@ struct EmailRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(name: email.from, email: email.from, size: 32)
+            AvatarView(name: counterparties.first?.name ?? email.from,
+                       email: counterparties.first?.email ?? email.from,
+                       size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -139,35 +141,107 @@ struct EmailRowView: View {
             .filter { !$0.isEmpty && !Self.hiddenTags.contains($0) && $0 != currentFolder }
     }
 
-    private var senderName: String {
-        // Extract first author from notmuch authors string
-        // Separators: ", " (comma) or "|" without leading space
-        // " | " (space-pipe-space) is part of name, don't split
-        let firstAuthor: String
-        if email.from.contains("<") {
-            // Has email address - don't split, use as-is
-            firstAuthor = email.from
-        } else {
-            // Split by comma first (primary separator)
-            let byComma = email.from.components(separatedBy: ",").first?
-                .trimmingCharacters(in: .whitespaces) ?? email.from
-            
-            // Check for "|" without leading space (author separator)
-            if let pipeRange = byComma.range(of: "|"),
-               pipeRange.lowerBound > byComma.startIndex,
-               byComma[byComma.index(before: pipeRange.lowerBound)] != " " {
-                firstAuthor = String(byComma[..<pipeRange.lowerBound])
-                    .trimmingCharacters(in: .whitespaces)
+    // MARK: - Counterparty resolution
+
+    private struct Participant: Hashable {
+        let name: String
+        let email: String  // may equal name if no email available
+    }
+
+    private static let ownEmails: Set<String> = {
+        Set(ConfigManager.shared.getAccounts().map { $0.email.lowercased() })
+    }()
+
+    private static let ownNames: Set<String> = {
+        Set(ConfigManager.shared.getAccounts().map {
+            $0.name.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        })
+    }()
+
+    private static func isOwn(_ address: String) -> Bool {
+        let email = extractEmail(from: address).lowercased()
+        if ownEmails.contains(email) { return true }
+        let name = extractName(from: address).lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return ownNames.contains(name)
+    }
+
+    private static func extractName(from address: String) -> String {
+        if let range = address.range(of: "<") {
+            let name = String(address[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { return name }
+        }
+        return address.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func extractEmail(from address: String) -> String {
+        if let start = address.range(of: "<"), let end = address.range(of: ">") {
+            return String(address[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespaces)
+        }
+        return address.trimmingCharacters(in: .whitespaces)
+    }
+
+    private static func parseAddressList(_ raw: String) -> [String] {
+        raw.components(separatedBy: ",").compactMap {
+            let trimmed = $0.trimmingCharacters(in: .whitespaces)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    /// All non-own participants from thread messages (from + cc), deduplicated, ordered.
+    private var counterparties: [Participant] {
+        // When thread messages are loaded, use real from/to/cc fields
+        if let messages = email.threadMessages, !messages.isEmpty {
+            var seen = Set<String>()
+            var result: [Participant] = []
+            for msg in messages {
+                let addresses = [msg.from] + Self.parseAddressList(msg.to ?? "")
+                    + Self.parseAddressList(msg.cc ?? "")
+                for addr in addresses {
+                    guard !Self.isOwn(addr) else { continue }
+                    let email = Self.extractEmail(from: addr).lowercased()
+                    let key = email.contains("@") ? email : Self.extractName(from: addr).lowercased()
+                    if seen.insert(key).inserted {
+                        result.append(Participant(
+                            name: Self.extractName(from: addr),
+                            email: addr
+                        ))
+                    }
+                }
+            }
+            if !result.isEmpty { return result }
+        }
+
+        // Fallback: parse notmuch authors string (before thread load)
+        let raw = email.from
+        // If it's a single "Name <email>" address, handle directly
+        if raw.contains("<") {
+            let p = Participant(name: Self.extractName(from: raw), email: raw)
+            return Self.isOwn(raw) ? [p] : [p]  // no filtering for single address
+        }
+        // Split by comma and pipe (notmuch separators), normalize whitespace
+        var authors: [String] = []
+        for segment in raw.components(separatedBy: ",") {
+            let trimmed = segment.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if let pipeRange = trimmed.range(of: "|"),
+               pipeRange.lowerBound > trimmed.startIndex,
+               trimmed[trimmed.index(before: pipeRange.lowerBound)] != " " {
+                let before = String(trimmed[..<pipeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+                let after = String(trimmed[trimmed.index(after: pipeRange.lowerBound)...]).trimmingCharacters(in: .whitespaces)
+                if !before.isEmpty { authors.append(before) }
+                if !after.isEmpty { authors.append(after) }
             } else {
-                firstAuthor = byComma
+                authors.append(trimmed)
             }
         }
-        
-        // Extract name from "Name <email>" format
-        if let range = firstAuthor.range(of: "<") {
-            let namePart = String(firstAuthor[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !namePart.isEmpty { return namePart }
-        }
-        return firstAuthor
+        let others = authors.filter { !Self.isOwn($0) }
+        let final = others.isEmpty ? authors : others
+        return final.map { Participant(name: Self.extractName(from: $0), email: $0) }
+    }
+
+    private var senderName: String {
+        let names = counterparties.map(\.name)
+        return names.isEmpty ? Self.extractName(from: email.from) : names.joined(separator: ", ")
     }
 }
