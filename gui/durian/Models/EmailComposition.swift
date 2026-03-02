@@ -194,6 +194,23 @@ enum EmailHelper {
 // MARK: - Reply/Forward Helpers
 
 extension EmailDraft {
+    /// Create a draft for editing an existing draft message
+    static func createFromDraft(message: MailMessage) -> EmailDraft {
+        let toAddresses = message.to.map { parseEmailList($0) } ?? []
+        let ccAddresses = message.cc.map { parseEmailList($0) } ?? []
+
+        return EmailDraft(
+            from: message.from,
+            to: toAddresses,
+            cc: ccAddresses,
+            subject: message.subject,
+            body: message.body ?? "",
+            isHTML: message.htmlBody != nil && !(message.htmlBody?.isEmpty ?? true),
+            messageId: message.messageId,
+            htmlBody: message.htmlBody
+        )
+    }
+
     /// Create a reply draft from a mail message
     /// - Parameters:
     ///   - message: The original message to reply to

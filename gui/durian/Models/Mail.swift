@@ -207,6 +207,11 @@ struct MailMessage: Identifiable, Hashable {
         self.references = nil
     }
     
+    var isDraft: Bool {
+        guard let tags = tags else { return false }
+        return tags.split(separator: ",").contains("draft")
+    }
+
     /// Body preview for list view (first ~100 chars, stripped of HTML)
     var bodyPreview: String? {
         switch bodyState {
@@ -256,6 +261,7 @@ extension MailFolder {
         MailFolder(tag: "inbox", icon: "tray"),
         MailFolder(tag: "unread", icon: "envelope.badge"),
         MailFolder(tag: "sent", icon: "paperplane"),
+        MailFolder(tag: "draft", icon: "doc.text"),
         MailFolder(tag: "archive", icon: "archivebox"),
         MailFolder(tag: "deleted", icon: "trash"),
         MailFolder(tag: "attachment", icon: "paperclip"),

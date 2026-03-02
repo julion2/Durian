@@ -274,7 +274,8 @@ struct ContentView: View {
                             Task {
                                 await accountManager.fetchNotmuchEmailBody(id: email.id)
                             }
-                        }
+                        },
+                        onEditDraft: email.isDraft ? editSelectedDraft : nil
                     )
                     .id(email.id)  // Force new View instance on email change to reset @State
                     
@@ -486,9 +487,17 @@ struct ContentView: View {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
               let fromAccount = defaultFromAccount else { return }
-        
+
         let forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)
         let draftId = DraftService.shared.createDraft(with: forwardDraft)
+        openWindow(value: draftId)
+    }
+
+    private func editSelectedDraft() {
+        guard let email = selectedEmail,
+              case .loaded = email.bodyState else { return }
+        let draft = EmailDraft.createFromDraft(message: email)
+        let draftId = DraftService.shared.createDraft(with: draft)
         openWindow(value: draftId)
     }
     

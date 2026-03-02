@@ -16,6 +16,7 @@ struct EmailDetailView: View {
     let onReplyAll: () -> Void
     let onForward: () -> Void
     let onLoadBody: () -> Void
+    var onEditDraft: (() -> Void)? = nil
     
     // MARK: - State
     
@@ -72,7 +73,8 @@ struct EmailDetailView: View {
                         contentHeight: bindingForMessageId(message.id),
                         onReply: onReply,
                         onReplyAll: onReplyAll,
-                        onForward: onForward
+                        onForward: onForward,
+                        onEditDraft: onEditDraft
                     )
                 }
             } else {
@@ -213,38 +215,56 @@ struct EmailDetailView: View {
     }
     
     // MARK: - Action Footer
-    
+
     @ViewBuilder
     private var actionFooter: some View {
         HStack {
             Spacer()
-            
-            HStack(spacing: 8) {
-                Button(action: onReply) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary)
-                        .frame(width: 36, height: 36)
+
+            if email.isDraft, let onEditDraft = onEditDraft {
+                Button(action: onEditDraft) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14))
+                        Text("Edit Draft")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
-                .help("Reply")
-                
-                Button(action: {}) {
-                    Image(systemName: "face.smiling")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
-                        .frame(width: 36, height: 36)
+                .help("Edit Draft")
+            } else {
+                HStack(spacing: 8) {
+                    Button(action: onReply) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color.Detail.textTertiary)
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reply")
+
+                    Button(action: {}) {
+                        Image(systemName: "face.smiling")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(true)
+                    .help("React (coming soon)")
                 }
-                .buttonStyle(.plain)
-                .disabled(true)
-                .help("React (coming soon)")
             }
         }
         .padding(.top, 8)
     }
-    
+
     // MARK: - Helper Methods
-    
+
     /// Extract display name from email format
     /// "Julian Schenker <julian@example.com>" -> "Julian Schenker"
     private func extractName(from: String) -> String {
@@ -336,7 +356,8 @@ struct ThreadMessageCardView: View {
     let onReply: () -> Void
     let onReplyAll: () -> Void
     let onForward: () -> Void
-    
+    var onEditDraft: (() -> Void)? = nil
+
     // Each card manages its own expanded state
     @State private var isDetailsExpanded: Bool = false
     
@@ -540,38 +561,56 @@ struct ThreadMessageCardView: View {
     }
     
     // MARK: - Action Footer
-    
+
     @ViewBuilder
     private var actionFooter: some View {
         HStack {
             Spacer()
-            
-            HStack(spacing: 8) {
-                Button(action: onReply) {
-                    Image(systemName: "arrowshape.turn.up.left")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary)
-                        .frame(width: 36, height: 36)
+
+            if email.isDraft, let onEditDraft = onEditDraft {
+                Button(action: onEditDraft) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 14))
+                        Text("Edit Draft")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
-                .help("Reply")
-                
-                Button(action: {}) {
-                    Image(systemName: "face.smiling")
-                        .font(.system(size: 16))
-                        .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
-                        .frame(width: 36, height: 36)
+                .help("Edit Draft")
+            } else {
+                HStack(spacing: 8) {
+                    Button(action: onReply) {
+                        Image(systemName: "arrowshape.turn.up.left")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color.Detail.textTertiary)
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Reply")
+
+                    Button(action: {}) {
+                        Image(systemName: "face.smiling")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(true)
+                    .help("React (coming soon)")
                 }
-                .buttonStyle(.plain)
-                .disabled(true)
-                .help("React (coming soon)")
             }
         }
         .padding(.top, 8)
     }
-    
+
     // MARK: - Helper Methods
-    
+
     private func extractName(from: String) -> String {
         var name = from
         

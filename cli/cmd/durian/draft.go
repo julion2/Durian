@@ -8,6 +8,7 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/draft"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 	"github.com/spf13/cobra"
 )
@@ -177,7 +178,8 @@ func runDraftSave(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save draft
-	service := draft.NewService(account)
+	nmClient := notmuch.NewClient("")
+	service := draft.NewService(account, nmClient)
 	result, err := service.Save(msg, draftReplace)
 	if err != nil {
 		return outputDraftError(fmt.Sprintf("failed to save draft: %v", err))
@@ -212,7 +214,8 @@ func runDraftDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delete draft
-	service := draft.NewService(account)
+	nmClient := notmuch.NewClient("")
+	service := draft.NewService(account, nmClient)
 	if err := service.Delete(messageID); err != nil {
 		return outputDraftError(fmt.Sprintf("failed to delete draft: %v", err))
 	}

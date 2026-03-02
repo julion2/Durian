@@ -3,25 +3,27 @@ package draft
 
 import (
 	"fmt"
-	"os/exec"
 	"time"
 
 	"github.com/emersion/go-imap"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	imapClient "github.com/durian-dev/durian/cli/internal/imap"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 )
 
 // Service handles draft operations
 type Service struct {
 	account *config.AccountConfig
+	notmuch notmuch.Client
 }
 
 // NewService creates a new draft service for the given account
-func NewService(account *config.AccountConfig) *Service {
+func NewService(account *config.AccountConfig, nmClient notmuch.Client) *Service {
 	return &Service{
 		account: account,
+		notmuch: nmClient,
 	}
 }
 
@@ -76,13 +78,13 @@ func (s *Service) Save(msg *smtp.Message, replaceMessageID string) (*SaveResult,
 	}
 
 	// Run notmuch new to index the new message
-	if err := runNotmuchNew(); err != nil {
+	if err := s.notmuch.RunNew(); err != nil {
 		fmt.Printf("Warning: notmuch new failed: %v\n", err)
 	}
 
 	// Tag the draft with +draft in notmuch
 	if messageID != "" {
-		if err := tagDraft(messageID); err != nil {
+		if err := s.notmuch.ModifyTags("id:"+messageID, []string{"draft"}, nil); err != nil {
 			fmt.Printf("Warning: failed to tag draft: %v\n", err)
 		}
 	}
@@ -139,19 +141,6 @@ func (s *Service) deleteByMessageID(client *imapClient.Client, mailbox, messageI
 	}
 
 	return nil
-}
-
-// runNotmuchNew runs notmuch new to index new messages
-func runNotmuchNew() error {
-	cmd := exec.Command("notmuch", "new")
-	return cmd.Run()
-}
-
-// tagDraft tags a message with +draft in notmuch
-func tagDraft(messageID string) error {
-	// notmuch tag +draft -- id:<message-id>
-	cmd := exec.Command("notmuch", "tag", "+draft", "--", "id:"+messageID)
-	return cmd.Run()
 }
 
 // extractMessageID extracts the Message-ID from raw email data
