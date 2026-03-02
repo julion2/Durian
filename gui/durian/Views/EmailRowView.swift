@@ -166,12 +166,28 @@ struct EmailRowView: View {
         return ownNames.contains(name)
     }
 
+    /// Strip surrounding quotes (" or ') from a string.
+    private static func stripQuotes(_ s: String) -> String {
+        var r = s
+        if (r.hasPrefix("\"") && r.hasSuffix("\"")) || (r.hasPrefix("'") && r.hasSuffix("'")) {
+            r = String(r.dropFirst().dropLast())
+        }
+        return r.trimmingCharacters(in: .whitespaces)
+    }
+
     private static func extractName(from address: String) -> String {
         if let range = address.range(of: "<") {
             let name = String(address[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !name.isEmpty { return name }
+            if !name.isEmpty { return stripQuotes(name) }
         }
-        return address.trimmingCharacters(in: .whitespaces)
+        // Strip angle brackets, then check for bare email
+        let stripped = address.trimmingCharacters(in: .whitespaces)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+            .trimmingCharacters(in: .whitespaces)
+        if stripped.contains("@") && !stripped.contains(" ") {
+            return stripped  // show full email as name for bare addresses
+        }
+        return stripQuotes(stripped)
     }
 
     private static func extractEmail(from address: String) -> String {
@@ -181,14 +197,51 @@ struct EmailRowView: View {
         return address.trimmingCharacters(in: .whitespaces)
     }
 
+    /// Parse a comma-separated address list, respecting quoted names and angle-bracket emails.
+    /// Handles: "Last, First" <email>, 'Name' <email>, Name <email>
     private static func parseAddressList(_ raw: String) -> [String] {
-        raw.components(separatedBy: ",").compactMap {
-            let trimmed = $0.trimmingCharacters(in: .whitespaces)
-            return trimmed.isEmpty ? nil : trimmed
+        var results: [String] = []
+        var current = ""
+        var inQuotes = false
+        var inAngleBracket = false
+        var quoteChar: Character = "\""
+        for ch in raw {
+            if !inQuotes && !inAngleBracket && (ch == "\"" || ch == "'") {
+                inQuotes = true
+                quoteChar = ch
+                current.append(ch)
+            } else if inQuotes && ch == quoteChar {
+                inQuotes = false
+                current.append(ch)
+            } else if !inQuotes && ch == "<" {
+                inAngleBracket = true
+                current.append(ch)
+            } else if inAngleBracket && ch == ">" {
+                inAngleBracket = false
+                current.append(ch)
+            } else if !inQuotes && !inAngleBracket && ch == "," {
+                let trimmed = current.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { results.append(trimmed) }
+                current = ""
+            } else {
+                current.append(ch)
+            }
         }
+        let trimmed = current.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty { results.append(trimmed) }
+        return results
     }
 
-    /// All non-own participants from thread messages (from + cc), deduplicated, ordered.
+    /// Build a Participant from an address string, storing the clean email for avatar lookup.
+    private static func participant(from addr: String) -> Participant {
+        let cleanEmail = extractEmail(from: addr)
+        return Participant(
+            name: extractName(from: addr),
+            email: cleanEmail.contains("@") ? cleanEmail : extractName(from: addr)
+        )
+    }
+
+    /// All non-own participants from thread messages (from + to + cc), deduplicated, ordered.
     private var counterparties: [Participant] {
         // When thread messages are loaded, use real from/to/cc fields
         if let messages = email.threadMessages, !messages.isEmpty {
@@ -199,27 +252,27 @@ struct EmailRowView: View {
                     + Self.parseAddressList(msg.cc ?? "")
                 for addr in addresses {
                     guard !Self.isOwn(addr) else { continue }
-                    let email = Self.extractEmail(from: addr).lowercased()
-                    let key = email.contains("@") ? email : Self.extractName(from: addr).lowercased()
+                    let p = Self.participant(from: addr)
+                    let key = p.email.lowercased()
                     if seen.insert(key).inserted {
-                        result.append(Participant(
-                            name: Self.extractName(from: addr),
-                            email: addr
-                        ))
+                        result.append(p)
                     }
                 }
             }
             if !result.isEmpty { return result }
         }
 
-        // Fallback: parse notmuch authors string (before thread load)
+        // Fallback: parse notmuch authors string (before thread load).
+        // This is just names, no emails — can't reliably split "Last, First" vs
+        // two separate authors, so we use it as-is for the display name and pass
+        // the whole string for avatar name-based lookup.
         let raw = email.from
-        // If it's a single "Name <email>" address, handle directly
         if raw.contains("<") {
-            let p = Participant(name: Self.extractName(from: raw), email: raw)
-            return Self.isOwn(raw) ? [p] : [p]  // no filtering for single address
+            let p = Self.participant(from: raw)
+            return [p]
         }
-        // Split by comma and pipe (notmuch separators), normalize whitespace
+        // Split by pipe (notmuch read/unread separator), keep commas intact
+        // since they might be "Last, First" format.
         var authors: [String] = []
         for segment in raw.components(separatedBy: ",") {
             let trimmed = segment.trimmingCharacters(in: .whitespaces)
