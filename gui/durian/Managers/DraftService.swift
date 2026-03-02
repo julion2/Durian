@@ -60,7 +60,7 @@ class DraftService: ObservableObject {
     private let durianPath: String
     
     private init() {
-        durianPath = "\(NSHomeDirectory())/.local/bin/durian"
+        durianPath = FileManager.default.resolveDurianPath() ?? "\(NSHomeDirectory())/.local/bin/durian"
     }
     
     // MARK: - Draft Lifecycle

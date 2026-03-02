@@ -19,8 +19,7 @@ class EmailSendingManager: ObservableObject {
     private let durianPath: String
     
     private init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        durianPath = home.appendingPathComponent(".local/bin/durian").path
+        durianPath = FileManager.default.resolveDurianPath() ?? "\(NSHomeDirectory())/.local/bin/durian"
     }
     
     /// Send email using durian CLI
