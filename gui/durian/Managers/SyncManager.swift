@@ -209,10 +209,18 @@ class SyncManager: ObservableObject {
             return false
         }
 
-        // Use account alias for single-account profiles, sync all for multi/wildcard
-        let accountName: String? = (!currentProfile.isAll && currentProfile.accounts.count == 1)
-            ? currentProfile.accounts.first
-            : nil
+        // Use account name for single-account profiles, sync all for multi/wildcard.
+        // Profile accounts are maildir path names — only pass to sync if there's
+        // a matching CLI account (by name, case-insensitive). Otherwise sync all.
+        let knownAccountNames = Set(ConfigManager.shared.getAccounts().map { $0.name.lowercased() })
+        let accountName: String?
+        if !currentProfile.isAll && currentProfile.accounts.count == 1,
+           let profileAccount = currentProfile.accounts.first,
+           knownAccountNames.contains(profileAccount.lowercased()) {
+            accountName = profileAccount
+        } else {
+            accountName = nil
+        }
         print("SYNC: Quick sync starting for \(accountName ?? "all") INBOX")
         syncState = .syncing
 
