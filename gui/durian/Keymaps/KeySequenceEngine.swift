@@ -88,24 +88,25 @@ class KeySequenceEngine: ObservableObject {
             return false
         }
         
-        // Escape always clears buffer and exits visual mode
+        // Escape always clears buffer, exits visual mode, and dispatches handler
         if event.keyCode == 53 { // Escape
-            var consumed = false
-            
             if !buffer.isEmpty {
                 buffer.clear()
                 currentSequence = ""
                 isWaitingForMore = false
                 print("KEYSEQ: Escape - buffer cleared")
-                consumed = true
             }
-            
+
             if isVisualMode {
                 exitVisualMode()
-                consumed = true
             }
-            
-            return consumed
+
+            // Always dispatch exitVisualMode handler so it can close
+            // search popup, tag picker, detail view, etc.
+            if let handler = actionHandlers[.exitVisualMode] {
+                Task { await handler(1) }
+            }
+            return true
         }
         
         // Commands with Cmd/Ctrl go through different path (non-sequence)
