@@ -10,7 +10,8 @@ import SwiftUI
 struct SearchPopupView: View {
     @Binding var isPresented: Bool
     @Binding var selectedEmailId: String?
-    let onEmailSelected: (String) -> Void
+    let initialQuery: String
+    let onResultsActivated: (String, [MailMessage], String) -> Void
 
     @StateObject private var searchManager = SearchManager()
     @State private var query: String = ""
@@ -51,6 +52,11 @@ struct SearchPopupView: View {
         .clipShape(.rect(cornerRadius: 16))
         .shadow(color: .black.opacity(0.35), radius: 32, y: 16)
         .onAppear {
+            // Pre-fill query when reopening search in search mode
+            if !initialQuery.isEmpty {
+                query = initialQuery
+                searchManager.search(query: initialQuery)
+            }
             // Delay focus slightly so the window is ready to accept first responder
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 isTextFieldFocused = true
@@ -59,6 +65,12 @@ struct SearchPopupView: View {
         .onChange(of: query) { _, newQuery in
             searchManager.search(query: newQuery)
             selectedIndex = 0
+        }
+        .onChange(of: isTextFieldFocused) { _, focused in
+            // Re-assert focus so key handlers (Escape, arrows) keep working
+            if !focused {
+                DispatchQueue.main.async { isTextFieldFocused = true }
+            }
         }
         .onKeyPress(.upArrow) {
             if selectedIndex > 0 {
@@ -201,7 +213,7 @@ struct SearchPopupView: View {
         
         let email = searchManager.results[selectedIndex]
         selectedEmailId = email.id
-        onEmailSelected(email.id)
+        onResultsActivated(query, searchManager.results, email.id)
         close()
     }
     

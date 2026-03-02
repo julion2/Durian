@@ -162,9 +162,9 @@ struct MailMessage: Identifiable, Hashable {
     var from: String
     var to: String?
     var cc: String?
-    let date: String
+    var date: String
     let timestamp: Int  // Unix timestamp for grouping
-    let tags: String?
+    var tags: String?
     var body: String?
     var htmlBody: String?  // HTML version of body (for WebView rendering)
     var attributedBody: NSAttributedString?
@@ -234,18 +234,20 @@ struct MailMessage: Identifiable, Hashable {
         hasher.combine(subject)
         hasher.combine(from)
         hasher.combine(date)
+        hasher.combine(tags)
         hasher.combine(body)
         hasher.combine(isRead)
         hasher.combine(isPinned)
         hasher.combine(bodyState)
         hasher.combine(threadMessages?.count ?? 0)
     }
-    
+
     static func == (lhs: MailMessage, rhs: MailMessage) -> Bool {
         lhs.id == rhs.id &&
         lhs.subject == rhs.subject &&
         lhs.from == rhs.from &&
         lhs.date == rhs.date &&
+        lhs.tags == rhs.tags &&
         lhs.body == rhs.body &&
         lhs.isRead == rhs.isRead &&
         lhs.isPinned == rhs.isPinned &&
@@ -266,5 +268,6 @@ extension MailFolder {
         MailFolder(tag: "deleted", icon: "trash"),
         MailFolder(tag: "attachment", icon: "paperclip"),
         MailFolder(tag: "flagged", icon: "star"),
+        MailFolder(tag: "cal", icon: "calendar"),
     ]
 }

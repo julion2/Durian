@@ -29,6 +29,9 @@ struct ContentView: View {
     @State private var showTagPicker: Bool = false
     @State private var allTags: [String] = []
     @State private var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
+    @State private var isSearchMode = false
+    @State private var searchResults: [MailMessage] = []
+    @State private var lastSearchQuery = ""
 
     var body: some View {
         ZStack {
@@ -68,9 +71,14 @@ struct ContentView: View {
                             }
                         }
                     ),
-                    onEmailSelected: { emailId in
-                        // Open email in detail view
-                        detailMode = .notmuchEmailDetail(emailId: emailId)
+                    initialQuery: isSearchMode ? lastSearchQuery : "",
+                    onResultsActivated: { query, results, selectedId in
+                        isSearchMode = true
+                        searchResults = results
+                        lastSearchQuery = query
+                        cursorEmailId = selectedId
+                        markedEmails = [selectedId]
+                        handleNotmuchEmailSelection(selectedId)
                     }
                 )
                 .padding(.top, 80)
@@ -104,6 +112,23 @@ struct ContentView: View {
                             allTags.append(tag)
                             allTags.sort()
                         }
+                        // Optimistically update search results so tag pills refresh immediately
+                        if isSearchMode, let idx = searchResults.firstIndex(where: { $0.id == emailId }) {
+                            var currentTags = (searchResults[idx].tags ?? "")
+                                .split(separator: ",")
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                            if isAdding {
+                                if !currentTags.contains(tag) { currentTags.append(tag) }
+                            } else {
+                                currentTags.removeAll { $0 == tag }
+                            }
+                            searchResults[idx].tags = currentTags.joined(separator: ",")
+                            let tagSet = Set(currentTags)
+                            searchResults[idx].isRead = !tagSet.contains("unread")
+                            searchResults[idx].isPinned = tagSet.contains("flagged")
+                            searchResults[idx].hasAttachment = tagSet.contains("attachment")
+                        }
                         Task {
                             if isAdding {
                                 await accountManager.addTag(id: emailId, tag: tag)
@@ -126,7 +151,8 @@ struct ContentView: View {
     /// Tags on the currently focused email
     private var currentEmailTags: [String] {
         guard let emailId = cursorEmailId,
-              let email = accountManager.mailMessages.first(where: { $0.id == emailId }),
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId })
+                          ?? searchResults.first(where: { $0.id == emailId }),
               let tagsString = email.tags else { return [] }
         return tagsString
             .split(separator: ",")
@@ -188,9 +214,9 @@ struct ContentView: View {
                     .padding(.vertical, 4)
                 }
                 
-                if !accountManager.mailMessages.isEmpty {
+                if !displayEmails.isEmpty {
                     EmailListView(
-                        emails: accountManager.mailMessages,
+                        emails: displayEmails,
                         cursorId: $cursorEmailId,
                         selection: $markedEmails,
                         onEmailAppear: { email in
@@ -225,7 +251,7 @@ struct ContentView: View {
                             }
                         }
                     )
-                } else if accountManager.isLoadingEmails {
+                } else if !isSearchMode && accountManager.isLoadingEmails {
                     VStack {
                         ProgressView()
                         Text(accountManager.loadingProgress)
@@ -235,14 +261,14 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                 } else {
-                    Text("No emails")
+                    Text(isSearchMode ? "No results" : "No emails")
                         .font(.largeTitle)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                 }
             }
             .navigationTitle("Durian")
-            .navigationSubtitle(accountManager.selectedFolder)
+            .navigationSubtitle(isSearchMode ? "Search: \(lastSearchQuery)" : accountManager.selectedFolder)
             .toolbar {
                 // Mitte: Compose + Email Aktionen
                 ToolbarItemGroup(placement: .principal) {
@@ -322,7 +348,8 @@ struct ContentView: View {
         } detail: {
             // Detail View - always show cursor email, with badge if multi-selected
             if let emailId = cursorEmailId,
-               let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
+               let email = accountManager.mailMessages.first(where: { $0.id == emailId })
+                            ?? searchResults.first(where: { $0.id == emailId }) {
                 ZStack(alignment: .bottomTrailing) {
                     EmailDetailView(
                         email: email,
@@ -376,6 +403,9 @@ struct ContentView: View {
         }
         .onChange(of: selectedTagID) { _, tagId in
             if let tagId = tagId {
+                isSearchMode = false
+                searchResults = []
+                lastSearchQuery = ""
                 Task {
                     await accountManager.selectNotmuchTag(tagId)
                 }
@@ -388,8 +418,27 @@ struct ContentView: View {
                 handleNotmuchEmailSelection(emailId)
             }
         }
-        // Intercept Ctrl+d/u before the sidebar List captures them
+        .onChange(of: accountManager.mailMessages) { _, newMessages in
+            // Sync updated emails (e.g. body loaded) into search results
+            // Preserve original date (search returns relative dates, thread fetch returns RFC dates)
+            guard isSearchMode else { return }
+            for i in searchResults.indices {
+                if let updated = newMessages.first(where: { $0.id == searchResults[i].id }) {
+                    let originalDate = searchResults[i].date
+                    searchResults[i] = updated
+                    searchResults[i].date = originalDate
+                }
+            }
+        }
+        // Intercept Escape/Ctrl+d/u before the sidebar List captures them
         .onKeyPress { press in
+            // Escape to exit search mode (sequence engine doesn't dispatch Escape to handlers)
+            if press.key == .escape && isSearchMode && !showSearchPopup && !showTagPicker {
+                isSearchMode = false
+                searchResults = []
+                lastSearchQuery = ""
+                return .handled
+            }
             // Ctrl+d for page down
             if press.key == KeyEquivalent("d") && press.modifiers.contains(.control) {
                 let pageSize = 10
@@ -414,13 +463,19 @@ struct ContentView: View {
         }
     }
     
+    // MARK: - Display Emails (Search Mode vs Normal)
+
+    private var displayEmails: [MailMessage] {
+        isSearchMode ? searchResults : accountManager.mailMessages
+    }
+
     // MARK: - Helper Methods
     
     private func handleNotmuchEmailSelection(_ emailId: String) {
         detailMode = .notmuchEmailDetail(emailId: emailId)
 
         // Auto-load body if not loaded or previously failed
-        if let email = accountManager.mailMessages.first(where: { $0.id == emailId }) {
+        if let email = displayEmails.first(where: { $0.id == emailId }) {
             switch email.bodyState {
             case .notLoaded, .failed:
                 Task {
@@ -448,23 +503,23 @@ struct ContentView: View {
     
     private var selectedEmailIsPinned: Bool {
         guard let emailId = markedEmails.first,
-              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+              let email = displayEmails.first(where: { $0.id == emailId }) else {
             return false
         }
         return email.isPinned
     }
-    
+
     private var selectedEmailIsRead: Bool {
         guard let emailId = markedEmails.first,
-              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+              let email = displayEmails.first(where: { $0.id == emailId }) else {
             return true
         }
         return email.isRead
     }
-    
+
     private var selectedEmailHasBody: Bool {
         guard let emailId = markedEmails.first,
-              let email = accountManager.mailMessages.first(where: { $0.id == emailId }) else {
+              let email = displayEmails.first(where: { $0.id == emailId }) else {
             return false
         }
         if case .loaded = email.bodyState {
@@ -472,10 +527,10 @@ struct ContentView: View {
         }
         return false
     }
-    
+
     private var selectedEmail: MailMessage? {
         guard let emailId = markedEmails.first else { return nil }
-        return accountManager.mailMessages.first(where: { $0.id == emailId })
+        return displayEmails.first(where: { $0.id == emailId })
     }
     
     private func deleteSelectedEmails() {
@@ -576,7 +631,7 @@ struct ContentView: View {
     
     /// Get sorted email IDs (by timestamp, newest first)
     private var sortedEmailIds: [String] {
-        accountManager.mailMessages
+        displayEmails
             .sorted { $0.timestamp > $1.timestamp }
             .map { $0.id }
     }
@@ -839,6 +894,10 @@ struct ContentView: View {
                     showTagPicker = false
                 } else if showSearchPopup {
                     showSearchPopup = false
+                } else if isSearchMode {
+                    isSearchMode = false
+                    searchResults = []
+                    lastSearchQuery = ""
                 } else {
                     detailMode = .empty
                 }
