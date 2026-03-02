@@ -6,6 +6,20 @@ import (
 	"testing"
 )
 
+func TestMain(m *testing.M) {
+	// Bazel's sandbox does not set HOME, which breaks os.UserHomeDir()
+	// and all tests that rely on ~ expansion. Set a deterministic fallback.
+	if os.Getenv("HOME") == "" {
+		dir, err := os.MkdirTemp("", "durian-config-test-*")
+		if err != nil {
+			panic(err)
+		}
+		os.Setenv("HOME", dir)
+		defer os.RemoveAll(dir)
+	}
+	os.Exit(m.Run())
+}
+
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name        string
