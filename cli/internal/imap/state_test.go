@@ -525,6 +525,65 @@ func TestMailboxState_MessageFlags(t *testing.T) {
 	}
 }
 
+func TestStateManager_LoadCorruptedFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "durian-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sm := &StateManager{cacheDir: tmpDir}
+	email := "corrupt@example.com"
+
+	// Write invalid JSON to the state file
+	statePath := filepath.Join(tmpDir, email+"-imap-state.json")
+	if err := os.WriteFile(statePath, []byte("{this is not valid json!!!"), 0600); err != nil {
+		t.Fatalf("failed to write corrupted file: %v", err)
+	}
+
+	// Load should succeed with fresh state (not return error)
+	state, lock, err := sm.Load(email)
+	if err != nil {
+		t.Fatalf("Load should recover from corruption, got error: %v", err)
+	}
+	defer releaseLock(lock)
+
+	if state == nil {
+		t.Fatal("expected non-nil state")
+	}
+	if len(state.Mailboxes) != 0 {
+		t.Errorf("expected fresh empty state, got %d mailboxes", len(state.Mailboxes))
+	}
+
+	// Original file should be gone (renamed to backup)
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Error("expected original corrupted file to be renamed")
+	}
+
+	// Backup file should exist
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("failed to read dir: %v", err)
+	}
+	foundBackup := false
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) != ".lock" && entry.Name() != email+"-imap-state.json" {
+			foundBackup = true
+			// Verify backup has the corrupted content
+			backupData, err := os.ReadFile(filepath.Join(tmpDir, entry.Name()))
+			if err != nil {
+				t.Fatalf("failed to read backup: %v", err)
+			}
+			if string(backupData) != "{this is not valid json!!!" {
+				t.Errorf("backup content mismatch: %q", string(backupData))
+			}
+		}
+	}
+	if !foundBackup {
+		t.Error("expected backup file to exist")
+	}
+}
+
 func TestMailboxState_EnsureSyncedSet(t *testing.T) {
 	// Simulates what happens after JSON deserialization: slice populated, set is nil
 	ms := &MailboxState{

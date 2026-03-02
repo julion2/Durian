@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 )
@@ -330,8 +331,14 @@ func (sm *StateManager) Load(email string) (*State, *os.File, error) {
 
 	var state State
 	if err := json.Unmarshal(data, &state); err != nil {
-		releaseLock(lockFile)
-		return nil, nil, fmt.Errorf("failed to parse state file: %w", err)
+		// Corrupted state file — backup and start fresh
+		backupPath := fmt.Sprintf("%s.corrupted.%d", path, time.Now().Unix())
+		if renameErr := os.Rename(path, backupPath); renameErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: corrupted state file and failed to create backup: %v\n", renameErr)
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: corrupted state file backed up to %s, starting fresh\n", backupPath)
+		}
+		return NewState(), lockFile, nil
 	}
 
 	// Rebuild reverse maps for backwards compatibility and consistency

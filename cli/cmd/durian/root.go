@@ -98,5 +98,5 @@ func GetConfig() *config.Config {
 
 // initDebug sets up debug mode based on the --debug flag
 func initDebug() {
-	debug.Enabled = debugMode
+	debug.SetEnabled(debugMode)
 }
