@@ -152,31 +152,29 @@ class EmailSendingManager: ObservableObject {
         defer { try? FileManager.default.removeItem(atPath: bodyFile) }
         args.append(contentsOf: ["--body-file", bodyFile])
         
-        // Attachments - write to temp files
+        // Attachments - write to temp dir with original filename preserved
+        let tempDir = "/tmp/durian-attach-\(UUID().uuidString)"
+        try? FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
         var tempAttachmentPaths: [String] = []
         for attachment in draft.attachments {
-            let tempPath = "/tmp/durian-attach-\(UUID().uuidString)-\(attachment.filename)"
+            let tempPath = "\(tempDir)/\(attachment.filename)"
             do {
                 try attachment.data.write(to: URL(fileURLWithPath: tempPath))
                 tempAttachmentPaths.append(tempPath)
                 args.append("--attach")
                 args.append(tempPath)
             } catch {
-                // Clean up any already-written temp files
-                for path in tempAttachmentPaths {
-                    try? FileManager.default.removeItem(atPath: path)
-                }
+                // Clean up temp directory
+                try? FileManager.default.removeItem(atPath: tempDir)
                 let sendError = EmailSendingError.sendFailed("Failed to write attachment: \(error.localizedDescription)")
                 lastError = sendError
                 throw sendError
             }
         }
-        
-        // Clean up temp attachments after sending
+
+        // Clean up temp directory after sending
         defer {
-            for path in tempAttachmentPaths {
-                try? FileManager.default.removeItem(atPath: path)
-            }
+            try? FileManager.default.removeItem(atPath: tempDir)
         }
         
         // Execute durian send
