@@ -26,6 +26,7 @@ Multiple tags can be specified.`,
 }
 
 func init() {
+	tagCmd.Flags().SetInterspersed(false)
 	rootCmd.AddCommand(tagCmd)
 }
 
