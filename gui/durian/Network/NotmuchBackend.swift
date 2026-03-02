@@ -447,9 +447,17 @@ class NotmuchBackend: ObservableObject {
         for (index, email) in emails.enumerated() {
             if let cached = threadCache[email.id] {
                 emails[index].threadMessages = cached.messages
+                if let lastMessage = cached.messages.last {
+                    emails[index].from = lastMessage.from
+                    emails[index].body = lastMessage.body
+                    emails[index].htmlBody = lastMessage.html
+                    emails[index].to = lastMessage.to
+                    emails[index].cc = lastMessage.cc
+                    emails[index].messageId = lastMessage.message_id
+                    emails[index].inReplyTo = lastMessage.in_reply_to
+                    emails[index].references = lastMessage.references
+                }
                 let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
-                emails[index].body = cached.messages.last?.body
-                emails[index].htmlBody = cached.messages.last?.html
                 emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
                 restoredCount += 1
             }

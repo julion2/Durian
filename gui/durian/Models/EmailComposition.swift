@@ -200,8 +200,14 @@ extension EmailDraft {
     ///   - fromAccount: The email address to send from
     /// - Returns: A new EmailDraft configured as a reply
     static func createReply(from message: MailMessage, fromAccount: String) -> EmailDraft {
-        // Keep full "Name <email>" format for display in token field
-        let replyTo = message.from
+        // Use message.from (updated from thread headers after body load).
+        // Fallback to threadMessages if from has no email (e.g. cache restored without headers).
+        var replyTo = message.from
+        if !replyTo.contains("@") {
+            if let threadFrom = message.threadMessages?.last?.from, threadFrom.contains("@") {
+                replyTo = threadFrom
+            }
+        }
         
         // Build subject with Re: prefix (avoid Re: Re: Re:)
         let subject = message.subject.hasPrefix("Re:") 
@@ -244,14 +250,14 @@ extension EmailDraft {
     /// - Returns: A new EmailDraft configured as a reply-all
     static func createReplyAll(from message: MailMessage, fromAccount: String) -> EmailDraft {
         var draft = createReply(from: message, fromAccount: fromAccount)
-        
+
         // Add original To and CC recipients to CC (excluding self)
         var ccRecipients: [String] = []
-        
+
         // Add original To recipients (except sender and self)
         if let originalTo = message.to {
             let toAddresses = parseEmailList(originalTo)
-            let senderEmail = extractEmail(from: message.from).lowercased()
+            let senderEmail = extractEmail(from: draft.to.first ?? message.from).lowercased()
             for address in toAddresses {
                 let emailOnly = extractEmail(from: address).lowercased()
                 if emailOnly != fromAccount.lowercased() && emailOnly != senderEmail {
