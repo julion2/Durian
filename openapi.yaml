@@ -26,6 +26,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SearchResponse'
+  /tags:
+    get:
+      summary: List all known tags
+      responses:
+        '200':
+          description: A list of all tags
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagsResponse'
   /threads/{thread_id}:
     get:
       summary: Get a specific email thread
@@ -87,6 +97,17 @@ components:
           type: string
         thread:
           $ref: '#/components/schemas/ThreadContent'
+    TagsResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
     TagRequest:
       type: object
       properties:

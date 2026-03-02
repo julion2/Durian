@@ -49,6 +49,11 @@ func (h *Handler) ShowThreadHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+func (h *Handler) ListTagsHandler(w http.ResponseWriter, r *http.Request) {
+	response := h.ListTags()
+	writeJSON(w, response)
+}
+
 func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	threadID := vars["thread_id"]

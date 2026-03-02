@@ -26,6 +26,8 @@ struct ContentView: View {
     @State private var markedEmails: Set<String> = []     // Marked emails (selection for batch ops)
     @State private var detailMode: DetailViewMode = .empty
     @State private var showSearchPopup: Bool = false
+    @State private var showTagPicker: Bool = false
+    @State private var allTags: [String] = []
     @State private var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
 
     var body: some View {
@@ -34,6 +36,10 @@ struct ContentView: View {
             
             if showSearchPopup {
                 searchPopupOverlay
+            }
+
+            if showTagPicker {
+                tagPickerOverlay
             }
         }
     }
@@ -75,6 +81,59 @@ struct ContentView: View {
         .ignoresSafeArea()
     }
     
+    // MARK: - Tag Picker Overlay
+
+    @ViewBuilder
+    private var tagPickerOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.15)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showTagPicker = false
+                }
+
+            VStack {
+                TagPickerView(
+                    isPresented: $showTagPicker,
+                    currentTags: currentEmailTags,
+                    allTags: allTags,
+                    onToggleTag: { tag, isAdding in
+                        guard let emailId = cursorEmailId else { return }
+                        // Optimistically add new tag to allTags so the UI updates instantly
+                        if isAdding && !allTags.contains(tag) {
+                            allTags.append(tag)
+                            allTags.sort()
+                        }
+                        Task {
+                            if isAdding {
+                                await accountManager.addTag(id: emailId, tag: tag)
+                            } else {
+                                await accountManager.removeTag(id: emailId, tag: tag)
+                            }
+                            // Refresh allTags from backend
+                            allTags = await accountManager.fetchAllTags()
+                        }
+                    }
+                )
+                .padding(.top, 80)
+
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    /// Tags on the currently focused email
+    private var currentEmailTags: [String] {
+        guard let emailId = cursorEmailId,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId }),
+              let tagsString = email.tags else { return [] }
+        return tagsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     // MARK: - Notmuch View
     
     @ViewBuilder
@@ -632,6 +691,15 @@ struct ContentView: View {
             }
         }
         
+        // Tag Picker: t
+        keymapHandler.registerSimpleHandler(for: .tagPicker) { [self] in
+            await MainActor.run {
+                guard cursorEmailId != nil else { return }
+                showTagPicker = true
+                Task { allTags = await accountManager.fetchAllTags() }
+            }
+        }
+
         // Compose: c
         keymapHandler.registerSimpleHandler(for: .compose) { [self] in
             await MainActor.run {
@@ -660,11 +728,13 @@ struct ContentView: View {
             }
         }
         
-        // View control: q - close detail or search popup (NOT escape - that's for visual mode)
+        // View control: q - close detail, search popup, or tag picker (NOT escape - that's for visual mode)
         keymapHandler.registerSimpleHandler(for: .closeDetail) { [self] in
             await MainActor.run {
                 if showSearchPopup {
                     showSearchPopup = false
+                } else if showTagPicker {
+                    showTagPicker = false
                 } else {
                     detailMode = .empty
                 }
@@ -760,6 +830,8 @@ struct ContentView: View {
                     }
                     visualModeAnchor = nil
                     print("VISUAL: Exited visual mode")
+                } else if showTagPicker {
+                    showTagPicker = false
                 } else if showSearchPopup {
                     showSearchPopup = false
                 } else {
@@ -767,7 +839,7 @@ struct ContentView: View {
                 }
             }
         }
-        
+
         print("KEYMAPS: All handlers registered")
     }
     

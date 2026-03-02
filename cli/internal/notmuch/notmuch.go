@@ -61,6 +61,9 @@ type Client interface {
 	Tag(query string, tags []string) error
 	ShowThread(threadID string) ([]ThreadMessage, error)
 
+	// Tag listing
+	ListTags() ([]string, error)
+
 	// Message operations (used by sync)
 	MessageExists(messageID string) bool
 	GetFilenamesByMessageID(messageID string) []string
@@ -178,6 +181,26 @@ func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 	var messages []ThreadMessage
 	flattenThread(raw, &messages)
 	return messages, nil
+}
+
+// ListTags returns all tags known to notmuch.
+func (c *ExecClient) ListTags() ([]string, error) {
+	args := []string{"search", "--output=tags", "*"}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+
+	cmd := exec.Command("notmuch", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil, nil
+	}
+	return strings.Split(trimmed, "\n"), nil
 }
 
 // ---------- Sync/message methods (from internal/notmuch) ----------

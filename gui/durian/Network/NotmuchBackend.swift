@@ -18,6 +18,7 @@ struct DurianResponse: Decodable {
     let results: [NotmuchMailResult]?
     let mail: NotmuchMailContent?
     let thread: ThreadContent?
+    let tags: [String]?
 }
 
 struct NotmuchMailResult: Decodable {
@@ -366,6 +367,11 @@ class NotmuchBackend: ObservableObject {
             print("NOTMUCH Tag error: \(response?.error ?? "unknown")")
             return false
         }
+    }
+
+    func fetchAllTags() async -> [String] {
+        let response: DurianResponse? = await request(endpoint: "/tags")
+        return response?.tags ?? []
     }
 
     // MARK: - Unchanged methods (markAsRead, togglePin, etc.)

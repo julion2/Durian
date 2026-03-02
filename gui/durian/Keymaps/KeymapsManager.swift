@@ -132,6 +132,8 @@ class KeymapsManager: ObservableObject {
             // Search
             KeymapEntry(action: "search", key: "/", modifiers: [], description: "Search emails (vim /)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "search", key: "/", modifiers: ["cmd"], description: "Search emails (Cmd+/)", enabled: true, sequence: false, supportsCount: false),
+            // Tag Picker
+            KeymapEntry(action: "tag_picker", key: "t", modifiers: [], description: "Open tag picker", enabled: true, sequence: false, supportsCount: false),
             // View Control
             KeymapEntry(action: "close_detail", key: "q", modifiers: [], description: "Close/back (vim q)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Close/back (Escape)", enabled: true, sequence: false, supportsCount: false),
@@ -285,6 +287,13 @@ class KeymapsManager: ObservableObject {
                        description: "Search emails (Cmd+/)", enabled: true,
                        sequence: false, supportsCount: false),
             
+            // ═══════════════════════════════════════════════════════════
+            // TAG PICKER
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "tag_picker", key: "t", modifiers: [],
+                       description: "Open tag picker", enabled: true,
+                       sequence: false, supportsCount: false),
+
             // ═══════════════════════════════════════════════════════════
             // VIEW CONTROL
             // ═══════════════════════════════════════════════════════════

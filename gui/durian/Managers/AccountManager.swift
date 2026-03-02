@@ -134,6 +134,11 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
 
+    func fetchAllTags() async -> [String] {
+        guard let backend = notmuchBackend else { return [] }
+        return await backend.fetchAllTags()
+    }
+
     func toggleNotmuchPin(id: String) async {
         guard let backend = notmuchBackend else { return }
         await backend.togglePin(id: id)

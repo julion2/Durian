@@ -34,6 +34,7 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/search", h.SearchHandler).Methods("GET")
+	r.HandleFunc("/api/v1/tags", h.ListTagsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}", h.ShowThreadHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
 

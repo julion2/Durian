@@ -8,6 +8,7 @@ go_library(
         "search.go",
         "show.go",
         "tag.go",
+        "tags.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/handler",
     visibility = ["//cli:__subpackages__"],

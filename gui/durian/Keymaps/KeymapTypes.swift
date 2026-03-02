@@ -35,6 +35,9 @@ enum KeymapAction: String, CaseIterable {
     case centerView = "center_view"
     case search = "search"
     
+    // Tag Picker
+    case tagPicker = "tag_picker"
+
     // Folder Navigation
     case goInbox = "go_inbox"
     case goSent = "go_sent"

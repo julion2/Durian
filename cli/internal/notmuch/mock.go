@@ -17,6 +17,10 @@ type MockClient struct {
 	ThreadMessages []ThreadMessage
 	ThreadErr      error
 
+	// Tag listing results
+	Tags    []string
+	TagsErr error
+
 	// Sync results
 	MessageExistsResult  bool
 	FilenamesByMessageID []string
@@ -96,6 +100,10 @@ func (m *MockClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 		return nil, m.ThreadErr
 	}
 	return m.ThreadMessages, nil
+}
+
+func (m *MockClient) ListTags() ([]string, error) {
+	return m.Tags, m.TagsErr
 }
 
 func (m *MockClient) MessageExists(_ string) bool {
