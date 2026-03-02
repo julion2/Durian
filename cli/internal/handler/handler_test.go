@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )
 

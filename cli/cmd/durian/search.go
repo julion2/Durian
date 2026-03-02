@@ -7,7 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/spf13/cobra"
@@ -43,7 +43,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	// Join all arguments to allow unquoted queries like: durian search tag:inbox AND date:today
 	query := strings.Join(args, " ")
 
-	nmClient := notmuch.NewExecClient()
+	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
 
 	resp := h.Search(query, searchLimit)

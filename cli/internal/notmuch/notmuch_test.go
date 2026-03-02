@@ -1,0 +1,310 @@
+package notmuch
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestParseFilenames(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected []string
+	}{
+		{
+			name:     "single file",
+			input:    "/home/user/.mail/account/INBOX/cur/1234567890.abc:2,S\n",
+			expected: []string{"/home/user/.mail/account/INBOX/cur/1234567890.abc:2,S"},
+		},
+		{
+			name:  "multiple files",
+			input: "/home/user/.mail/account/INBOX/cur/1234567890.abc:2,S\n/home/user/.mail/account/Sent/cur/1234567890.abc:2,S\n",
+			expected: []string{
+				"/home/user/.mail/account/INBOX/cur/1234567890.abc:2,S",
+				"/home/user/.mail/account/Sent/cur/1234567890.abc:2,S",
+			},
+		},
+		{
+			name:     "empty output",
+			input:    "",
+			expected: nil,
+		},
+		{
+			name:     "whitespace only",
+			input:    "  \n  \n",
+			expected: nil,
+		},
+		{
+			name:     "trailing newline",
+			input:    "/path/to/file\n",
+			expected: []string{"/path/to/file"},
+		},
+		{
+			name:  "blank lines between files",
+			input: "/path/one\n\n/path/two\n",
+			expected: []string{
+				"/path/one",
+				"/path/two",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseFilenames(tt.input)
+			if len(got) != len(tt.expected) {
+				t.Errorf("parseFilenames() = %v (len %d), want %v (len %d)", got, len(got), tt.expected, len(tt.expected))
+				return
+			}
+			for i, f := range got {
+				if f != tt.expected[i] {
+					t.Errorf("parseFilenames()[%d] = %q, want %q", i, f, tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractBodyContent(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            string // JSON array of body parts
+		wantText        string
+		wantHTML        string
+		wantAttachments []string
+	}{
+		{
+			name:     "text/plain only",
+			body:     `[{"id": 1, "content-type": "text/plain", "content": "Hello world"}]`,
+			wantText: "Hello world",
+		},
+		{
+			name:     "text/html only",
+			body:     `[{"id": 1, "content-type": "text/html", "content": "<p>Hello</p>"}]`,
+			wantHTML: "<p>Hello</p>",
+		},
+		{
+			name: "multipart/alternative with text and html",
+			body: `[{"id": 1, "content-type": "multipart/alternative", "content": [
+				{"id": 2, "content-type": "text/plain", "content": "plain text"},
+				{"id": 3, "content-type": "text/html", "content": "<p>html text</p>"}
+			]}]`,
+			wantText: "plain text",
+			wantHTML: "<p>html text</p>",
+		},
+		{
+			name: "attachment",
+			body: `[
+				{"id": 1, "content-type": "text/plain", "content": "See attached"},
+				{"id": 2, "content-type": "application/pdf", "content-disposition": "attachment", "filename": "report.pdf"}
+			]`,
+			wantText:        "See attached",
+			wantAttachments: []string{"report.pdf"},
+		},
+		{
+			name: "nested multipart with attachment",
+			body: `[{"id": 1, "content-type": "multipart/mixed", "content": [
+				{"id": 2, "content-type": "multipart/alternative", "content": [
+					{"id": 3, "content-type": "text/plain", "content": "body text"},
+					{"id": 4, "content-type": "text/html", "content": "<p>body html</p>"}
+				]},
+				{"id": 5, "content-type": "image/png", "content-disposition": "attachment", "filename": "screenshot.png"}
+			]}]`,
+			wantText:        "body text",
+			wantHTML:        "<p>body html</p>",
+			wantAttachments: []string{"screenshot.png"},
+		},
+		{
+			name: "empty body",
+			body: `[]`,
+		},
+		{
+			name:     "first text/plain wins",
+			body:     `[{"id": 1, "content-type": "text/plain", "content": "first"}, {"id": 2, "content-type": "text/plain", "content": "second"}]`,
+			wantText: "first",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var body []json.RawMessage
+			if err := json.Unmarshal([]byte(tt.body), &body); err != nil {
+				t.Fatalf("invalid test body JSON: %v", err)
+			}
+
+			gotText, gotHTML, gotAttachments := ExtractBodyContent(body)
+
+			if gotText != tt.wantText {
+				t.Errorf("text = %q, want %q", gotText, tt.wantText)
+			}
+			if gotHTML != tt.wantHTML {
+				t.Errorf("html = %q, want %q", gotHTML, tt.wantHTML)
+			}
+			if len(gotAttachments) != len(tt.wantAttachments) {
+				t.Errorf("attachments = %v, want %v", gotAttachments, tt.wantAttachments)
+			} else {
+				for i, a := range gotAttachments {
+					if a != tt.wantAttachments[i] {
+						t.Errorf("attachment[%d] = %q, want %q", i, a, tt.wantAttachments[i])
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestStripQuotedContent(t *testing.T) {
+	tests := []struct {
+		name string
+		html string
+		want string
+	}{
+		{
+			name: "empty string",
+			html: "",
+			want: "",
+		},
+		{
+			name: "no quoted content",
+			html: "<p>Hello world</p>",
+			want: "<p>Hello world</p>",
+		},
+		{
+			name: "Gmail quote",
+			html: `<p>My reply</p><div class="gmail_quote"><p>Original message</p></div>`,
+			want: `<p>My reply</p>`,
+		},
+		{
+			name: "Gmail blockquote",
+			html: `<p>Reply</p><blockquote class="gmail_quote"><p>Quoted</p></blockquote>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "Outlook divRplyFwdMsg",
+			html: `<p>My response</p><div id="divRplyFwdMsg"><p>Original</p></div>`,
+			want: `<p>My response</p>`,
+		},
+		{
+			name: "Outlook appendonsend",
+			html: `<p>Top text</p><div id="appendonsend"><p>Below</p></div>`,
+			want: `<p>Top text</p>`,
+		},
+		{
+			name: "Apple Mail blockquote type=cite",
+			html: `<p>Response</p><blockquote type="cite"><p>Original</p></blockquote>`,
+			want: `<p>Response</p>`,
+		},
+		{
+			name: "generic blockquote",
+			html: `<p>Reply</p><blockquote><p>Quoted</p></blockquote>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "case insensitive",
+			html: `<p>Reply</p><DIV CLASS="Gmail_Quote"><p>Quoted</p></DIV>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "trailing whitespace stripped",
+			html: "<p>Reply</p>  \n  <blockquote><p>Quoted</p></blockquote>",
+			want: "<p>Reply</p>",
+		},
+		{
+			name: "multiple quote patterns - earliest wins",
+			html: `<p>Reply</p><blockquote type="cite"><p>Apple</p></blockquote><div class="gmail_quote"><p>Gmail</p></div>`,
+			want: `<p>Reply</p>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StripQuotedContent(tt.html)
+			if got != tt.want {
+				t.Errorf("StripQuotedContent() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFlattenThread(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string // JSON
+		wantIDs  []string
+	}{
+		{
+			name:    "single message",
+			input:   `[[{"id": "msg1@test", "timestamp": 1000, "headers": {}, "body": [], "tags": ["inbox"], "filename": ["f1"]}]]`,
+			wantIDs: []string{"msg1@test"},
+		},
+		{
+			name: "two messages in thread",
+			input: `[[
+				{"id": "msg1@test", "timestamp": 1000, "headers": {}, "body": [], "tags": [], "filename": []},
+				[
+					{"id": "msg2@test", "timestamp": 2000, "headers": {}, "body": [], "tags": [], "filename": []},
+					[]
+				]
+			]]`,
+			wantIDs: []string{"msg1@test", "msg2@test"},
+		},
+		{
+			name: "deeply nested replies",
+			input: `[[
+				{"id": "msg1@test", "timestamp": 1000, "headers": {}, "body": [], "tags": [], "filename": []},
+				[
+					{"id": "msg2@test", "timestamp": 2000, "headers": {}, "body": [], "tags": [], "filename": []},
+					[
+						{"id": "msg3@test", "timestamp": 3000, "headers": {}, "body": [], "tags": [], "filename": []},
+						[]
+					]
+				]
+			]]`,
+			wantIDs: []string{"msg1@test", "msg2@test", "msg3@test"},
+		},
+		{
+			name:    "empty thread",
+			input:   `[]`,
+			wantIDs: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var raw json.RawMessage
+			if err := json.Unmarshal([]byte(tt.input), &raw); err != nil {
+				t.Fatalf("invalid test JSON: %v", err)
+			}
+
+			var messages []ThreadMessage
+			flattenThread(raw, &messages)
+
+			if len(messages) != len(tt.wantIDs) {
+				t.Errorf("got %d messages, want %d", len(messages), len(tt.wantIDs))
+				return
+			}
+
+			for i, msg := range messages {
+				if msg.ID != tt.wantIDs[i] {
+					t.Errorf("message[%d].ID = %q, want %q", i, msg.ID, tt.wantIDs[i])
+				}
+			}
+		})
+	}
+}
+
+func TestExtractBodyContentStripsQuotedHTML(t *testing.T) {
+	// Verify that ExtractBodyContent calls StripQuotedContent on HTML
+	body := `[{"id": 1, "content-type": "text/html", "content": "<p>Reply</p><div class=\"gmail_quote\"><p>Original</p></div>"}]`
+
+	var rawBody []json.RawMessage
+	if err := json.Unmarshal([]byte(body), &rawBody); err != nil {
+		t.Fatal(err)
+	}
+
+	_, html, _ := ExtractBodyContent(rawBody)
+
+	if html != "<p>Reply</p>" {
+		t.Errorf("expected quoted content to be stripped, got %q", html)
+	}
+}

@@ -6,7 +6,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	internmail "github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )

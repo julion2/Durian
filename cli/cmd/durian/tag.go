@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/spf13/cobra"
 )
@@ -41,7 +41,7 @@ func runTag(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	nmClient := notmuch.NewExecClient()
+	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
 
 	// Join tags back to string for handler (current interface expects string)

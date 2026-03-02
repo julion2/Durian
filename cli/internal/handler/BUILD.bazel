@@ -12,7 +12,7 @@ go_library(
     importpath = "github.com/durian-dev/durian/cli/internal/handler",
     visibility = ["//cli:__subpackages__"],
     deps = [
-        "//cli/internal/backend/notmuch",
+        "//cli/internal/notmuch",
         "//cli/internal/mail",
         "//cli/internal/protocol",
         "@com_github_gorilla_mux//:mux",
@@ -24,7 +24,7 @@ go_test(
     srcs = ["handler_test.go"],
     embed = [":handler"],
     deps = [
-        "//cli/internal/backend/notmuch",
+        "//cli/internal/notmuch",
         "//cli/internal/protocol",
     ],
 )

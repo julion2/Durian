@@ -91,7 +91,7 @@ type MailboxResult struct {
 type Syncer struct {
 	client          *Client
 	maildir         *MaildirWriter
-	notmuch         *notmuch.Client
+	notmuch         notmuch.Client
 	state           *State
 	stateMgr        *StateManager
 	stateLock       *os.File             // File lock held during sync
@@ -164,7 +164,10 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 	}
 
 	// Cache server mailbox list for exclusion tag logic
-	s.serverMailboxes, _ = s.client.ListMailboxes()
+	s.serverMailboxes, err = s.client.ListMailboxes()
+	if err != nil {
+		debug.Log("Sync: failed to cache server mailbox list: %v (folder tags won't apply)", err)
+	}
 
 	// Sync each mailbox with automatic reconnection on failure
 	for _, mbox := range mailboxes {
@@ -389,7 +392,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				messageID, hasID := mboxState.GetMessageID(uid)
 				if hasID && messageID != "" {
 					debug.Log("syncMailbox: removing deleted UID %d (Message-ID: %s)", uid, messageID)
-					if err := s.notmuch.DeleteMessageFile(messageID); err != nil {
+					if err := s.notmuch.DeleteMessageFiles(messageID); err != nil {
 						debug.Log("syncMailbox: failed to delete file for UID %d: %v", uid, err)
 					}
 					// Remove folder-specific tags when message disappears from this folder

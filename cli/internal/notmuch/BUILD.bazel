@@ -1,8 +1,17 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "notmuch",
-    srcs = ["notmuch.go"],
+    srcs = [
+        "mock.go",
+        "notmuch.go",
+    ],
     importpath = "github.com/durian-dev/durian/cli/internal/notmuch",
     visibility = ["//cli:__subpackages__"],
+)
+
+go_test(
+    name = "notmuch_test",
+    srcs = ["notmuch_test.go"],
+    embed = [":notmuch"],
 )

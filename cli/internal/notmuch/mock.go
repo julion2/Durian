@@ -1,34 +1,37 @@
 package notmuch
 
-// MockClient implements Client interface for testing
+// Compile-time interface checks
+var (
+	_ Client = (*MockClient)(nil)
+	_ Client = (*ExecClient)(nil)
+)
+
+// MockClient implements Client interface for testing.
 type MockClient struct {
-	// SearchResults is returned by Search()
-	SearchResults []SearchResult
-	// SearchErr is returned as error by Search()
-	SearchErr error
-
-	// Files is returned by GetFiles()
-	Files []string
-	// FilesErr is returned as error by GetFiles()
-	FilesErr error
-
-	// TagErr is returned as error by Tag()
-	TagErr error
-
-	// ThreadMessages is returned by ShowThread()
+	// Search/display results
+	SearchResults  []SearchResult
+	SearchErr      error
+	Files          []string
+	FilesErr       error
+	TagErr         error
 	ThreadMessages []ThreadMessage
-	// ThreadErr is returned as error by ShowThread()
-	ThreadErr error
+	ThreadErr      error
 
-	// Track calls for verification
+	// Sync results
+	MessageExistsResult  bool
+	FilenamesByMessageID []string
+	DeleteFilesErr       error
+	ModifyTagsErr        error
+	AllMessagesWithTags  map[string][]string
+	AllMessagesErr       error
+	RunNewErr            error
+
+	// Call tracking
 	SearchCalls     []searchCall
 	GetFilesCalls   []getFilesCall
 	TagCalls        []tagCall
 	ShowThreadCalls []showThreadCall
-}
-
-type showThreadCall struct {
-	ThreadID string
+	ModifyTagsCalls []modifyTagsCall
 }
 
 type searchCall struct {
@@ -46,97 +49,124 @@ type tagCall struct {
 	Tags  []string
 }
 
-// NewMockClient creates a new MockClient with default empty values
+type showThreadCall struct {
+	ThreadID string
+}
+
+type modifyTagsCall struct {
+	Query      string
+	AddTags    []string
+	RemoveTags []string
+}
+
+// NewMockClient creates a new MockClient with default empty values.
 func NewMockClient() *MockClient {
 	return &MockClient{
-		SearchResults:  []SearchResult{},
-		Files:          []string{},
-		ThreadMessages: []ThreadMessage{},
+		SearchResults:       []SearchResult{},
+		Files:               []string{},
+		ThreadMessages:      []ThreadMessage{},
+		AllMessagesWithTags: make(map[string][]string),
 	}
 }
 
-// Search returns the configured SearchResults and SearchErr
 func (m *MockClient) Search(query string, limit int) ([]SearchResult, error) {
 	m.SearchCalls = append(m.SearchCalls, searchCall{Query: query, Limit: limit})
-
 	if m.SearchErr != nil {
 		return nil, m.SearchErr
 	}
 	return m.SearchResults, nil
 }
 
-// GetFiles returns the configured Files and FilesErr
 func (m *MockClient) GetFiles(query string, limit int) ([]string, error) {
 	m.GetFilesCalls = append(m.GetFilesCalls, getFilesCall{Query: query, Limit: limit})
-
 	if m.FilesErr != nil {
 		return nil, m.FilesErr
 	}
 	return m.Files, nil
 }
 
-// Tag returns the configured TagErr
 func (m *MockClient) Tag(query string, tags []string) error {
 	m.TagCalls = append(m.TagCalls, tagCall{Query: query, Tags: tags})
-
 	return m.TagErr
 }
 
-// ShowThread returns the configured ThreadMessages and ThreadErr
 func (m *MockClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 	m.ShowThreadCalls = append(m.ShowThreadCalls, showThreadCall{ThreadID: threadID})
-
 	if m.ThreadErr != nil {
 		return nil, m.ThreadErr
 	}
 	return m.ThreadMessages, nil
 }
 
-// Reset clears all recorded calls
+func (m *MockClient) MessageExists(_ string) bool {
+	return m.MessageExistsResult
+}
+
+func (m *MockClient) GetFilenamesByMessageID(_ string) []string {
+	return m.FilenamesByMessageID
+}
+
+func (m *MockClient) DeleteMessageFiles(_ string) error {
+	return m.DeleteFilesErr
+}
+
+func (m *MockClient) ModifyTags(query string, addTags []string, removeTags []string) error {
+	m.ModifyTagsCalls = append(m.ModifyTagsCalls, modifyTagsCall{Query: query, AddTags: addTags, RemoveTags: removeTags})
+	return m.ModifyTagsErr
+}
+
+func (m *MockClient) GetAllMessagesWithTags(_ string) (map[string][]string, error) {
+	if m.AllMessagesErr != nil {
+		return nil, m.AllMessagesErr
+	}
+	return m.AllMessagesWithTags, nil
+}
+
+func (m *MockClient) RunNew() error {
+	return m.RunNewErr
+}
+
+// Reset clears all recorded calls.
 func (m *MockClient) Reset() {
 	m.SearchCalls = nil
 	m.GetFilesCalls = nil
 	m.TagCalls = nil
 	m.ShowThreadCalls = nil
+	m.ModifyTagsCalls = nil
 }
 
-// WithSearchResults sets SearchResults and returns the mock for chaining
+// Builder pattern methods for chaining
+
 func (m *MockClient) WithSearchResults(results []SearchResult) *MockClient {
 	m.SearchResults = results
 	return m
 }
 
-// WithSearchError sets SearchErr and returns the mock for chaining
 func (m *MockClient) WithSearchError(err error) *MockClient {
 	m.SearchErr = err
 	return m
 }
 
-// WithFiles sets Files and returns the mock for chaining
 func (m *MockClient) WithFiles(files []string) *MockClient {
 	m.Files = files
 	return m
 }
 
-// WithFilesError sets FilesErr and returns the mock for chaining
 func (m *MockClient) WithFilesError(err error) *MockClient {
 	m.FilesErr = err
 	return m
 }
 
-// WithTagError sets TagErr and returns the mock for chaining
 func (m *MockClient) WithTagError(err error) *MockClient {
 	m.TagErr = err
 	return m
 }
 
-// WithThreadMessages sets ThreadMessages and returns the mock for chaining
 func (m *MockClient) WithThreadMessages(messages []ThreadMessage) *MockClient {
 	m.ThreadMessages = messages
 	return m
 }
 
-// WithThreadError sets ThreadErr and returns the mock for chaining
 func (m *MockClient) WithThreadError(err error) *MockClient {
 	m.ThreadErr = err
 	return m

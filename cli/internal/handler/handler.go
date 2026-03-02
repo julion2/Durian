@@ -1,7 +1,7 @@
 package handler
 
 import (
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )

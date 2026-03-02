@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/durian-dev/durian/cli/internal/backend/notmuch"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/spf13/cobra"
@@ -37,7 +37,7 @@ func init() {
 func runShow(cmd *cobra.Command, args []string) error {
 	threadID := args[0]
 
-	nmClient := notmuch.NewExecClient()
+	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
 
 	// Use new ShowThread for full thread support
