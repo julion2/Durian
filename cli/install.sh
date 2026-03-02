@@ -4,14 +4,18 @@ set -euo pipefail
 INSTALL_DIR="/usr/local/bin"
 BINARY="durian"
 
-# Find the bazel-built binary
-BAZEL_BIN="$(bazel info bazel-bin 2>/dev/null)/cli/cmd/durian/durian_/durian"
-
-if [ ! -f "$BAZEL_BIN" ]; then
-    echo "Binary not found. Building..."
-    bazel build //cli/cmd/durian
-    BAZEL_BIN="$(bazel info bazel-bin)/cli/cmd/durian/durian_/durian"
+# Build first (must run as normal user, not sudo — sudo uses a different bazel cache)
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Error: Do not run the entire script with sudo."
+    echo "Usage: ./cli/install.sh"
+    exit 1
 fi
 
-cp "$BAZEL_BIN" "$INSTALL_DIR/$BINARY"
+echo "Building..."
+bazel build //cli/cmd/durian
+
+BAZEL_BIN="$(bazel info bazel-bin)/cli/cmd/durian/durian_/durian"
+
+echo "Installing to $INSTALL_DIR/$BINARY (may ask for password)..."
+sudo cp "$BAZEL_BIN" "$INSTALL_DIR/$BINARY"
 echo "Installed $BINARY to $INSTALL_DIR/$BINARY"

@@ -1,0 +1,3 @@
+# Inject version/git info into binaries
+build --workspace_status_command=tools/stamp.sh
+build --stamp

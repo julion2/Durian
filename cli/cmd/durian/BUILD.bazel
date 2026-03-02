@@ -41,4 +41,9 @@ go_binary(
     name = "durian",
     embed = [":durian_lib"],
     visibility = ["//visibility:public"],
+    x_defs = {
+        "main.version": "{STABLE_VERSION}",
+        "main.gitCommit": "{STABLE_GIT_COMMIT}",
+        "main.gitDirty": "{STABLE_GIT_DIRTY}",
+    },
 )

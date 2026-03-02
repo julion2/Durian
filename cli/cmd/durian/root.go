@@ -9,8 +9,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Version is set via -ldflags "-X main.version=..."
-var version = "dev"
+// Set via Bazel x_defs (workspace status stamping)
+var (
+	version   = "dev"
+	gitCommit = ""
+	gitDirty  = ""
+)
 
 // Global flags
 var (
@@ -24,10 +28,9 @@ var cfg *config.Config
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:     "durian",
-	Short:   "Durian Mail CLI - A notmuch-based email client",
-	Long:    `Durian is a fast, terminal-based email client that uses notmuch for indexing and searching.`,
-	Version: version,
+	Use:   "durian",
+	Short: "Durian Mail CLI - A notmuch-based email client",
+	Long:  `Durian is a fast, terminal-based email client that uses notmuch for indexing and searching.`,
 	// Show help when called without subcommands
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
@@ -42,6 +45,8 @@ func Execute() {
 }
 
 func init() {
+	rootCmd.Version = formatVersion()
+
 	// Global flags available to all commands
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.config/durian/config.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
@@ -49,6 +54,17 @@ func init() {
 
 	// Load config before command execution
 	cobra.OnInitialize(initConfig, initDebug)
+}
+
+func formatVersion() string {
+	v := version
+	if gitDirty == "true" {
+		v += "-dirty"
+	}
+	if gitCommit != "" {
+		v += " (" + gitCommit + ")"
+	}
+	return v
 }
 
 // initConfig loads configuration from file
