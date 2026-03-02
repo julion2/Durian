@@ -195,41 +195,59 @@ class AvatarManager: ObservableObject {
         return await fetchImage(from: url)
     }
     
+    /// Known Brandfetch placeholder image MD5 hashes.
+    /// Brandfetch returns 200 + a generic placeholder for domains without a real logo,
+    /// so we reject responses matching these hashes to avoid showing the same generic icon everywhere.
+    private static let brandfetchPlaceholderHashes: Set<String> = [
+        "38926c4ecbd5590c77a969ae5a516b49",  // "known domain, no logo" placeholder (2588 bytes)
+        "ad18dbe2bac10daa8e99cc27efed1607",  // "unknown domain" placeholder (310 bytes)
+    ]
+
     /// Fetch company logo from Brandfetch
     /// Requires browser User-Agent to bypass hotlinking protection
     private func fetchBrandfetch(domain: String) async -> NSImage? {
         let urlString = "https://cdn.brandfetch.io/\(domain)?c=\(brandfetchToken)"
         guard let url = URL(string: urlString) else { return nil }
-        
+
         // Browser User-Agent required to bypass hotlinking block
         var request = URLRequest(url: url)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)", forHTTPHeaderField: "User-Agent")
-        
-        return await fetchImage(request: request)
+
+        return await fetchImage(request: request, rejectPlaceholders: true)
     }
     
     /// Generic image fetcher with error handling (URL version)
-    private func fetchImage(from url: URL) async -> NSImage? {
+    private func fetchImage(from url: URL, rejectPlaceholders: Bool = false) async -> NSImage? {
         let request = URLRequest(url: url)
-        return await fetchImage(request: request)
+        return await fetchImage(request: request, rejectPlaceholders: rejectPlaceholders)
     }
     
     /// Generic image fetcher with error handling (Request version)
-    private func fetchImage(request: URLRequest) async -> NSImage? {
+    private func fetchImage(request: URLRequest, rejectPlaceholders: Bool = false) async -> NSImage? {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            
+
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
                 return nil
             }
-            
+
+            // Reject known Brandfetch placeholder images
+            if rejectPlaceholders {
+                let hash = Insecure.MD5.hash(data: data)
+                    .map { String(format: "%02x", $0) }
+                    .joined()
+                if Self.brandfetchPlaceholderHashes.contains(hash) {
+                    return nil
+                }
+            }
+
             // Verify we got image data, not HTML error page
             guard let image = NSImage(data: data),
                   image.isValid else {
                 return nil
             }
-            
+
             return image
         } catch {
             print("AVATAR Failed to fetch \(request.url?.absoluteString ?? "unknown"): \(error.localizedDescription)")
