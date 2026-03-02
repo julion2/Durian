@@ -276,6 +276,7 @@ struct ContentView: View {
                             }
                         },
                         onEditDraft: email.isDraft ? editSelectedDraft : nil,
+                        currentFolder: accountManager.selectedFolder,
                         onAddTag: { tag in
                             Task { await accountManager.addTag(id: email.id, tag: tag) }
                         },

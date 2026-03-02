@@ -17,6 +17,7 @@ struct EmailDetailView: View {
     let onForward: () -> Void
     let onLoadBody: () -> Void
     var onEditDraft: (() -> Void)? = nil
+    var currentFolder: String? = nil
     var onAddTag: ((String) -> Void)? = nil
     var onRemoveTag: ((String) -> Void)? = nil
     
@@ -204,7 +205,8 @@ struct EmailDetailView: View {
     // MARK: - Header Section
     
     private var parsedTags: [String] {
-        email.tags?.split(separator: ",").map(String.init) ?? []
+        (email.tags?.split(separator: ",").map(String.init) ?? [])
+            .filter { $0 != currentFolder }
     }
 
     @ViewBuilder
