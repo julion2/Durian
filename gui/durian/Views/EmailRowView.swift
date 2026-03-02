@@ -5,6 +5,7 @@ struct EmailRowView: View {
     var isSelected: Bool = false
     var isFirstInGroup: Bool = true   // First in contiguous selection group (top corners rounded)
     var isLastInGroup: Bool = true    // Last in contiguous selection group (bottom corners rounded)
+    var currentFolder: String = AccountManager.shared.selectedFolder
     
     // Context menu callbacks
     var onTogglePin: (() -> Void)?
@@ -61,11 +62,20 @@ struct EmailRowView: View {
                         .lineLimit(2)
                 }
 
-                if let tags = email.tags, !tags.isEmpty {
-                    Text(tags)
-                        .font(.caption2)
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.5) : Color.gray.opacity(0.6))
-                        .lineLimit(1)
+                if !visibleTags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(visibleTags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption2)
+                                .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    (isSelected ? Color.white.opacity(0.15) : Color.gray.opacity(0.15)),
+                                    in: Capsule()
+                                )
+                        }
+                    }
                 }
             }
         }
@@ -116,6 +126,17 @@ struct EmailRowView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+
+    /// Tags already represented by icons or implied by the current view
+    private static let hiddenTags: Set<String> = ["unread", "flagged", "attachment"]
+
+    private var visibleTags: [String] {
+        guard let tags = email.tags, !tags.isEmpty else { return [] }
+        return tags
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !Self.hiddenTags.contains($0) && $0 != currentFolder }
     }
 
     private var senderName: String {
