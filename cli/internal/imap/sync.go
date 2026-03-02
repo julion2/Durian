@@ -223,6 +223,8 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 					s.applyFolderTags(mboxResult.Name)
 				}
 			}
+			// Apply content-based tags (e.g., calendar invitations)
+			s.applyContentTags()
 		}
 	}
 
@@ -685,6 +687,14 @@ func (s *Syncer) applyFolderTags(mailboxName string) {
 		debug.Log("applyFolderTags: failed to apply tags to %s: %v", mailboxName, err)
 	} else {
 		debug.Log("applyFolderTags: applied +%v -%v to %s", mapping.AddTags, mapping.RemoveTags, mailboxName)
+	}
+}
+
+// applyContentTags tags messages based on content type (e.g., calendar invitations).
+// This is idempotent: messages already tagged are excluded by the query.
+func (s *Syncer) applyContentTags() {
+	if err := s.notmuch.ModifyTags("mimetype:text/calendar AND NOT tag:cal", []string{"cal"}, nil); err != nil {
+		debug.Log("applyContentTags: failed to tag calendar messages: %v", err)
 	}
 }
 
