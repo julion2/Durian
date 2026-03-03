@@ -15,6 +15,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var contentHeight: CGFloat
     let font: NSFont
     let textColor: NSColor
+    let backgroundColor: NSColor
     let placeholderText: String
     @Binding var formatCommand: String?
     @Binding var fontSizeCommand: Int?
@@ -208,6 +209,26 @@ struct EditableWebView: NSViewRepresentable {
         }
     }
 
+    private static func resolveHex(_ color: NSColor, dark: Bool) -> String {
+        let name: NSAppearance.Name = dark ? .darkAqua : .aqua
+        guard let appearance = NSAppearance(named: name) else {
+            let resolved = color.usingColorSpace(.sRGB) ?? color
+            return String(format: "#%02x%02x%02x",
+                Int(resolved.redComponent * 255),
+                Int(resolved.greenComponent * 255),
+                Int(resolved.blueComponent * 255))
+        }
+        var hex = "#000000"
+        appearance.performAsCurrentDrawingAppearance {
+            let resolved = color.usingColorSpace(.sRGB) ?? color
+            hex = String(format: "#%02x%02x%02x",
+                Int(resolved.redComponent * 255),
+                Int(resolved.greenComponent * 255),
+                Int(resolved.blueComponent * 255))
+        }
+        return hex
+    }
+
     private func buildEditableHTML(plainText: String, signature: String?, font: NSFont, textColor: NSColor, placeholder: String) -> String {
         let escapedText = plainText
             .replacingOccurrences(of: "&", with: "&amp;")
@@ -222,10 +243,10 @@ struct EditableWebView: NSViewRepresentable {
             content += "<br><span id=\"sig\">\(sig)</span>"
         }
 
-        let r = Int(textColor.redComponent * 255)
-        let g = Int(textColor.greenComponent * 255)
-        let b = Int(textColor.blueComponent * 255)
-        let colorHex = String(format: "#%02x%02x%02x", r, g, b)
+        let lightTextHex = Self.resolveHex(textColor, dark: false)
+        let darkTextHex = Self.resolveHex(textColor, dark: true)
+        let lightBgHex = Self.resolveHex(backgroundColor, dark: false)
+        let darkBgHex = Self.resolveHex(backgroundColor, dark: true)
 
         return """
         <!DOCTYPE html>
@@ -237,7 +258,6 @@ struct EditableWebView: NSViewRepresentable {
                 ul, ol { padding-left: 1.5em; margin: 0.3em 0; }
                 li > ul, li > ol { margin: 0; }
                 html, body {
-                    background-color: transparent;
                     overflow: hidden;
                     height: auto;
                 }
@@ -245,9 +265,14 @@ struct EditableWebView: NSViewRepresentable {
                     font-family: -apple-system, BlinkMacSystemFont, sans-serif;
                     font-size: \(font.pointSize)px;
                     line-height: 1.47;
-                    color: \(colorHex);
                     color-scheme: light dark;
                     padding: 0;
+                }
+                @media (prefers-color-scheme: light) {
+                    html, body { background-color: \(lightBgHex); color: \(lightTextHex); }
+                }
+                @media (prefers-color-scheme: dark) {
+                    html, body { background-color: \(darkBgHex); color: \(darkTextHex); }
                 }
                 #editor {
                     outline: none;

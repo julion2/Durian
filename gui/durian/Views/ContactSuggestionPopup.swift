@@ -14,33 +14,30 @@ struct ContactSuggestionRow: View {
     let contact: Contact
     let isSelected: Bool
     
-    private let selectedColor = Color(red: 0.847, green: 0.847, blue: 0.847) // #D8D8D8
-    private let emailColor = Color(red: 0.471, green: 0.471, blue: 0.471)    // #787878
-    
     var body: some View {
         HStack(spacing: 8) {
             // Avatar with initials
             AvatarView(name: contact.displayName, email: contact.email, size: 22)
-            
+
             // Name and Email
             VStack(alignment: .leading, spacing: 1) {
                 Text(contact.displayName)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.black)
+                    .foregroundColor(.primary)
                     .lineLimit(1)
-                
+
                 Text(contact.email)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(emailColor)
+                    .foregroundColor(Color.Detail.textSecondary)
                     .lineLimit(1)
             }
-            
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .frame(height: 37)
-        .background(isSelected ? selectedColor : Color.white)
+        .background(isSelected ? Color.Detail.buttonBackground : Color.Detail.cardBackground)
         .cornerRadius(8)
     }
 }
@@ -53,10 +50,9 @@ struct ContactSuggestionPopup: View {
     let onSelect: (Contact) -> Void
     let onDismiss: () -> Void
     
-    private let borderColor = Color(red: 0.918, green: 0.918, blue: 0.918) // #EAEAEA
     private let maxHeight: CGFloat = 200  // ~5 rows visible
     private let popupWidth: CGFloat = 200
-    
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
@@ -83,13 +79,13 @@ struct ContactSuggestionPopup: View {
         }
         .padding(6)
         .frame(width: popupWidth)
-        .background(Color.white)
+        .background(Color.Detail.cardBackground)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(borderColor, lineWidth: 1)
+                .stroke(Color.Detail.border, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 4)
+        .shadow(color: Color.primary.opacity(0.08), radius: 8, x: 0, y: 4)
         .fixedSize(horizontal: true, vertical: true)
     }
 }

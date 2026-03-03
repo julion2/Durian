@@ -410,6 +410,7 @@ struct ComposeForm: View {
                         contentHeight: $editorHeight,
                         font: .systemFont(ofSize: 14),
                         textColor: NSColor(textColor),
+                        backgroundColor: NSColor(Color.Detail.cardBackground),
                         placeholderText: "Message",
                         formatCommand: $formatCommand,
                         fontSizeCommand: $fontSizeCommand,
@@ -453,7 +454,7 @@ struct ComposeForm: View {
                 }
             }
         }
-        .background(Color.white)
+        .background(Color.Detail.cardBackground)
         .cornerRadius(8)
         .padding(.horizontal, 24)
         .padding(.vertical, 8)
