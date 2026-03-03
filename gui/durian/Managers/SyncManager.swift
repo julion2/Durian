@@ -55,6 +55,11 @@ class SyncManager: ObservableObject {
     
     // MARK: - Sync Lock (prevents multiple concurrent syncs)
     private var syncLock = false
+
+    // MARK: - Failure Tracking (suppress transient failure banners)
+    private var consecutiveFailures: Int = 0
+    private var userSawFailureBanner: Bool = false
+    private var pendingOfflineBanner: DispatchWorkItem?
     
     /// True if a sync is currently in progress
     var isSyncing: Bool { syncLock }
@@ -94,13 +99,27 @@ class SyncManager: ObservableObject {
                 Task { @MainActor in
                     if isConnected {
                         print("SYNC: Back online, restarting timers and syncing")
-                        BannerManager.shared.showSuccess(title: "Back Online", message: "Connection restored. Syncing now...")
+                        self?.pendingOfflineBanner?.cancel()
+                        self?.pendingOfflineBanner = nil
+                        if self?.userSawFailureBanner == true {
+                            BannerManager.shared.showSuccess(title: "Back Online", message: "Connection restored. Syncing now...")
+                            self?.userSawFailureBanner = false
+                        }
                         self?.restartTimers()
                         await self?.quickSync()
                     } else {
                         print("SYNC: Went offline, stopping timers")
-                        BannerManager.shared.showWarning(title: "Offline", message: "No network connection. Sync paused.")
                         self?.stopTimers()
+                        // Delay offline banner — brief disconnects (WiFi switch) shouldn't notify
+                        let work = DispatchWorkItem { [weak self] in
+                            Task { @MainActor in
+                                guard let self = self, !NetworkMonitor.shared.isConnected else { return }
+                                self.userSawFailureBanner = true
+                                BannerManager.shared.showWarning(title: "Offline", message: "No network connection. Sync paused.")
+                            }
+                        }
+                        self?.pendingOfflineBanner = work
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: work)
                     }
                 }
             }
@@ -188,6 +207,24 @@ class SyncManager: ObservableObject {
         }
     }
     
+    // MARK: - Failure Suppression
+
+    /// Show banner only after 3+ consecutive failures
+    private func showFailureBannerIfThresholdMet(title: String, message: String) {
+        guard consecutiveFailures >= 3 else {
+            print("SYNC: Suppressing banner (\(consecutiveFailures)/3 consecutive failures)")
+            return
+        }
+        userSawFailureBanner = true
+        BannerManager.shared.showWarning(title: title, message: message)
+    }
+
+    /// Reset failure state on successful sync
+    private func recordSyncSuccess() {
+        consecutiveFailures = 0
+        userSawFailureBanner = false
+    }
+
     // MARK: - Quick Sync (Cmd+R)
     
     /// Quick sync - syncs current profile's INBOX only
@@ -226,12 +263,13 @@ class SyncManager: ObservableObject {
         
         if success {
             print("SYNC: Quick sync completed successfully")
+            recordSyncSuccess()
             syncState = .success
             lastSyncTime = Date()
-            
+
             // Reload email list to show new messages
             await reloadEmailList()
-            
+
             // After 3 seconds, go back to idle
             Task {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -241,14 +279,15 @@ class SyncManager: ObservableObject {
             }
         } else {
             print("SYNC: Quick sync failed")
+            consecutiveFailures += 1
             syncState = .failed("sync error")
             if !NetworkMonitor.shared.isConnected {
-                BannerManager.shared.showWarning(title: "Offline", message: "Sync skipped — no network connection.")
+                showFailureBannerIfThresholdMet(title: "Offline", message: "Sync skipped — no network connection.")
             } else {
-                BannerManager.shared.showWarning(title: "Sync Failed", message: "Could not sync emails. Will retry automatically.")
+                showFailureBannerIfThresholdMet(title: "Sync Failed", message: "Could not sync emails. Will retry automatically.")
             }
         }
-        
+
         return success
     }
     
@@ -272,16 +311,18 @@ class SyncManager: ObservableObject {
         
         if success {
             print("SYNC: Full sync completed successfully")
+            recordSyncSuccess()
             lastSyncTime = Date()
-            
+
             // Reload email list to show new messages
             await reloadEmailList()
         } else {
             print("SYNC: Full sync failed")
+            consecutiveFailures += 1
             if !NetworkMonitor.shared.isConnected {
-                BannerManager.shared.showWarning(title: "Offline", message: "Background sync skipped — no network connection.")
+                showFailureBannerIfThresholdMet(title: "Offline", message: "Background sync skipped — no network connection.")
             } else {
-                BannerManager.shared.showWarning(title: "Full Sync Failed", message: "Background sync encountered an error.")
+                showFailureBannerIfThresholdMet(title: "Full Sync Failed", message: "Background sync encountered an error.")
             }
         }
         
