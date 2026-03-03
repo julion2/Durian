@@ -78,12 +78,13 @@ struct NonScrollingWebView: NSViewRepresentable {
     
     private func buildSecureHTML(html: String, theme: String, loadRemoteImages: Bool) -> String {
         // Dynamic CSP based on loadRemoteImages setting
-        // Note: script-src 'unsafe-inline' needed for height measurement
+        // Note: script-src stays 'none' — evaluateJavaScript() from Swift bypasses CSP,
+        // so height measurement still works while inline <script> tags are blocked.
         let csp: String
         if loadRemoteImages {
-            csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: cid: https: http:;"
+            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https: http:;"
         } else {
-            csp = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data: cid:;"
+            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid:;"
         }
         
         // Theme CSS with robust dark mode (CSS filter invert)

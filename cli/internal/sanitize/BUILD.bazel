@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "sanitize",
+    srcs = ["sanitize.go"],
+    importpath = "github.com/durian-dev/durian/cli/internal/sanitize",
+    visibility = ["//cli:__subpackages__"],
+    deps = ["@com_github_microcosm_cc_bluemonday//:bluemonday"],
+)
+
+go_test(
+    name = "sanitize_test",
+    srcs = ["sanitize_test.go"],
+    embed = [":sanitize"],
+)

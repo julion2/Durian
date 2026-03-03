@@ -6,16 +6,12 @@ bazel_dep(name = "rules_apple", version = "4.3.2")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//cli:go.mod")
-use_repo(go_deps, "com_github_burntsushi_toml", "com_github_emersion_go_imap", "com_github_emersion_go_maildir", "com_github_emersion_go_sasl", "com_github_google_uuid", "com_github_gorilla_mux", "com_github_spf13_cobra", "org_golang_x_term", "org_golang_x_text", "org_modernc_sqlite")
-
+use_repo(go_deps, "com_github_burntsushi_toml", "com_github_emersion_go_imap", "com_github_emersion_go_maildir", "com_github_emersion_go_sasl", "com_github_google_uuid", "com_github_gorilla_mux", "com_github_microcosm_cc_bluemonday", "com_github_spf13_cobra", "org_golang_x_term", "org_golang_x_text", "org_modernc_sqlite")
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "toml_decoder",
-    url = "https://github.com/dduan/TOMLDecoder/archive/refs/tags/0.3.1.tar.gz",
-    integrity = "sha256-m4OHo1W9UgT3eMxkuTAPzdCdRBcnrF1A1oskjpas9vE=",
-    strip_prefix = "TOMLDecoder-0.3.1",
     build_file_content = """
 load("@rules_swift//swift:swift.bzl", "swift_library")
 
@@ -34,4 +30,7 @@ swift_library(
     deps = [":Deserializer"],
 )
 """,
+    integrity = "sha256-m4OHo1W9UgT3eMxkuTAPzdCdRBcnrF1A1oskjpas9vE=",
+    strip_prefix = "TOMLDecoder-0.3.1",
+    url = "https://github.com/dduan/TOMLDecoder/archive/refs/tags/0.3.1.tar.gz",
 )

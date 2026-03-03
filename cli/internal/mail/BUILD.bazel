@@ -8,7 +8,10 @@ go_library(
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/mail",
     visibility = ["//cli:__subpackages__"],
-    deps = ["//cli/internal/encoding"],
+    deps = [
+        "//cli/internal/encoding",
+        "//cli/internal/sanitize",
+    ],
 )
 
 go_test(

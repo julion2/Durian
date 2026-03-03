@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/durian-dev/durian/cli/internal/sanitize"
 )
 
 // ---------- Types ----------
@@ -516,6 +518,7 @@ func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments 
 		extractFromRaw(raw, &text, &html, &attachments)
 	}
 	html = StripQuotedContent(html)
+	html = sanitize.SanitizeHTML(html)
 	return
 }
 

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/durian-dev/durian/cli/internal/encoding"
+	"github.com/durian-dev/durian/cli/internal/sanitize"
 )
 
 // Parser handles MIME parsing of email messages
@@ -34,7 +35,7 @@ func (p *Parser) Parse(msg *mail.Message) *MailContent {
 
 	textBody, htmlBody, attachments := p.extractBody(msg)
 	content.Body = textBody
-	content.HTML = htmlBody
+	content.HTML = sanitize.SanitizeHTML(htmlBody)
 	content.Attachments = attachments
 
 	return content
