@@ -55,10 +55,10 @@ struct ComposeForm: View {
     private let maxAttachments: Int = 10
     
     // MARK: - Colors
-    
-    private let labelColor = Color(hex: "#4a5565")
-    private let placeholderColor = Color(hex: "#717182")
-    private let textColor = Color(hex: "#0a0a0a")
+
+    private let labelColor = Color.Detail.textSecondary
+    private let placeholderColor = Color.Detail.textPlaceholder
+    private let textColor = Color.Detail.textPrimary
     
     init(accounts: [MailAccount], existingDraft: EmailDraft? = nil, triggerSend: Binding<Bool>, showingFilePicker: Binding<Bool>, currentDraft: Binding<EmailDraft?>, onDismiss: @escaping () -> Void) {
         self.accounts = accounts

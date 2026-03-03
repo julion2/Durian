@@ -1,8 +1,8 @@
 //
-//  UserFacingError.swift
+//  BannerMessage.swift
 //  Durian
 //
-//  User-facing error model for toast/banner display
+//  Banner message model for toast/banner display
 //
 
 import Foundation
@@ -10,12 +10,16 @@ import SwiftUI
 
 // MARK: - Severity
 
-enum ErrorSeverity {
+enum BannerSeverity {
+    case info       // Gray, auto-dismiss after 5s
+    case success    // Green, auto-dismiss after 5s
     case warning    // Orange, auto-dismiss after 5s
     case critical   // Red, stays until dismissed
 
     var color: Color {
         switch self {
+        case .info: return .secondary
+        case .success: return .green
         case .warning: return .orange
         case .critical: return .red
         }
@@ -23,15 +27,17 @@ enum ErrorSeverity {
 
     var icon: String {
         switch self {
+        case .info: return "info.circle.fill"
+        case .success: return "checkmark.circle.fill"
         case .warning: return "exclamationmark.triangle.fill"
         case .critical: return "xmark.octagon.fill"
         }
     }
 }
 
-// MARK: - Error Action
+// MARK: - Banner Action
 
-struct ErrorAction: Identifiable {
+struct BannerAction: Identifiable {
     let id = UUID()
     let label: String
     let role: ButtonRole?
@@ -44,16 +50,16 @@ struct ErrorAction: Identifiable {
     }
 }
 
-// MARK: - User-Facing Error
+// MARK: - Banner Message
 
-struct UserFacingError: Identifiable {
+struct BannerMessage: Identifiable {
     let id = UUID()
     let title: String
     let message: String
-    let severity: ErrorSeverity
-    let actions: [ErrorAction]
+    let severity: BannerSeverity
+    let actions: [BannerAction]
 
-    init(title: String, message: String, severity: ErrorSeverity, actions: [ErrorAction] = []) {
+    init(title: String, message: String, severity: BannerSeverity, actions: [BannerAction] = []) {
         self.title = title
         self.message = message
         self.severity = severity
@@ -64,40 +70,40 @@ struct UserFacingError: Identifiable {
 // MARK: - EmailSendingError Mapping
 
 extension EmailSendingError {
-    var userFacingError: UserFacingError {
+    var bannerMessage: BannerMessage {
         switch self {
         case .noSMTPConfiguration:
-            return UserFacingError(
+            return BannerMessage(
                 title: "SMTP nicht konfiguriert",
                 message: "Kein SMTP-Server für diesen Account konfiguriert.",
                 severity: .critical
             )
         case .authenticationFailed:
-            return UserFacingError(
+            return BannerMessage(
                 title: "SMTP Authentifizierung fehlgeschlagen",
                 message: "Benutzername oder Passwort falsch.",
                 severity: .critical
             )
         case .connectionFailed:
-            return UserFacingError(
+            return BannerMessage(
                 title: "SMTP Server nicht erreichbar",
                 message: "Verbindung zum SMTP-Server fehlgeschlagen.",
                 severity: .critical
             )
         case .sendFailed(let msg):
-            return UserFacingError(
+            return BannerMessage(
                 title: "Senden fehlgeschlagen",
                 message: msg,
                 severity: .critical
             )
         case .invalidRecipients:
-            return UserFacingError(
+            return BannerMessage(
                 title: "Keine Empfänger angegeben",
                 message: "Bitte mindestens einen Empfänger eingeben.",
                 severity: .critical
             )
         case .invalidEmailFormat(let emails):
-            return UserFacingError(
+            return BannerMessage(
                 title: "Ungültige E-Mail-Adressen",
                 message: emails.joined(separator: ", "),
                 severity: .critical

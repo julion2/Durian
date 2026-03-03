@@ -145,17 +145,17 @@ struct ComposeWindow: View {
         }
         .onChange(of: showSaveError) { _, show in
             if show {
-                ErrorManager.shared.showCritical(
+                BannerManager.shared.showCritical(
                     title: "Draft nicht gespeichert",
                     message: saveErrorMessage,
                     actions: [
-                        ErrorAction("Retry") { handleDismiss() },
-                        ErrorAction("Discard", role: .destructive) {
+                        BannerAction("Retry") { handleDismiss() },
+                        BannerAction("Discard", role: .destructive) {
                             draftService.discard(id: draftId)
                             dismiss()
                         },
-                        ErrorAction("Keep Editing", role: .cancel) {
-                            ErrorManager.shared.dismiss()
+                        BannerAction("Keep Editing", role: .cancel) {
+                            BannerManager.shared.dismiss()
                         }
                     ]
                 )
@@ -164,15 +164,15 @@ struct ComposeWindow: View {
         }
         .onChange(of: showInvalidEmailWarning) { _, show in
             if show {
-                ErrorManager.shared.showCritical(
+                BannerManager.shared.showCritical(
                     title: "Ungültige E-Mail-Adressen",
                     message: invalidEmails.joined(separator: "\n"),
                     actions: [
-                        ErrorAction("Cancel", role: .cancel) {
-                            ErrorManager.shared.dismiss()
+                        BannerAction("Cancel", role: .cancel) {
+                            BannerManager.shared.dismiss()
                         },
-                        ErrorAction("Send Anyway") {
-                            ErrorManager.shared.dismiss()
+                        BannerAction("Send Anyway") {
+                            BannerManager.shared.dismiss()
                             handleSendWithSkipValidation()
                         }
                     ]
@@ -225,13 +225,13 @@ struct ComposeWindow: View {
                 } else {
                     print("COMPOSE: Send failed - \(error)")
                     await MainActor.run {
-                        ErrorManager.shared.show(error.userFacingError)
+                        BannerManager.shared.show(error.bannerMessage)
                     }
                 }
             } catch {
                 print("COMPOSE: Send failed - \(error)")
                 await MainActor.run {
-                    ErrorManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
                 }
             }
         }
@@ -253,12 +253,12 @@ struct ComposeWindow: View {
             } catch let error as EmailSendingError {
                 print("COMPOSE: Send failed - \(error)")
                 await MainActor.run {
-                    ErrorManager.shared.show(error.userFacingError)
+                    BannerManager.shared.show(error.bannerMessage)
                 }
             } catch {
                 print("COMPOSE: Send failed - \(error)")
                 await MainActor.run {
-                    ErrorManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
                 }
             }
         }

@@ -50,8 +50,8 @@ swift_test(
 )
 
 swift_test(
-    name = "error_manager_test",
-    srcs = ["tests/ErrorManagerTests.swift"],
+    name = "banner_manager_test",
+    srcs = ["tests/BannerManagerTests.swift"],
     deps = [":durian_testlib"],
 )
 

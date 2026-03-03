@@ -82,15 +82,15 @@ struct ComposeToolbar: View {
             HStack(spacing: 8) {
                 Text(currentFontFamily)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "#0a0a0a"))
+                    .foregroundColor(Color.Detail.textPrimary)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(hex: "#0a0a0a"))
+                    .foregroundColor(Color.Detail.textPrimary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(minWidth: 120)
-            .background(Color(hex: "#f3f3f5"))
+            .background(Color.Detail.buttonBackground)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -115,15 +115,15 @@ struct ComposeToolbar: View {
             HStack(spacing: 8) {
                 Text("\(currentFontSize)")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: "#0a0a0a"))
+                    .foregroundColor(Color.Detail.textPrimary)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(hex: "#0a0a0a"))
+                    .foregroundColor(Color.Detail.textPrimary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .frame(minWidth: 60)
-            .background(Color(hex: "#f3f3f5"))
+            .background(Color.Detail.buttonBackground)
             .cornerRadius(8)
         }
         .buttonStyle(.plain)
@@ -183,11 +183,11 @@ struct ClearFormattingButton: View {
                     .frame(width: 18, height: 1.5)
                     .rotationEffect(.degrees(-30))
             }
-            .foregroundColor(Color(hex: "#4a5565"))
+            .foregroundColor(Color.Detail.textSecondary)
             .frame(width: 28, height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovered ? Color(hex: "#f3f3f5") : Color.clear)
+                    .fill(isHovered ? Color.Detail.buttonBackground : Color.clear)
             )
         }
         .buttonStyle(.plain)
@@ -210,11 +210,11 @@ struct ToolbarIconButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .regular))
-                .foregroundColor(isActive ? .accentColor : Color(hex: "#4a5565"))
+                .foregroundColor(isActive ? .accentColor : Color.Detail.textSecondary)
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isActive ? Color.accentColor.opacity(0.15) : (isHovered ? Color(hex: "#f3f3f5") : Color.clear))
+                        .fill(isActive ? Color.accentColor.opacity(0.15) : (isHovered ? Color.Detail.buttonBackground : Color.clear))
                 )
         }
         .buttonStyle(.plain)
@@ -223,5 +223,3 @@ struct ToolbarIconButton: View {
         }
     }
 }
-
-// Color(hex:) extension is defined in ProfileManager.swift

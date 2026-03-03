@@ -1,35 +1,35 @@
 //
-//  ErrorBannerView.swift
+//  BannerView.swift
 //  Durian
 //
-//  Banner view for displaying user-facing errors
+//  Banner view for displaying user-facing messages
 //
 
 import SwiftUI
 
-struct ErrorBannerView: View {
-    let error: UserFacingError
+struct BannerView: View {
+    let banner: BannerMessage
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: error.severity.icon)
+            Image(systemName: banner.severity.icon)
                 .font(.system(size: 16))
-                .foregroundStyle(error.severity.color)
+                .foregroundStyle(banner.severity.color)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(error.title)
+                Text(banner.title)
                     .font(.headline)
-                Text(error.message)
+                Text(banner.message)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            if !error.actions.isEmpty {
+            if !banner.actions.isEmpty {
                 HStack(spacing: 6) {
-                    ForEach(error.actions) { action in
+                    ForEach(banner.actions) { action in
                         Button(action.label, role: action.role) {
                             action.handler()
                         }

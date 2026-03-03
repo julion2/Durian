@@ -21,7 +21,7 @@ struct ContentView: View {
     @StateObject private var profileManager = ProfileManager.shared
     @StateObject private var syncManager = SyncManager.shared
     @StateObject private var networkMonitor = NetworkMonitor.shared
-    @StateObject private var errorManager = ErrorManager.shared
+    @StateObject private var bannerManager = BannerManager.shared
     @State private var selectedTagID: String? = "inbox"
     @State private var cursorEmailId: String? = nil       // Highlighted email (cursor position)
     @State private var markedEmails: Set<String> = []     // Marked emails (selection for batch ops)
@@ -46,21 +46,21 @@ struct ContentView: View {
                 tagPickerOverlay
             }
 
-            // Error Banner Overlay (bottom-right toast)
-            if let error = errorManager.currentError {
+            // Banner Overlay (bottom-right toast)
+            if let banner = bannerManager.currentBanner {
                 VStack {
                     Spacer()
                     HStack {
                         Spacer()
-                        ErrorBannerView(error: error) {
-                            errorManager.dismiss()
+                        BannerView(banner: banner) {
+                            bannerManager.dismiss()
                         }
                         .frame(maxWidth: 400)
                     }
                 }
                 .padding(16)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.3), value: errorManager.currentError?.id)
+                .animation(.easeInOut(duration: 0.3), value: bannerManager.currentBanner?.id)
                 .zIndex(100)
             }
         }

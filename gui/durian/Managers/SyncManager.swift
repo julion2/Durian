@@ -94,12 +94,12 @@ class SyncManager: ObservableObject {
                 Task { @MainActor in
                     if isConnected {
                         print("SYNC: Back online, restarting timers and syncing")
-                        ErrorManager.shared.showWarning(title: "Back Online", message: "Connection restored. Syncing now...")
+                        BannerManager.shared.showSuccess(title: "Back Online", message: "Connection restored. Syncing now...")
                         self?.restartTimers()
                         await self?.quickSync()
                     } else {
                         print("SYNC: Went offline, stopping timers")
-                        ErrorManager.shared.showWarning(title: "Offline", message: "No network connection. Sync paused.")
+                        BannerManager.shared.showWarning(title: "Offline", message: "No network connection. Sync paused.")
                         self?.stopTimers()
                     }
                 }
@@ -243,9 +243,9 @@ class SyncManager: ObservableObject {
             print("SYNC: Quick sync failed")
             syncState = .failed("sync error")
             if !NetworkMonitor.shared.isConnected {
-                ErrorManager.shared.showWarning(title: "Offline", message: "Sync skipped — no network connection.")
+                BannerManager.shared.showWarning(title: "Offline", message: "Sync skipped — no network connection.")
             } else {
-                ErrorManager.shared.showWarning(title: "Sync Failed", message: "Could not sync emails. Will retry automatically.")
+                BannerManager.shared.showWarning(title: "Sync Failed", message: "Could not sync emails. Will retry automatically.")
             }
         }
         
@@ -279,9 +279,9 @@ class SyncManager: ObservableObject {
         } else {
             print("SYNC: Full sync failed")
             if !NetworkMonitor.shared.isConnected {
-                ErrorManager.shared.showWarning(title: "Offline", message: "Background sync skipped — no network connection.")
+                BannerManager.shared.showWarning(title: "Offline", message: "Background sync skipped — no network connection.")
             } else {
-                ErrorManager.shared.showWarning(title: "Full Sync Failed", message: "Background sync encountered an error.")
+                BannerManager.shared.showWarning(title: "Full Sync Failed", message: "Background sync encountered an error.")
             }
         }
         
@@ -298,7 +298,7 @@ class SyncManager: ObservableObject {
     private func runDurianSync(account: String?, mailbox: String?, timeout: TimeInterval) async -> Bool {
         guard let resolvedPath = FileManager.default.resolveDurianPath() else {
             print("SYNC: durian CLI not found in ~/.local/bin or /usr/local/bin")
-            ErrorManager.shared.showCritical(title: "Durian CLI Not Found", message: "Install durian to sync emails.")
+            BannerManager.shared.showCritical(title: "Durian CLI Not Found", message: "Install durian to sync emails.")
             return false
         }
         

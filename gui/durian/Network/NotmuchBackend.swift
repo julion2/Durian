@@ -113,7 +113,7 @@ class NotmuchBackend: ObservableObject {
         guard let durianPath = resolveDurianPath() else {
             connectionStatus = "durian CLI not found"
             print("NOTMUCH ERROR: \(connectionStatus)")
-            ErrorManager.shared.showCritical(title: "Durian CLI Not Found", message: "Cannot start mail server.")
+            BannerManager.shared.showCritical(title: "Durian CLI Not Found", message: "Cannot start mail server.")
             return
         }
 
@@ -156,7 +156,7 @@ class NotmuchBackend: ObservableObject {
         } catch {
             connectionStatus = "Failed to start or connect to server: \(error.localizedDescription)"
             print("NOTMUCH ERROR: \(connectionStatus)")
-            ErrorManager.shared.showCritical(title: "Mail Server Error", message: "Could not connect. Try restarting.")
+            BannerManager.shared.showCritical(title: "Mail Server Error", message: "Could not connect. Try restarting.")
             durianProcess?.terminate()
             durianProcess = nil
             isConnected = false
@@ -311,7 +311,7 @@ class NotmuchBackend: ObservableObject {
         guard let results = response?.results else {
             isLoadingEmails = false
             loadingProgress = "Search failed"
-            ErrorManager.shared.showWarning(title: "Search Failed", message: "Could not complete the search.")
+            BannerManager.shared.showWarning(title: "Search Failed", message: "Could not complete the search.")
             return
         }
 
