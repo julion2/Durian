@@ -199,6 +199,7 @@ class EmailSendingManager: ObservableObject {
         if result.success {
             sendingProgress = "Email sent successfully"
             print("EMAIL: Sent successfully")
+            BannerManager.shared.showSuccess(title: "Sent Successfully", message: "Your email has been delivered.")
             
             // Update contact usage statistics
             let allRecipients = draft.to + draft.cc + draft.bcc

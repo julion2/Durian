@@ -57,6 +57,7 @@ struct ComposeWindow: View {
     }
     
     private func composeView(draft: EmailDraft, accounts: [MailAccount]) -> some View {
+        ZStack {
         ComposeForm(
             accounts: accounts,
             existingDraft: draft,
@@ -180,6 +181,32 @@ struct ComposeWindow: View {
                 showInvalidEmailWarning = false
             }
         }
+
+        // Sending overlay (visible only in compose window)
+        if sendingManager.isSending {
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Sending...")
+                            .font(.headline)
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(nsColor: .windowBackgroundColor))
+                            .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                    )
+                }
+            }
+            .padding(16)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.3), value: sendingManager.isSending)
+        }
+        } // ZStack
     }
     
     // MARK: - Actions

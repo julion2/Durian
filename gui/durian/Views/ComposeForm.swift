@@ -118,8 +118,6 @@ struct ComposeForm: View {
                 attachmentsScrollView
             }
             
-            // Bottom Status Bar
-            statusBar
         }
         .navigationTitle("")
         .fileImporter(
@@ -538,23 +536,6 @@ struct ComposeForm: View {
         .background(Color(NSColor.controlBackgroundColor))
     }
     
-    // MARK: - Status Bar
-    
-    private var statusBar: some View {
-        HStack {
-            if sendingManager.isSending {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text(sendingManager.sendingProgress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(.horizontal, 24)
-        .frame(height: 36)
-        .background(Color(NSColor.windowBackgroundColor))
-    }
     
     // MARK: - Signature Handling
     
