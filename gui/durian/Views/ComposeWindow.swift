@@ -20,6 +20,7 @@ struct ComposeWindow: View {
     @State private var saveErrorMessage: String = ""
     @State private var isSaving: Bool = false
     @State private var showingFilePicker: Bool = false
+    @State private var allowClose: Bool = false
     @State private var showInvalidEmailWarning: Bool = false
     @State private var invalidEmails: [String] = []
     
@@ -33,7 +34,7 @@ struct ComposeWindow: View {
         } else {
             // Draft not found - might have been discarded
             ContentUnavailableView("Draft Not Found", systemImage: "doc.questionmark")
-                .onAppear { dismiss() }
+                .onAppear { closeWindow() }
         }
     }
     
@@ -49,7 +50,7 @@ struct ComposeWindow: View {
             Text("Add an account in config.toml to send emails")
                 .foregroundStyle(.secondary)
             Button("Close") {
-                dismiss()
+                closeWindow()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,13 +148,13 @@ struct ComposeWindow: View {
         .onChange(of: showSaveError) { _, show in
             if show {
                 BannerManager.shared.showCritical(
-                    title: "Draft nicht gespeichert",
+                    title: "Draft Not Saved",
                     message: saveErrorMessage,
                     actions: [
                         BannerAction("Retry") { handleDismiss() },
                         BannerAction("Discard", role: .destructive) {
                             draftService.discard(id: draftId)
-                            dismiss()
+                            closeWindow()
                         },
                         BannerAction("Keep Editing", role: .cancel) {
                             BannerManager.shared.dismiss()
@@ -166,7 +167,7 @@ struct ComposeWindow: View {
         .onChange(of: showInvalidEmailWarning) { _, show in
             if show {
                 BannerManager.shared.showCritical(
-                    title: "Ungültige E-Mail-Adressen",
+                    title: "Invalid Email Addresses",
                     message: invalidEmails.joined(separator: "\n"),
                     actions: [
                         BannerAction("Cancel", role: .cancel) {
@@ -207,10 +208,16 @@ struct ComposeWindow: View {
             .animation(.easeInOut(duration: 0.3), value: sendingManager.isSending)
         }
         } // ZStack
+        .background(WindowCloseGuard(allowClose: $allowClose, onCloseAttempt: { handleDismiss() }))
     }
     
     // MARK: - Actions
-    
+
+    private func closeWindow() {
+        allowClose = true
+        dismiss()
+    }
+
     private func handleDismiss() {
         isSaving = true
         
@@ -218,7 +225,7 @@ struct ComposeWindow: View {
             do {
                 _ = try await draftService.saveToServer(id: draftId)
                 await MainActor.run {
-                    dismiss()
+                    closeWindow()
                 }
             } catch {
                 await MainActor.run {

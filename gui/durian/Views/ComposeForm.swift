@@ -151,18 +151,6 @@ struct ComposeForm: View {
         .onDisappear {
             autoSaveCancellable?.cancel()
             removeKeyMonitor()
-            
-            // Don't save if we just sent the email (draft was already deleted)
-            // Check if sendingManager just completed a send
-            if !sendingManager.isSending && sendingManager.sendingProgress == "Email sent successfully" {
-                print("COMPOSE: View disappearing after send - skipping draft save")
-            } else {
-                print("COMPOSE: View disappearing - saving draft to server")
-                Task {
-                    await saveDraftToServer()
-                }
-            }
-            
             currentDraft = nil
         }
     }
