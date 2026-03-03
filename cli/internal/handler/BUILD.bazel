@@ -3,18 +3,22 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "handler",
     srcs = [
+        "events.go",
         "handler.go",
         "http.go",
         "search.go",
         "show.go",
         "tag.go",
         "tags.go",
+        "watcher.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/handler",
     visibility = ["//cli:__subpackages__"],
     deps = [
-        "//cli/internal/notmuch",
+        "//cli/internal/config",
+        "//cli/internal/imap",
         "//cli/internal/mail",
+        "//cli/internal/notmuch",
         "//cli/internal/protocol",
         "@com_github_gorilla_mux//:mux",
     ],

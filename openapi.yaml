@@ -52,6 +52,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ThreadResponse'
+  /events:
+    get:
+      summary: Server-Sent Events stream for real-time notifications
+      description: >
+        Long-lived SSE connection. Emits `new_mail` events when IDLE-triggered
+        syncs find new messages, and `: heartbeat` comments every 30s.
+      responses:
+        '200':
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/NewMailEvent'
   /threads/{thread_id}/tags:
     post:
       summary: Add or remove tags from an email thread
@@ -119,6 +132,26 @@ components:
         ok:
           type: boolean
         error:
+          type: string
+    NewMailEvent:
+      type: object
+      properties:
+        account:
+          type: string
+        total_new:
+          type: integer
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/NewMailInfo'
+    NewMailInfo:
+      type: object
+      properties:
+        thread_id:
+          type: string
+        subject:
+          type: string
+        from:
           type: string
     NotmuchMailResult:
       type: object

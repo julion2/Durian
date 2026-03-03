@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/durian-dev/durian/cli/internal/notmuch"
-	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/gorilla/mux"
 	"github.com/spf13/cobra"
+
+	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/handler"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 )
 
 var serveCmd = &cobra.Command{
@@ -31,12 +33,32 @@ func init() {
 func runServe(cmd *cobra.Command, args []string) {
 	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
+	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/search", h.SearchHandler).Methods("GET")
 	r.HandleFunc("/api/v1/tags", h.ListTagsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}", h.ShowThreadHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
+	r.Handle("/api/v1/events", eventHub).Methods("GET")
+
+	// Start IMAP IDLE watchers if accounts are configured
+	watcherCtx, watcherCancel := context.WithCancel(context.Background())
+	defer watcherCancel()
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		log.Printf("SERVE: warning: could not load config: %v", err)
+	} else {
+		accounts := cfg.GetAccountsWithIMAP()
+		if len(accounts) == 0 {
+			log.Printf("SERVE: no IMAP accounts configured, skipping watchers")
+		} else {
+			watcher := handler.NewWatcherManager(eventHub, nmClient)
+			go watcher.Start(watcherCtx, accounts)
+			log.Printf("SERVE: started IDLE watchers for %d account(s)", len(accounts))
+		}
+	}
 
 	server := &http.Server{
 		Addr:    ":9723",
@@ -55,6 +77,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	fmt.Println("Server is shutting down...")
+
+	// Stop watchers before server shutdown
+	watcherCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

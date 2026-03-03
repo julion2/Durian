@@ -85,6 +85,13 @@ func (c *Client) Connect() error {
 		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
 
+	// Enable TCP keepalive so the OS detects dead connections (stale IDLE, NAT
+	// timeout, etc.) within ~2-3 minutes rather than hanging indefinitely.
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(60 * time.Second)
+	}
+
 	// Wrap with TLS (IMAPS - port 993)
 	tlsConfig := &tls.Config{
 		ServerName: c.account.IMAP.Host,
@@ -284,10 +291,14 @@ func (c *Client) Idle(stop <-chan struct{}, updates chan<- bool) error {
 	updatesChan := make(chan client.Update, 10)
 	c.conn.Updates = updatesChan
 
-	// Start IDLE in a goroutine
+	// Start IDLE with 4-minute renewal. The default (25min) is too long —
+	// Microsoft 365 has ~20min TCP idle timeout, Yahoo ~5min, Gmail ~10-15min.
+	// Restarting every 4min keeps the connection alive on all providers.
 	done := make(chan error, 1)
 	go func() {
-		done <- c.conn.Idle(stop, nil)
+		done <- c.conn.Idle(stop, &client.IdleOptions{
+			LogoutTimeout: 4 * time.Minute,
+		})
 	}()
 
 	// Wait for updates or completion
