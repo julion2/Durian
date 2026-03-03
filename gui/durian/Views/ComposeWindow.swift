@@ -143,25 +143,42 @@ struct ComposeWindow: View {
                 triggerSend = false
             }
         }
-        .alert("Save Error", isPresented: $showSaveError) {
-            Button("Retry") {
-                handleDismiss()
+        .onChange(of: showSaveError) { _, show in
+            if show {
+                ErrorManager.shared.showCritical(
+                    title: "Draft nicht gespeichert",
+                    message: saveErrorMessage,
+                    actions: [
+                        ErrorAction("Retry") { handleDismiss() },
+                        ErrorAction("Discard", role: .destructive) {
+                            draftService.discard(id: draftId)
+                            dismiss()
+                        },
+                        ErrorAction("Keep Editing", role: .cancel) {
+                            ErrorManager.shared.dismiss()
+                        }
+                    ]
+                )
+                showSaveError = false
             }
-            Button("Discard") {
-                draftService.discard(id: draftId)
-                dismiss()
-            }
-            Button("Keep Editing", role: .cancel) {}
-        } message: {
-            Text(saveErrorMessage)
         }
-        .alert("Invalid Email Addresses", isPresented: $showInvalidEmailWarning) {
-            Button("Cancel", role: .cancel) {}
-            Button("Send Anyway") {
-                handleSendWithSkipValidation()
+        .onChange(of: showInvalidEmailWarning) { _, show in
+            if show {
+                ErrorManager.shared.showCritical(
+                    title: "Ungültige E-Mail-Adressen",
+                    message: invalidEmails.joined(separator: "\n"),
+                    actions: [
+                        ErrorAction("Cancel", role: .cancel) {
+                            ErrorManager.shared.dismiss()
+                        },
+                        ErrorAction("Send Anyway") {
+                            ErrorManager.shared.dismiss()
+                            handleSendWithSkipValidation()
+                        }
+                    ]
+                )
+                showInvalidEmailWarning = false
             }
-        } message: {
-            Text("The following addresses may be invalid:\n\(invalidEmails.joined(separator: "\n"))\n\nDo you want to send anyway?")
         }
     }
     
@@ -200,7 +217,6 @@ struct ComposeWindow: View {
                     dismiss()
                 }
             } catch let error as EmailSendingError {
-                // Check if it's an invalid email format error - show warning dialog
                 if let emails = error.invalidEmails {
                     await MainActor.run {
                         invalidEmails = emails
@@ -208,9 +224,15 @@ struct ComposeWindow: View {
                     }
                 } else {
                     print("COMPOSE: Send failed - \(error)")
+                    await MainActor.run {
+                        ErrorManager.shared.show(error.userFacingError)
+                    }
                 }
             } catch {
                 print("COMPOSE: Send failed - \(error)")
+                await MainActor.run {
+                    ErrorManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                }
             }
         }
     }
@@ -228,8 +250,16 @@ struct ComposeWindow: View {
                 await MainActor.run {
                     dismiss()
                 }
+            } catch let error as EmailSendingError {
+                print("COMPOSE: Send failed - \(error)")
+                await MainActor.run {
+                    ErrorManager.shared.show(error.userFacingError)
+                }
             } catch {
                 print("COMPOSE: Send failed - \(error)")
+                await MainActor.run {
+                    ErrorManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                }
             }
         }
     }

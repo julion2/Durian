@@ -49,6 +49,7 @@ class EmailSendingManager: ObservableObject {
         guard FileManager.default.fileExists(atPath: durianPath) else {
             let error = EmailSendingError.sendFailed("durian CLI not found at \(durianPath)")
             lastError = error
+            ErrorManager.shared.showCritical(title: "Cannot Send Email", message: "Durian CLI not found.")
             throw error
         }
         
@@ -209,6 +210,7 @@ class EmailSendingManager: ObservableObject {
             print("EMAIL: Send failed: \(errorMessage)")
             let sendError = EmailSendingError.sendFailed(errorMessage)
             lastError = sendError
+            ErrorManager.shared.showCritical(title: "Email Not Sent", message: errorMessage)
             throw sendError
         }
     }

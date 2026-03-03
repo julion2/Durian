@@ -8,7 +8,6 @@
 import Foundation
 import Combine
 import SwiftUI
-import UserNotifications
 
 // MARK: - Sync State
 
@@ -68,9 +67,6 @@ class SyncManager: ObservableObject {
     private var fullSyncTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     
-    // MARK: - Notification Debounce
-    private var lastFailureNotificationTime: Date?
-    
     private init() {
         // Initial path resolution, will be refreshed in runDurianSync if needed
         durianPath = FileManager.default.resolveDurianPath() ?? ""
@@ -98,10 +94,12 @@ class SyncManager: ObservableObject {
                 Task { @MainActor in
                     if isConnected {
                         print("SYNC: Back online, restarting timers and syncing")
+                        ErrorManager.shared.showWarning(title: "Back Online", message: "Connection restored. Syncing now...")
                         self?.restartTimers()
                         await self?.quickSync()
                     } else {
                         print("SYNC: Went offline, stopping timers")
+                        ErrorManager.shared.showWarning(title: "Offline", message: "No network connection. Sync paused.")
                         self?.stopTimers()
                     }
                 }
@@ -244,7 +242,11 @@ class SyncManager: ObservableObject {
         } else {
             print("SYNC: Quick sync failed")
             syncState = .failed("sync error")
-            sendNotification(title: "Sync Failed", body: "Could not sync emails")
+            if !NetworkMonitor.shared.isConnected {
+                ErrorManager.shared.showWarning(title: "Offline", message: "Sync skipped — no network connection.")
+            } else {
+                ErrorManager.shared.showWarning(title: "Sync Failed", message: "Could not sync emails. Will retry automatically.")
+            }
         }
         
         return success
@@ -276,7 +278,11 @@ class SyncManager: ObservableObject {
             await reloadEmailList()
         } else {
             print("SYNC: Full sync failed")
-            sendNotification(title: "Full Sync Failed", body: "Could not sync emails")
+            if !NetworkMonitor.shared.isConnected {
+                ErrorManager.shared.showWarning(title: "Offline", message: "Background sync skipped — no network connection.")
+            } else {
+                ErrorManager.shared.showWarning(title: "Full Sync Failed", message: "Background sync encountered an error.")
+            }
         }
         
         return success
@@ -292,6 +298,7 @@ class SyncManager: ObservableObject {
     private func runDurianSync(account: String?, mailbox: String?, timeout: TimeInterval) async -> Bool {
         guard let resolvedPath = FileManager.default.resolveDurianPath() else {
             print("SYNC: durian CLI not found in ~/.local/bin or /usr/local/bin")
+            ErrorManager.shared.showCritical(title: "Durian CLI Not Found", message: "Install durian to sync emails.")
             return false
         }
         
@@ -328,37 +335,6 @@ class SyncManager: ObservableObject {
         if let backend = AccountManager.shared.notmuchBackend {
             print("SYNC: Reloading email list")
             await backend.reload()
-        }
-    }
-    
-    // MARK: - Notifications
-    
-    private func sendNotification(title: String, body: String) {
-        // Debounce: Max 1 failure notification per 30 minutes
-        if title.contains("Failed") {
-            if let lastTime = lastFailureNotificationTime,
-               Date().timeIntervalSince(lastTime) < 1800 {
-                print("SYNC: Skipping failure notification (debounce - last was \(Int(Date().timeIntervalSince(lastTime)))s ago)")
-                return
-            }
-            lastFailureNotificationTime = Date()
-        }
-        
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil  // Deliver immediately
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("SYNC: Failed to send notification: \(error)")
-            }
         }
     }
     
