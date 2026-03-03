@@ -1,4 +1,4 @@
-load("@rules_swift//swift:swift.bzl", "swift_library")
+load("@rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load("@rules_apple//apple:macos.bzl", "macos_application")
 
 config_setting(
@@ -6,6 +6,7 @@ config_setting(
     values = {"compilation_mode": "opt"},
 )
 
+# Full app library (includes @main entry point) — used by macos_application
 swift_library(
     name = "durian_lib",
     srcs = glob(["durian/**/*.swift"]),
@@ -16,6 +17,48 @@ swift_library(
         ],
     ),
     deps = ["@toml_decoder//:TOMLDecoder"],
+)
+
+# Testable library (excludes @main to avoid duplicate symbol with test runner)
+swift_library(
+    name = "durian_testlib",
+    testonly = True,
+    module_name = "durian_lib",
+    srcs = glob(
+        ["durian/**/*.swift"],
+        exclude = ["durian/DurianApp.swift"],
+    ),
+    deps = ["@toml_decoder//:TOMLDecoder"],
+)
+
+swift_test(
+    name = "config_test",
+    srcs = ["tests/ConfigTests.swift"],
+    deps = [
+        ":durian_testlib",
+        "@toml_decoder//:TOMLDecoder",
+    ],
+)
+
+swift_test(
+    name = "profile_test",
+    srcs = ["tests/ProfileTests.swift"],
+    deps = [
+        ":durian_testlib",
+        "@toml_decoder//:TOMLDecoder",
+    ],
+)
+
+swift_test(
+    name = "error_manager_test",
+    srcs = ["tests/ErrorManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "model_test",
+    srcs = ["tests/ModelTests.swift"],
+    deps = [":durian_testlib"],
 )
 
 macos_application(

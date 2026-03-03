@@ -79,8 +79,14 @@ class ProfileManager: ObservableObject {
         FolderConfig(name: "Inbox", icon: "tray", query: "tag:inbox")
     ]
     
-    private init() {
+    init() {
         loadProfiles()
+    }
+
+    /// Test-only initializer: inject profiles directly, skip file loading
+    init(profiles: [Profile], currentProfile: Profile? = nil) {
+        self.profiles = profiles
+        self.currentProfile = currentProfile ?? profiles.first
     }
     
     func loadProfiles() {

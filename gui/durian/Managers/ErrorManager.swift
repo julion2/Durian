@@ -16,9 +16,11 @@ class ErrorManager: ObservableObject {
 
     private var autoDismissTask: Task<Void, Never>?
     private var showTask: Task<Void, Never>?
-    private let startupTime = Date()
+    private let startupTime: Date
 
-    private init() {}
+    init(startupTime: Date = Date()) {
+        self.startupTime = startupTime
+    }
 
     // MARK: - Show / Dismiss
 

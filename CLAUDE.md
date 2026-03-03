@@ -6,7 +6,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 
 - **CLI:** `bazel build //cli/cmd/durian` → install: `cli/install.sh` (copies to /usr/local/bin)
 - **GUI:** `bazel build //gui:Durian` → run: `bazel run //gui:Durian` → install: `gui/install.sh` (copies to /Applications)
-- **Tests:** `bazel test //cli/...` (no GUI tests yet)
+- **Tests:** `bazel test //cli/...` (CLI) / `bazel test //gui/...` (GUI) / `bazel test //...` (all)
 
 ## Project Structure
 

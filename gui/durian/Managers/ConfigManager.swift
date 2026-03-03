@@ -97,8 +97,13 @@ class ConfigManager {
     static let shared = ConfigManager()
     private var config: AppConfig?
     
-    private init() {
+    init() {
         loadConfig()
+    }
+
+    /// Test-only initializer: inject config directly, skip file loading
+    init(config: AppConfig) {
+        self.config = config
     }
     
     private func loadConfig() {
@@ -227,7 +232,7 @@ class ConfigManager {
         }
     }
     
-    private func generateTOML(from config: AppConfig) -> String {
+    func generateTOML(from config: AppConfig) -> String {
         var toml = "# Durian Configuration\n"
         toml += "# Documentation: https://github.com/julion2/durian\n\n"
         

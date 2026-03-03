@@ -47,6 +47,13 @@ bazel run //gui:Durian # GUI only (debug)
 bazel run -c opt //gui:Durian  # GUI only (release)
 ```
 
+## Test
+```bash
+bazel test //cli/...              # CLI tests
+bazel test //gui/...              # GUI tests
+bazel test //...                  # all tests
+```
+
 ## Keyboard Shortcuts
 
 | Key | Action |
