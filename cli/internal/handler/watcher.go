@@ -43,18 +43,10 @@ func (w *WatcherManager) accountLock(email string) *sync.Mutex {
 	return w.locks[email]
 }
 
-// Start spawns one IDLE watcher goroutine per account and kicks off an
-// initial sync in the background. Watchers start immediately so IDLE is
-// active as soon as possible — the initial sync catches up concurrently.
+// Start spawns one IDLE watcher goroutine per account. Each watcher
+// connects once, runs an initial sync on that connection, then enters
+// the IDLE loop — one connection per account for the entire lifecycle.
 func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountConfig) {
-	// Initial sync in background (quiet, best-effort) — don't block watchers
-	go func() {
-		opts := &imap.SyncOptions{Quiet: true}
-		if _, err := imap.SyncAccounts(accounts, opts); err != nil {
-			log.Printf("WATCHER: initial sync error: %v", err)
-		}
-	}()
-
 	var wg sync.WaitGroup
 	for _, acc := range accounts {
 		wg.Add(1)
@@ -67,8 +59,11 @@ func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountCo
 }
 
 // watchAccount runs the IDLE reconnect loop for a single account.
-// Adapted from cli/cmd/durian/sync.go:watchAccount.
+// Uses the Thunderbird model: reuse the IDLE connection for sync, then
+// cycle back to IDLE on the same connection. This avoids opening a second
+// connection which Microsoft 365 rejects with "connection reset by peer".
 func (w *WatcherManager) watchAccount(ctx context.Context, account *config.AccountConfig) {
+	// Outer loop: reconnect on fatal errors
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,56 +94,77 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			}
 		}
 
-		// Select INBOX for IDLE
+		// Initial sync on the watcher's connection (best-effort).
+		// If this kills the connection, SELECT below will fail and the
+		// outer loop reconnects with 30s backoff.
+		w.syncAndNotify(account, client)
+
+		// Select INBOX for IDLE (sync may have left a different mailbox selected)
 		if _, err := client.SelectMailbox("INBOX"); err != nil {
-			log.Printf("WATCHER: [%s] select error: %v", account.Email, err)
+			log.Printf("WATCHER: [%s] select INBOX failed after sync: %v, reconnecting in 30s", account.Email, err)
 			client.Close()
-			continue
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+				continue
+			}
 		}
 
 		log.Printf("WATCHER: [%s] watching for new messages...", account.Email)
 
-		// Start IDLE
-		stopIdle := make(chan struct{})
-		updates := make(chan bool, 10)
-		idleDone := make(chan struct{})
+		// Inner loop: IDLE ↔ sync cycles on the SAME connection
+		connectionAlive := true
+		for connectionAlive {
+			stopIdle := make(chan struct{})
+			updates := make(chan bool, 10)
+			idleDone := make(chan struct{})
 
-		go func() {
-			defer close(idleDone)
-			if err := client.Idle(stopIdle, updates); err != nil {
-				log.Printf("WATCHER: [%s] IDLE error: %v", account.Email, err)
+			go func() {
+				defer close(idleDone)
+				if err := client.Idle(stopIdle, updates); err != nil {
+					log.Printf("WATCHER: [%s] IDLE error: %v", account.Email, err)
+				}
+			}()
+
+			select {
+			case <-ctx.Done():
+				close(stopIdle)
+				client.Close()
+				return
+			case <-updates:
+				close(stopIdle)
+				<-idleDone // wait for IDLE goroutine to exit before reusing connection
+				log.Printf("WATCHER: [%s] new messages detected, syncing...", account.Email)
+				w.syncAndNotify(account, client)
+				// Re-SELECT INBOX (sync iterates all mailboxes, last selected may differ)
+				if _, err := client.SelectMailbox("INBOX"); err != nil {
+					log.Printf("WATCHER: [%s] re-SELECT INBOX failed: %v, reconnecting", account.Email, err)
+					connectionAlive = false
+				}
+			case <-idleDone:
+				// IDLE goroutine exited (error or connection lost) — reconnect
+				connectionAlive = false
+			case <-time.After(10 * time.Minute):
+				close(stopIdle)
+				<-idleDone
+				log.Printf("WATCHER: [%s] fallback poll, syncing...", account.Email)
+				w.syncAndNotify(account, client)
+				if _, err := client.SelectMailbox("INBOX"); err != nil {
+					log.Printf("WATCHER: [%s] re-SELECT INBOX failed: %v, reconnecting", account.Email, err)
+					connectionAlive = false
+				}
 			}
-		}()
-
-		// Wait for update, IDLE exit, fallback poll, or context cancellation.
-		// The 10-minute fallback ensures we still sync even if IDLE silently
-		// stops delivering updates (server bug, NAT rewrite, etc.).
-		select {
-		case <-ctx.Done():
-			close(stopIdle)
-			client.Close()
-			return
-		case <-updates:
-			close(stopIdle)
-			client.Close()
-			log.Printf("WATCHER: [%s] new messages detected, syncing...", account.Email)
-			w.syncAndNotify(account)
-		case <-idleDone:
-			// IDLE goroutine exited (error or connection lost) — reconnect
-			client.Close()
-		case <-time.After(10 * time.Minute):
-			close(stopIdle)
-			<-idleDone // wait for IDLE goroutine to exit cleanly
-			client.Close()
-			log.Printf("WATCHER: [%s] fallback poll, syncing...", account.Email)
-			w.syncAndNotify(account)
 		}
+
+		client.Close()
 	}
 }
 
 // syncAndNotify syncs the account and broadcasts a NewMailEvent if new
 // messages arrived. It uses a per-account mutex to prevent overlapping syncs.
-func (w *WatcherManager) syncAndNotify(account *config.AccountConfig) {
+// If client is non-nil, the syncer reuses that connection instead of opening a new one.
+func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *imap.Client) {
 	mu := w.accountLock(account.Email)
 	mu.Lock()
 	defer mu.Unlock()
@@ -167,6 +183,19 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig) {
 		}
 	}
 
+	// Build syncer: reuse caller's connection if provided, otherwise open a new one.
+	// When reusing the IDLE connection, only sync INBOX — iterating other
+	// mailboxes (SELECT Sent, Drafts, etc.) triggers rate-limiting on M365
+	// and causes servers like tum.de to close the connection.
+	opts := &imap.SyncOptions{Quiet: true}
+	var syncer *imap.Syncer
+	if client != nil {
+		opts.Mailboxes = []string{"INBOX"}
+		syncer = imap.NewSyncerWithClient(account, client, opts)
+	} else {
+		syncer = imap.NewSyncer(account, opts)
+	}
+
 	// Sync downloads new messages + runs notmuch new.
 	// Run in a goroutine with a timeout so a flaky server can't block the
 	// watcher forever — we need to get back to IDLE promptly.
@@ -176,7 +205,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig) {
 	}
 	ch := make(chan syncOutcome, 1)
 	go func() {
-		r, e := imap.NewSyncer(account, &imap.SyncOptions{Quiet: true}).Sync()
+		r, e := syncer.Sync()
 		ch <- syncOutcome{r, e}
 	}()
 

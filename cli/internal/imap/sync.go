@@ -100,6 +100,7 @@ type Syncer struct {
 	output          io.Writer
 	trashMailbox    string                // Cached trash mailbox name for delete operations
 	serverMailboxes []*goimap.MailboxInfo // Cached mailbox list for exclusion tags
+	ownsClient      bool                  // true = syncer manages connection lifecycle
 }
 
 // NewSyncer creates a new syncer for an account
@@ -114,13 +115,38 @@ func NewSyncer(account *config.AccountConfig, options *SyncOptions) *Syncer {
 	}
 
 	return &Syncer{
-		client:   NewClient(account),
-		maildir:  NewMaildirWriter(account.GetIMAPMaildir()),
-		notmuch:  notmuch.NewClient(""),
-		stateMgr: NewStateManager(),
-		account:  account,
-		options:  options,
-		output:   output,
+		client:     NewClient(account),
+		maildir:    NewMaildirWriter(account.GetIMAPMaildir()),
+		notmuch:    notmuch.NewClient(""),
+		stateMgr:   NewStateManager(),
+		account:    account,
+		options:    options,
+		output:     output,
+		ownsClient: true,
+	}
+}
+
+// NewSyncerWithClient creates a syncer that reuses an existing IMAP connection.
+// The caller owns the connection lifecycle (connect, auth, close).
+func NewSyncerWithClient(account *config.AccountConfig, client *Client, options *SyncOptions) *Syncer {
+	if options == nil {
+		options = &SyncOptions{}
+	}
+
+	output := io.Writer(os.Stderr)
+	if options.Quiet {
+		output = io.Discard
+	}
+
+	return &Syncer{
+		client:     client,
+		maildir:    NewMaildirWriter(account.GetIMAPMaildir()),
+		notmuch:    notmuch.NewClient(""),
+		stateMgr:   NewStateManager(),
+		account:    account,
+		options:    options,
+		output:     output,
+		ownsClient: false,
 	}
 }
 
@@ -139,23 +165,24 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 	}
 	defer releaseLock(s.stateLock)
 
-	// Connect
-	fmt.Fprintf(s.output, "  Connecting to %s:%d...\n", s.account.IMAP.Host, s.account.IMAP.Port)
-	if err := s.client.Connect(); err != nil {
-		return nil, err
-	}
-	defer s.client.Close()
+	// Connect and authenticate (skip if caller owns the connection)
+	if s.ownsClient {
+		fmt.Fprintf(s.output, "  Connecting to %s:%d...\n", s.account.IMAP.Host, s.account.IMAP.Port)
+		if err := s.client.Connect(); err != nil {
+			return nil, err
+		}
+		defer s.client.Close()
 
-	// Authenticate
-	if err := s.client.Authenticate(); err != nil {
-		return nil, err
-	}
+		if err := s.client.Authenticate(); err != nil {
+			return nil, err
+		}
 
-	authMethod := "password"
-	if s.account.IMAP.Auth == "oauth2" {
-		authMethod = "OAuth2"
+		authMethod := "password"
+		if s.account.IMAP.Auth == "oauth2" {
+			authMethod = "OAuth2"
+		}
+		fmt.Fprintf(s.output, "  ✓ Authenticated with %s\n", authMethod)
 	}
-	fmt.Fprintf(s.output, "  ✓ Authenticated with %s\n", authMethod)
 
 	// Get mailboxes to sync
 	mailboxes, err := s.getMailboxesToSync()
@@ -175,6 +202,16 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 
 		// Check if error is connection-related and try to reconnect
 		if mboxResult.Error != nil && isConnectionError(mboxResult.Error) {
+			if !s.ownsClient {
+				// Caller owns the connection — don't reconnect (would open a
+				// new socket that aggressive servers like M365 reject). Abort
+				// early and let the caller's IDLE loop catch up next cycle.
+				debug.Log("Sync: connection lost during %s, aborting (caller-owned connection)", mbox)
+				result.Mailboxes = append(result.Mailboxes, mboxResult)
+				result.Error = mboxResult.Error
+				break
+			}
+
 			debug.Log("Sync: connection lost during %s, attempting reconnect...", mbox)
 			fmt.Fprintf(s.output, "  ⚠ Connection lost, reconnecting...\n")
 
