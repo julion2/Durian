@@ -34,8 +34,8 @@ protocol MailBackendProtocol: ObservableObject {
 
     // MARK: - Email Operations
     func fetchEmailBody(id: String) async
-    func markAsRead(id: String) async
-    func markAsUnread(id: String) async
+    func markAsRead(id: String) async throws
+    func markAsUnread(id: String) async throws
     func deleteMessage(id: String) async throws
 
     // MARK: - Reload

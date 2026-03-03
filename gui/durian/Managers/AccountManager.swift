@@ -100,37 +100,61 @@ class AccountManager: ObservableObject {
     
     func markNotmuchAsRead(id: String) async {
         guard let backend = notmuchBackend else { return }
-        await backend.markAsRead(id: id)
-        syncFromNotmuch()
-    }
-    
-    func toggleNotmuchReadStatus(id: String) async {
-        guard let backend = notmuchBackend else { return }
-        if let email = mailMessages.first(where: { $0.id == id }) {
-            if email.isRead {
-                await backend.markAsUnread(id: id)
-            } else {
-                await backend.markAsRead(id: id)
-            }
+        do {
+            try await backend.markAsRead(id: id)
+        } catch {
+            print("NOTMUCH: Failed to mark as read: \(error)")
         }
         syncFromNotmuch()
     }
-    
-    func deleteNotmuchMessage(id: String) async {
+
+    func toggleNotmuchReadStatus(id: String) async {
         guard let backend = notmuchBackend else { return }
-        try? await backend.deleteMessage(id: id)
+        do {
+            if let email = mailMessages.first(where: { $0.id == id }) {
+                if email.isRead {
+                    try await backend.markAsUnread(id: id)
+                } else {
+                    try await backend.markAsRead(id: id)
+                }
+            }
+        } catch {
+            print("NOTMUCH: Failed to toggle read status: \(error)")
+            BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
+        }
         syncFromNotmuch()
     }
-    
+
+    func deleteNotmuchMessage(id: String) async {
+        guard let backend = notmuchBackend else { return }
+        do {
+            try await backend.deleteMessage(id: id)
+        } catch {
+            print("NOTMUCH: Failed to delete message: \(error)")
+            BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete message.")
+        }
+        syncFromNotmuch()
+    }
+
     func addTag(id: String, tag: String) async {
         guard let backend = notmuchBackend else { return }
-        await backend.addTag(id: id, tag: tag)
+        do {
+            try await backend.addTag(id: id, tag: tag)
+        } catch {
+            print("NOTMUCH: Failed to add tag: \(error)")
+            BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not add tag '\(tag)'.")
+        }
         syncFromNotmuch()
     }
 
     func removeTag(id: String, tag: String) async {
         guard let backend = notmuchBackend else { return }
-        await backend.removeTag(id: id, tag: tag)
+        do {
+            try await backend.removeTag(id: id, tag: tag)
+        } catch {
+            print("NOTMUCH: Failed to remove tag: \(error)")
+            BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not remove tag '\(tag)'.")
+        }
         syncFromNotmuch()
     }
 
@@ -141,46 +165,76 @@ class AccountManager: ObservableObject {
 
     func toggleNotmuchPin(id: String) async {
         guard let backend = notmuchBackend else { return }
-        await backend.togglePin(id: id)
+        do {
+            try await backend.togglePin(id: id)
+        } catch {
+            print("NOTMUCH: Failed to toggle pin: \(error)")
+            BannerManager.shared.showWarning(title: "Pin Failed", message: "Could not toggle pin.")
+        }
         syncFromNotmuch()
     }
-    
+
     func toggleNotmuchRead(id: String) async {
         guard let backend = notmuchBackend else { return }
-        await backend.toggleRead(id: id)
+        do {
+            try await backend.toggleRead(id: id)
+        } catch {
+            print("NOTMUCH: Failed to toggle read: \(error)")
+            BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
+        }
         syncFromNotmuch()
     }
-    
+
     // MARK: - Batch Operations (Multi-Selection)
-    
+
     func deleteMessages(ids: Set<String>) async {
         guard let backend = notmuchBackend else { return }
+        var failCount = 0
         for id in ids {
-            try? await backend.deleteMessage(id: id)
+            do { try await backend.deleteMessage(id: id) }
+            catch { failCount += 1; print("NOTMUCH: Failed to delete \(id): \(error)") }
+        }
+        if failCount > 0 {
+            BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete \(failCount) message(s).")
         }
         syncFromNotmuch()
     }
-    
+
     func toggleReadForMessages(ids: Set<String>) async {
         guard let backend = notmuchBackend else { return }
+        var failCount = 0
         for id in ids {
-            await backend.toggleRead(id: id)
+            do { try await backend.toggleRead(id: id) }
+            catch { failCount += 1; print("NOTMUCH: Failed to toggle read \(id): \(error)") }
+        }
+        if failCount > 0 {
+            BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
         syncFromNotmuch()
     }
-    
+
     func markMessagesAsRead(ids: Set<String>) async {
         guard let backend = notmuchBackend else { return }
+        var failCount = 0
         for id in ids {
-            await backend.markAsRead(id: id)
+            do { try await backend.markAsRead(id: id) }
+            catch { failCount += 1; print("NOTMUCH: Failed to mark read \(id): \(error)") }
+        }
+        if failCount > 0 {
+            BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
         syncFromNotmuch()
     }
-    
+
     func markMessagesAsUnread(ids: Set<String>) async {
         guard let backend = notmuchBackend else { return }
+        var failCount = 0
         for id in ids {
-            await backend.markAsUnread(id: id)
+            do { try await backend.markAsUnread(id: id) }
+            catch { failCount += 1; print("NOTMUCH: Failed to mark unread \(id): \(error)") }
+        }
+        if failCount > 0 {
+            BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
         syncFromNotmuch()
     }

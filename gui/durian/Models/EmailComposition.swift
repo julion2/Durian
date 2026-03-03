@@ -517,7 +517,10 @@ class DraftManager {
             try data.write(to: fileURL)
             print("Draft saved: \(fileURL.lastPathComponent)")
         } catch {
-            print("Failed to save draft: \(error)")
+            print("DRAFTING: Failed to save draft: \(error)")
+            Task { @MainActor in
+                BannerManager.shared.showWarning(title: "Draft Not Saved", message: "Could not save draft to disk.")
+            }
         }
     }
     

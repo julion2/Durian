@@ -50,6 +50,13 @@ struct ThreadContent: Decodable {
     let messages: [ThreadMessage]
 }
 
+enum NotmuchTagError: Error, LocalizedError {
+    case tagFailed(String)
+    var errorDescription: String? {
+        switch self { case .tagFailed(let msg): return msg }
+    }
+}
+
 // MARK: - Notmuch Backend
 
 @MainActor
@@ -364,12 +371,9 @@ class NotmuchBackend: ObservableObject {
         }
     }
 
-    private func tag(query: String, tags: String) async -> Bool {
+    private func tag(query: String, tags: String) async throws {
         struct TagRequest: Encodable { let tags: String }
-        
-        // The new API expects a thread_id, so we need to extract it.
-        // This is a simplification; a more robust solution might be needed
-        // if the query is more complex than "thread:some-id".
+
         let threadId = query.replacingOccurrences(of: "thread:", with: "")
 
         let response: DurianResponse? = await request(
@@ -377,13 +381,13 @@ class NotmuchBackend: ObservableObject {
             method: "POST",
             body: TagRequest(tags: tags)
         )
-        
+
         if response?.ok == true {
             print("NOTMUCH Tagged \(query) with \(tags)")
-            return true
         } else {
-            print("NOTMUCH Tag error: \(response?.error ?? "unknown")")
-            return false
+            let msg = response?.error ?? "unknown error"
+            print("NOTMUCH Tag error: \(msg)")
+            throw NotmuchTagError.tagFailed(msg)
         }
     }
 
@@ -395,64 +399,54 @@ class NotmuchBackend: ObservableObject {
     // MARK: - Unchanged methods (markAsRead, togglePin, etc.)
     // These methods use `tag` internally and don't need to be changed.
     
-    func markAsRead(id: String) async {
-        let success = await tag(query: "thread:\(id)", tags: "-unread")
-        if success {
-            if let index = emails.firstIndex(where: { $0.id == id }) {
-                emails[index].isRead = true
-            }
+    func markAsRead(id: String) async throws {
+        try await tag(query: "thread:\(id)", tags: "-unread")
+        if let index = emails.firstIndex(where: { $0.id == id }) {
+            emails[index].isRead = true
         }
     }
 
-    func markAsUnread(id: String) async {
-        let success = await tag(query: "thread:\(id)", tags: "+unread")
-        if success {
-            if let index = emails.firstIndex(where: { $0.id == id }) {
-                emails[index].isRead = false
-            }
+    func markAsUnread(id: String) async throws {
+        try await tag(query: "thread:\(id)", tags: "+unread")
+        if let index = emails.firstIndex(where: { $0.id == id }) {
+            emails[index].isRead = false
         }
     }
 
-    func toggleRead(id: String) async {
+    func toggleRead(id: String) async throws {
         guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
         if emails[index].isRead {
-            await markAsUnread(id: id)
+            try await markAsUnread(id: id)
         } else {
-            await markAsRead(id: id)
+            try await markAsRead(id: id)
         }
     }
 
-    func togglePin(id: String) async {
+    func togglePin(id: String) async throws {
         guard let index = emails.firstIndex(where: { $0.id == id }) else { return }
         let isCurrentlyPinned = emails[index].isPinned
 
         let tags = isCurrentlyPinned ? "-flagged" : "+flagged"
-        let success = await tag(query: "thread:\(id)", tags: tags)
+        try await tag(query: "thread:\(id)", tags: tags)
 
-        if success {
-            // Immediately flip for responsive UI
-            emails[index].isPinned = !isCurrentlyPinned
-            print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
-            // Reload from notmuch to ensure state is consistent
-            await reload()
-        }
+        emails[index].isPinned = !isCurrentlyPinned
+        print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
+        await reload()
     }
 
-    func addTag(id: String, tag: String) async {
-        let success = await self.tag(query: "thread:\(id)", tags: "+\(tag)")
-        if success { await reload() }
+    func addTag(id: String, tag: String) async throws {
+        try await self.tag(query: "thread:\(id)", tags: "+\(tag)")
+        await reload()
     }
 
-    func removeTag(id: String, tag: String) async {
-        let success = await self.tag(query: "thread:\(id)", tags: "-\(tag)")
-        if success { await reload() }
+    func removeTag(id: String, tag: String) async throws {
+        try await self.tag(query: "thread:\(id)", tags: "-\(tag)")
+        await reload()
     }
 
     func deleteMessage(id: String) async throws {
-        let success = await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
-        if success {
-            emails.removeAll { $0.id == id }
-        }
+        try await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
+        emails.removeAll { $0.id == id }
     }
     
     func reload() async {
