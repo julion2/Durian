@@ -26,6 +26,7 @@ go_library(
 
 go_test(
     name = "imap_test",
+    size = "small",
     srcs = [
         "flags_test.go",
         "maildir_test.go",

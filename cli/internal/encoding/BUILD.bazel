@@ -18,6 +18,7 @@ go_library(
 
 go_test(
     name = "encoding_test",
+    size = "small",
     srcs = ["encoding_test.go"],
     embed = [":encoding"],
 )

@@ -26,6 +26,7 @@ go_library(
 
 go_test(
     name = "handler_test",
+    size = "small",
     srcs = ["handler_test.go"],
     embed = [":handler"],
     deps = [

@@ -33,6 +33,7 @@ swift_library(
 
 swift_test(
     name = "config_test",
+    size = "small",
     srcs = ["tests/ConfigTests.swift"],
     deps = [
         ":durian_testlib",
@@ -42,6 +43,7 @@ swift_test(
 
 swift_test(
     name = "profile_test",
+    size = "small",
     srcs = ["tests/ProfileTests.swift"],
     deps = [
         ":durian_testlib",
@@ -51,12 +53,14 @@ swift_test(
 
 swift_test(
     name = "banner_manager_test",
+    size = "small",
     srcs = ["tests/BannerManagerTests.swift"],
     deps = [":durian_testlib"],
 )
 
 swift_test(
     name = "model_test",
+    size = "small",
     srcs = ["tests/ModelTests.swift"],
     deps = [":durian_testlib"],
 )

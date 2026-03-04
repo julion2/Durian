@@ -10,6 +10,7 @@ go_library(
 
 go_test(
     name = "sanitize_test",
+    size = "small",
     srcs = [
         "sanitize_test.go",
         "fixture_test.go",
