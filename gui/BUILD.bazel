@@ -67,8 +67,14 @@ macos_application(
         ":release": glob(["durian/AppIcon.icon/**"]),
         "//conditions:default": glob(["durian/AppIcon-Debug.icon/**"]),
     }),
-    bundle_id = "js-lab.durian",
-    bundle_name = "Durian",
+    bundle_id = select({
+        ":release": "js-lab.durian",
+        "//conditions:default": "js-lab.durian.nightly",
+    }),
+    bundle_name = select({
+        ":release": "Durian",
+        "//conditions:default": "DurianNightly",
+    }),
     entitlements = "durian/Durian.entitlements",
     infoplists = [":Info.plist"],
     minimum_os_version = "26.0",

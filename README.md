@@ -41,10 +41,9 @@ bazel build -c opt //gui:Durian  # GUI only (release)
 ./gui/install.sh                  # builds & copies to /Applications/Durian.app
 ```
 
-### Run the app
+### Run GUI (dev)
 ```bash
-bazel run //gui:Durian # GUI only (debug)
-bazel run -c opt //gui:Durian  # GUI only (release)
+./gui/run.sh                      # builds debug, installs DurianNightly.app, runs with CLI logs
 ```
 
 ## Test
