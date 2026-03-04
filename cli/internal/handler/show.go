@@ -95,3 +95,21 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 
 	return protocol.SuccessWithThread(thread)
 }
+
+// ShowMessageBody returns the full (unstripped) body of a single message by notmuch ID.
+// Used for reply quoting where the conversation chain must be preserved.
+func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
+	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
+	if err != nil {
+		return protocol.Fail(protocol.ErrBackendError, err)
+	}
+	if len(msgs) == 0 {
+		return protocol.Fail(protocol.ErrNotFound, errors.New("message not found"))
+	}
+
+	body, html, _ := notmuch.ExtractBodyContentFull(msgs[0].Body)
+	return protocol.SuccessWithMessageBody(&internmail.MessageBody{
+		Body: body,
+		HTML: html,
+	})
+}

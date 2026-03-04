@@ -40,6 +40,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/tags", h.ListTagsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}", h.ShowThreadHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
+	r.HandleFunc("/api/v1/message/body", h.ShowMessageBodyHandler).Methods("GET")
 	r.Handle("/api/v1/events", eventHub).Methods("GET")
 
 	// Start IMAP IDLE watchers if accounts are configured

@@ -211,12 +211,21 @@ extension EmailDraft {
         )
     }
 
+    /// Returns the notmuch ID of the message that should be quoted in a reply.
+    /// Used to lazy-load the original (unstripped) body before creating the draft.
+    static func replyTargetNotmuchId(for message: MailMessage, fromAccount: String) -> String? {
+        return findReplyTarget(message: message, fromAccount: fromAccount).notmuchId
+    }
+
     /// Create a reply draft from a mail message
     /// - Parameters:
     ///   - message: The original message to reply to
     ///   - fromAccount: The email address to send from
+    ///   - originalBody: Optional unstripped body fetched via lazy-loading (text, html).
+    ///     When provided, used for quoting instead of the stripped thread body.
     /// - Returns: A new EmailDraft configured as a reply
-    static func createReply(from message: MailMessage, fromAccount: String) -> EmailDraft {
+    static func createReply(from message: MailMessage, fromAccount: String,
+                            originalBody: (body: String, html: String?)? = nil) -> EmailDraft {
         let target = findReplyTarget(message: message, fromAccount: fromAccount)
 
         // Fallback if target.from has no email (e.g. cache restored without headers)
@@ -241,13 +250,15 @@ extension EmailDraft {
             references += messageId
         }
 
-        // Check if target was HTML
-        let hasHTML = target.html != nil && !target.html!.isEmpty
+        // Use original (unstripped) body for quoting if available, otherwise fall back to stripped
+        let quoteBody = originalBody?.body ?? target.body
+        let quoteHTML = originalBody?.html ?? target.html
+        let hasHTML = quoteHTML != nil && !quoteHTML!.isEmpty
 
         // Quote the target body (use HTML if available)
         let quotedBody = hasHTML
-            ? quoteBodyHTML(target.html!, from: target.from, date: target.date)
-            : quoteBody(target.body ?? "", from: target.from, date: target.date)
+            ? quoteBodyHTML(quoteHTML!, from: target.from, date: target.date)
+            : Self.quoteBody(quoteBody ?? "", from: target.from, date: target.date)
 
         return EmailDraft(
             from: fromAccount,
@@ -266,8 +277,9 @@ extension EmailDraft {
     ///   - message: The original message to reply to
     ///   - fromAccount: The email address to send from
     /// - Returns: A new EmailDraft configured as a reply-all
-    static func createReplyAll(from message: MailMessage, fromAccount: String) -> EmailDraft {
-        var draft = createReply(from: message, fromAccount: fromAccount)
+    static func createReplyAll(from message: MailMessage, fromAccount: String,
+                               originalBody: (body: String, html: String?)? = nil) -> EmailDraft {
+        var draft = createReply(from: message, fromAccount: fromAccount, originalBody: originalBody)
         let target = findReplyTarget(message: message, fromAccount: fromAccount)
 
         // Build CC from the TARGET message's To/CC (not thread-level fields,
@@ -334,6 +346,7 @@ extension EmailDraft {
 
     /// Fields needed to construct a reply from a specific thread message.
     private struct ReplyTarget {
+        let notmuchId: String?  // notmuch message ID, for fetching original body
         let from: String
         let to: String?
         let cc: String?
@@ -355,7 +368,8 @@ extension EmailDraft {
 
         // Case 1: newest message is not from self — use as-is
         guard newestFrom == accountEmail else {
-            return ReplyTarget(from: message.from, to: message.to, cc: message.cc,
+            return ReplyTarget(notmuchId: message.threadMessages?.first?.id,
+                               from: message.from, to: message.to, cc: message.cc,
                                date: message.date, body: message.body, html: message.htmlBody,
                                messageId: message.messageId, references: message.references)
         }
@@ -364,7 +378,8 @@ extension EmailDraft {
         if let threads = message.threadMessages {
             for tm in threads {
                 if extractEmail(from: tm.from).lowercased() != accountEmail {
-                    return ReplyTarget(from: tm.from, to: tm.to, cc: tm.cc,
+                    return ReplyTarget(notmuchId: tm.id,
+                                       from: tm.from, to: tm.to, cc: tm.cc,
                                        date: tm.date, body: tm.body, html: tm.html,
                                        messageId: tm.message_id, references: tm.references)
                 }
@@ -372,7 +387,8 @@ extension EmailDraft {
         }
 
         // Case 3: all messages from self — reply to original recipients
-        return ReplyTarget(from: message.to ?? message.from, to: message.to, cc: message.cc,
+        return ReplyTarget(notmuchId: message.threadMessages?.first?.id,
+                           from: message.to ?? message.from, to: message.to, cc: message.cc,
                            date: message.date, body: message.body, html: message.htmlBody,
                            messageId: message.messageId, references: message.references)
     }

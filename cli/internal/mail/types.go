@@ -33,6 +33,12 @@ type ThreadContent struct {
 	Messages []MessageInfo `json:"messages"`
 }
 
+// MessageBody represents the full (unstripped) body of a single message, used for reply quoting
+type MessageBody struct {
+	Body string `json:"body"`
+	HTML string `json:"html,omitempty"`
+}
+
 // MessageInfo represents a single message within a thread
 type MessageInfo struct {
 	ID          string   `json:"id"`

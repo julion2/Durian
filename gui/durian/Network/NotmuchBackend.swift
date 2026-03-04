@@ -18,7 +18,13 @@ struct DurianResponse: Decodable {
     let results: [NotmuchMailResult]?
     let mail: NotmuchMailContent?
     let thread: ThreadContent?
+    let message_body: MessageBodyResponse?
     let tags: [String]?
+}
+
+struct MessageBodyResponse: Decodable {
+    let body: String
+    let html: String?
 }
 
 struct NotmuchMailResult: Decodable {
@@ -398,6 +404,21 @@ class NotmuchBackend: ObservableObject {
     func fetchAllTags() async -> [String] {
         let response: DurianResponse? = await request(endpoint: "/tags")
         return response?.tags ?? []
+    }
+
+    /// Fetch the full (unstripped) body of a single message for reply quoting.
+    /// Unlike thread bodies, this preserves the quoted conversation chain.
+    func fetchOriginalBody(messageId: String) async -> MessageBodyResponse? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: messageId)]
+        // URLComponents leaves + and @ unencoded (valid in RFC 3986 queries),
+        // but Go's Query().Get() treats + as space (x-www-form-urlencoded).
+        // Manually encode these to avoid misinterpretation.
+        guard var query = components.percentEncodedQuery else { return nil }
+        query = query.replacingOccurrences(of: "+", with: "%2B")
+        query = query.replacingOccurrences(of: "@", with: "%40")
+        let response: DurianResponse? = await request(endpoint: "/message/body?\(query)")
+        return response?.message_body
     }
 
     // MARK: - Unchanged methods (markAsRead, togglePin, etc.)

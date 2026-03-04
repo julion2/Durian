@@ -605,20 +605,34 @@ struct ContentView: View {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
               let fromAccount = defaultFromAccount else { return }
-        
-        let replyDraft = EmailDraft.createReply(from: email, fromAccount: fromAccount)
-        let draftId = DraftService.shared.createDraft(with: replyDraft)
-        openWindow(value: draftId)
+
+        Task {
+            let original = await fetchOriginalReplyBody(for: email, fromAccount: fromAccount)
+            let replyDraft = EmailDraft.createReply(from: email, fromAccount: fromAccount, originalBody: original)
+            let draftId = DraftService.shared.createDraft(with: replyDraft)
+            openWindow(value: draftId)
+        }
     }
-    
+
     private func replyAllToSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
               let fromAccount = defaultFromAccount else { return }
-        
-        let replyDraft = EmailDraft.createReplyAll(from: email, fromAccount: fromAccount)
-        let draftId = DraftService.shared.createDraft(with: replyDraft)
-        openWindow(value: draftId)
+
+        Task {
+            let original = await fetchOriginalReplyBody(for: email, fromAccount: fromAccount)
+            let replyDraft = EmailDraft.createReplyAll(from: email, fromAccount: fromAccount, originalBody: original)
+            let draftId = DraftService.shared.createDraft(with: replyDraft)
+            openWindow(value: draftId)
+        }
+    }
+
+    /// Fetch unstripped body for the reply target message (lazy-loaded on reply action)
+    private func fetchOriginalReplyBody(for email: MailMessage, fromAccount: String) async -> (body: String, html: String?)? {
+        guard let targetId = EmailDraft.replyTargetNotmuchId(for: email, fromAccount: fromAccount),
+              let backend = AccountManager.shared.notmuchBackend else { return nil }
+        guard let response = await backend.fetchOriginalBody(messageId: targetId) else { return nil }
+        return (body: response.body, html: response.html)
     }
     
     private func forwardSelected() {

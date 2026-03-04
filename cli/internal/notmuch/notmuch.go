@@ -191,7 +191,7 @@ func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 // are returned, not their entire threads. Useful for fetching bodies of specific
 // messages by ID (e.g. "id:xxx OR id:yyy").
 func (c *ExecClient) ShowMessages(query string) ([]ThreadMessage, error) {
-	args := []string{"show", "--format=json", "--entire-thread=false"}
+	args := []string{"show", "--format=json", "--include-html", "--entire-thread=false"}
 	if c.databasePath != "" {
 		args = append([]string{"--config=" + c.databasePath}, args...)
 	}
@@ -546,6 +546,17 @@ func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments 
 		extractFromRaw(raw, &text, &html, &attachments)
 	}
 	html = StripQuotedContent(html)
+	html = sanitize.SanitizeHTML(html)
+	return
+}
+
+// ExtractBodyContentFull extracts text/plain, text/html and attachments from a message.
+// Unlike ExtractBodyContent, it does NOT strip quoted reply content — used for reply
+// quoting where the full conversation chain must be preserved.
+func ExtractBodyContentFull(body []json.RawMessage) (text, html string, attachments []string) {
+	for _, raw := range body {
+		extractFromRaw(raw, &text, &html, &attachments)
+	}
 	html = sanitize.SanitizeHTML(html)
 	return
 }

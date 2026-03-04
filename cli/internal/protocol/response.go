@@ -22,8 +22,9 @@ type Response struct {
 	Error     string              `json:"error,omitempty"`
 	Results   []mail.Mail         `json:"results,omitempty"`
 	Mail      *mail.MailContent   `json:"mail,omitempty"`
-	Thread    *mail.ThreadContent `json:"thread,omitempty"`
-	Tags      []string            `json:"tags,omitempty"`
+	Thread      *mail.ThreadContent `json:"thread,omitempty"`
+	MessageBody *mail.MessageBody   `json:"message_body,omitempty"`
+	Tags        []string            `json:"tags,omitempty"`
 }
 
 // Success returns a successful response with no data
@@ -44,6 +45,11 @@ func SuccessWithMail(m *mail.MailContent) Response {
 // SuccessWithThread returns a successful response with thread content
 func SuccessWithThread(t *mail.ThreadContent) Response {
 	return Response{OK: true, Thread: t}
+}
+
+// SuccessWithMessageBody returns a successful response with a message body
+func SuccessWithMessageBody(b *mail.MessageBody) Response {
+	return Response{OK: true, MessageBody: b}
 }
 
 // SuccessWithTags returns a successful response with a list of tags

@@ -54,6 +54,16 @@ func (h *Handler) ListTagsHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+func (h *Handler) ShowMessageBodyHandler(w http.ResponseWriter, r *http.Request) {
+	messageID := r.URL.Query().Get("id")
+	if messageID == "" {
+		http.Error(w, "Missing required 'id' parameter", http.StatusBadRequest)
+		return
+	}
+	response := h.ShowMessageBody(messageID)
+	writeJSON(w, response)
+}
+
 func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	threadID := vars["thread_id"]
