@@ -283,7 +283,7 @@ class NotmuchBackend: ObservableObject {
 
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].threadMessages = thread.messages
-            if let newestMessage = thread.messages.last {
+            if let newestMessage = thread.messages.first {
                 emails[index].from = newestMessage.from
                 emails[index].body = newestMessage.body
                 emails[index].htmlBody = newestMessage.html

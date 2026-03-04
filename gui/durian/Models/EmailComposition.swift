@@ -217,43 +217,44 @@ extension EmailDraft {
     ///   - fromAccount: The email address to send from
     /// - Returns: A new EmailDraft configured as a reply
     static func createReply(from message: MailMessage, fromAccount: String) -> EmailDraft {
-        // Use message.from (updated from thread headers after body load).
-        // Fallback to threadMessages if from has no email (e.g. cache restored without headers).
-        var replyTo = message.from
+        let target = findReplyTarget(message: message, fromAccount: fromAccount)
+
+        // Fallback if target.from has no email (e.g. cache restored without headers)
+        var replyTo = target.from
         if !replyTo.contains("@") {
             if let threadFrom = message.threadMessages?.last?.from, threadFrom.contains("@") {
                 replyTo = threadFrom
             }
         }
-        
+
         // Build subject with Re: prefix (avoid Re: Re: Re:)
-        let subject = message.subject.hasPrefix("Re:") 
-            ? message.subject 
+        let subject = message.subject.hasPrefix("Re:")
+            ? message.subject
             : "Re: \(message.subject)"
-        
-        // Build references chain
-        var references = message.references ?? ""
-        if let messageId = message.messageId, !messageId.isEmpty {
+
+        // Build references chain from target message
+        var references = target.references ?? ""
+        if let messageId = target.messageId, !messageId.isEmpty {
             if !references.isEmpty {
                 references += " "
             }
             references += messageId
         }
-        
-        // Check if original was HTML
-        let hasHTML = message.htmlBody != nil && !message.htmlBody!.isEmpty
-        
-        // Quote the original body (use HTML if available)
+
+        // Check if target was HTML
+        let hasHTML = target.html != nil && !target.html!.isEmpty
+
+        // Quote the target body (use HTML if available)
         let quotedBody = hasHTML
-            ? quoteBodyHTML(message.htmlBody!, from: message.from, date: message.date)
-            : quoteBody(message.body ?? "", from: message.from, date: message.date)
-        
+            ? quoteBodyHTML(target.html!, from: target.from, date: target.date)
+            : quoteBody(target.body ?? "", from: target.from, date: target.date)
+
         return EmailDraft(
             from: fromAccount,
             to: [replyTo],
             subject: subject,
             body: "",  // User writes here
-            inReplyTo: message.messageId,
+            inReplyTo: target.messageId,
             references: references.isEmpty ? nil : references,
             quotedContent: quotedBody,
             quotedIsHTML: hasHTML
@@ -267,14 +268,16 @@ extension EmailDraft {
     /// - Returns: A new EmailDraft configured as a reply-all
     static func createReplyAll(from message: MailMessage, fromAccount: String) -> EmailDraft {
         var draft = createReply(from: message, fromAccount: fromAccount)
+        let target = findReplyTarget(message: message, fromAccount: fromAccount)
 
-        // Add original To and CC recipients to CC (excluding self)
+        // Build CC from the TARGET message's To/CC (not thread-level fields,
+        // which may be from the user's own sent message)
         var ccRecipients: [String] = []
 
-        // Add original To recipients (except sender and self)
-        if let originalTo = message.to {
+        // Add target's To recipients (except the reply-to sender and self)
+        if let originalTo = target.to {
             let toAddresses = parseEmailList(originalTo)
-            let senderEmail = extractEmail(from: draft.to.first ?? message.from).lowercased()
+            let senderEmail = extractEmail(from: draft.to.first ?? target.from).lowercased()
             for address in toAddresses {
                 let emailOnly = extractEmail(from: address).lowercased()
                 if emailOnly != fromAccount.lowercased() && emailOnly != senderEmail {
@@ -283,8 +286,8 @@ extension EmailDraft {
             }
         }
 
-        // Add original CC recipients (except self)
-        if let originalCC = message.cc {
+        // Add target's CC recipients (except self)
+        if let originalCC = target.cc {
             let ccAddresses = parseEmailList(originalCC)
             for address in ccAddresses {
                 let emailOnly = extractEmail(from: address).lowercased()
@@ -293,7 +296,7 @@ extension EmailDraft {
                 }
             }
         }
-        
+
         draft.cc = ccRecipients
         return draft
     }
@@ -327,8 +330,55 @@ extension EmailDraft {
         )
     }
     
+    // MARK: - Reply Target Resolution
+
+    /// Fields needed to construct a reply from a specific thread message.
+    private struct ReplyTarget {
+        let from: String
+        let to: String?
+        let cc: String?
+        let date: String
+        let body: String?
+        let html: String?
+        let messageId: String?
+        let references: String?
+    }
+
+    /// Find the correct message to reply to in a thread.
+    ///
+    /// When the newest message in a thread was sent by the current user,
+    /// replying to it would set To: to ourselves. This method finds the
+    /// appropriate non-self message to reply to instead.
+    private static func findReplyTarget(message: MailMessage, fromAccount: String) -> ReplyTarget {
+        let accountEmail = fromAccount.lowercased()
+        let newestFrom = extractEmail(from: message.from).lowercased()
+
+        // Case 1: newest message is not from self — use as-is
+        guard newestFrom == accountEmail else {
+            return ReplyTarget(from: message.from, to: message.to, cc: message.cc,
+                               date: message.date, body: message.body, html: message.htmlBody,
+                               messageId: message.messageId, references: message.references)
+        }
+
+        // Case 2: newest is from self — find the most recent non-self message
+        if let threads = message.threadMessages {
+            for tm in threads {
+                if extractEmail(from: tm.from).lowercased() != accountEmail {
+                    return ReplyTarget(from: tm.from, to: tm.to, cc: tm.cc,
+                                       date: tm.date, body: tm.body, html: tm.html,
+                                       messageId: tm.message_id, references: tm.references)
+                }
+            }
+        }
+
+        // Case 3: all messages from self — reply to original recipients
+        return ReplyTarget(from: message.to ?? message.from, to: message.to, cc: message.cc,
+                           date: message.date, body: message.body, html: message.htmlBody,
+                           messageId: message.messageId, references: message.references)
+    }
+
     // MARK: - Private Helpers
-    
+
     /// Extract email address from various formats:
     /// - "Name <email>" -> "email"
     /// - "<Name> email" -> "email"  (malformed but common)
