@@ -10,6 +10,10 @@ go_library(
 
 go_test(
     name = "sanitize_test",
-    srcs = ["sanitize_test.go"],
+    srcs = [
+        "sanitize_test.go",
+        "real_test.go",
+    ],
+    data = glob(["testdata/**"]),
     embed = [":sanitize"],
 )
