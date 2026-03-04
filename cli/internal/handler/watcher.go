@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -94,10 +92,14 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			}
 		}
 
-		// Initial sync on the watcher's connection (best-effort).
+		// Initial sync on the watcher's connection (catch-up, no SSE notification).
 		// If this kills the connection, SELECT below will fail and the
 		// outer loop reconnects with 30s backoff.
-		w.syncAndNotify(account, client)
+		initOpts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}}
+		initSyncer := imap.NewSyncerWithClient(account, client, initOpts)
+		if _, err := initSyncer.Sync(); err != nil {
+			log.Printf("WATCHER: [%s] initial sync failed: %v", account.Email, err)
+		}
 
 		// Select INBOX for IDLE (sync may have left a different mailbox selected)
 		if _, err := client.SelectMailbox("INBOX"); err != nil {
@@ -162,43 +164,20 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 }
 
 // syncAndNotify syncs the account and broadcasts a NewMailEvent if new
-// messages arrived. It uses a per-account mutex to prevent overlapping syncs.
-// If client is non-nil, the syncer reuses that connection instead of opening a new one.
+// messages arrived. Uses the Syncer's NewMessageIDs for deterministic
+// new-message detection (no lastmod queries needed).
+// It uses a per-account mutex to prevent overlapping syncs.
 func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *imap.Client) {
 	mu := w.accountLock(account.Email)
 	mu.Lock()
 	defer mu.Unlock()
 
-	// Capture lastmod before sync so we know exactly which messages are new.
-	// notmuch count --lastmod outputs: count\tuuid\tlastmod
-	var prevLastmod int64
-	out, err := exec.Command("notmuch", "count", "--lastmod", "*").Output()
-	if err != nil {
-		log.Printf("WATCHER: [%s] failed to get lastmod: %v", account.Email, err)
-		// Continue anyway — sync is more important than notifications
-	} else {
-		fields := strings.Split(strings.TrimSpace(string(out)), "\t")
-		if len(fields) >= 3 {
-			prevLastmod, _ = strconv.ParseInt(fields[2], 10, 64)
-		}
-	}
+	// Build syncer: reuse caller's IDLE connection, only sync INBOX.
+	// Iterating other mailboxes triggers rate-limiting on M365.
+	opts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}}
+	syncer := imap.NewSyncerWithClient(account, client, opts)
 
-	// Build syncer: reuse caller's connection if provided, otherwise open a new one.
-	// When reusing the IDLE connection, only sync INBOX — iterating other
-	// mailboxes (SELECT Sent, Drafts, etc.) triggers rate-limiting on M365
-	// and causes servers like tum.de to close the connection.
-	opts := &imap.SyncOptions{Quiet: true}
-	var syncer *imap.Syncer
-	if client != nil {
-		opts.Mailboxes = []string{"INBOX"}
-		syncer = imap.NewSyncerWithClient(account, client, opts)
-	} else {
-		syncer = imap.NewSyncer(account, opts)
-	}
-
-	// Sync downloads new messages + runs notmuch new.
-	// Run in a goroutine with a timeout so a flaky server can't block the
-	// watcher forever — we need to get back to IDLE promptly.
+	// Run sync with timeout so a flaky server can't block the watcher forever.
 	type syncOutcome struct {
 		result *imap.SyncResult
 		err    error
@@ -210,6 +189,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	}()
 
 	var result *imap.SyncResult
+	var err error
 	select {
 	case out := <-ch:
 		result, err = out.result, out.err
@@ -221,14 +201,18 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		log.Printf("WATCHER: [%s] sync failed: %v", account.Email, err)
 		return
 	}
-	if result.TotalNew == 0 || prevLastmod == 0 {
+	if len(result.NewMessageIDs) == 0 {
 		return
 	}
 
-	// Query for messages added during our sync window. Use lastmod+1 because
-	// the range is inclusive and we want only what changed AFTER our snapshot.
-	// No tag filter — different accounts may use different initial tags.
-	query := fmt.Sprintf("lastmod:%d..", prevLastmod+1)
+	// Query notmuch for thread/subject/from of the new messages.
+	// The Syncer gives us exact Message-IDs — no lastmod guessing.
+	idQueries := make([]string, len(result.NewMessageIDs))
+	for i, id := range result.NewMessageIDs {
+		idQueries[i] = fmt.Sprintf("id:%s", id)
+	}
+	query := strings.Join(idQueries, " OR ")
+
 	results, err := w.notmuch.Search(query, 0)
 	if err != nil {
 		log.Printf("WATCHER: [%s] notmuch search failed: %v", account.Email, err)

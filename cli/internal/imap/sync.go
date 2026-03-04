@@ -71,6 +71,7 @@ type SyncResult struct {
 	TotalDeduplicated int // Messages that already existed locally (tags updated)
 	FlagsUploaded     int // Flags uploaded to server
 	FlagsDownload     int // Flags downloaded from server
+	NewMessageIDs     []string // Message-IDs of newly downloaded messages
 	Error             error
 }
 
@@ -84,6 +85,7 @@ type MailboxResult struct {
 	DeduplicatedMsgs int // Messages that already existed locally (tags updated)
 	FlagsUploaded    int
 	FlagsDownload    int
+	NewMessageIDs    []string // Message-IDs of newly downloaded messages
 	Error            error
 }
 
@@ -234,6 +236,7 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		result.TotalDeduplicated += mboxResult.DeduplicatedMsgs
 		result.FlagsUploaded += mboxResult.FlagsUploaded
 		result.FlagsDownload += mboxResult.FlagsDownload
+		result.NewMessageIDs = append(result.NewMessageIDs, mboxResult.NewMessageIDs...)
 
 		if mboxResult.Error != nil && result.Error == nil {
 			result.Error = mboxResult.Error
@@ -617,8 +620,10 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			mboxState.SetMessageFlags(msg.Uid, initialFlags)
 
 			// Extract and store Message-ID for flag sync
-			if messageID := extractMessageIDFromBody(msgBody); messageID != "" {
+			messageID := extractMessageIDFromBody(msgBody)
+			if messageID != "" {
 				mboxState.SetMessageID(msg.Uid, messageID)
+				result.NewMessageIDs = append(result.NewMessageIDs, messageID)
 			}
 
 			result.NewMsgs++
