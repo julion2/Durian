@@ -130,6 +130,11 @@ class NotmuchBackend: ObservableObject {
             return
         }
 
+        // Kill any existing durian serve process to free the port.
+        // This handles the case where another app instance (Nightly vs Release)
+        // or a stale process is already bound to :9723.
+        killExistingServeProcesses()
+
         durianProcess = Process()
         durianProcess?.executableURL = URL(fileURLWithPath: durianPath)
         durianProcess?.arguments = ["serve"]
@@ -186,6 +191,22 @@ class NotmuchBackend: ObservableObject {
         isConnected = false
         connectionStatus = "Disconnected"
         print("NOTMUCH Disconnected and server terminated")
+    }
+
+    /// Kill any existing `durian serve` processes to free port 9723.
+    private func killExistingServeProcesses() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        task.arguments = ["-f", "durian serve"]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+        task.waitUntilExit()
+        if task.terminationStatus == 0 {
+            print("NOTMUCH Killed existing durian serve process")
+            // Brief pause to let the port be released
+            Thread.sleep(forTimeInterval: 0.5)
+        }
     }
 
     // MARK: - Folder/Tag Selection (unchanged)
