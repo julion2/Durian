@@ -234,6 +234,31 @@ func (c *Client) SearchAll() ([]uint32, error) {
 	return uids, nil
 }
 
+// SearchUIDRange returns UIDs >= minUID. Pass maxUID=0 for no upper bound (*).
+func (c *Client) SearchUIDRange(minUID, maxUID uint32) ([]uint32, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	uidRange := new(imap.SeqSet)
+	if maxUID == 0 {
+		// minUID:* — open-ended range
+		uidRange.AddRange(minUID, 0)
+	} else {
+		uidRange.AddRange(minUID, maxUID)
+	}
+
+	criteria := imap.NewSearchCriteria()
+	criteria.Uid = uidRange
+
+	uids, err := c.conn.UidSearch(criteria)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search UIDs %d:*: %w", minUID, err)
+	}
+
+	return uids, nil
+}
+
 // FetchMessages fetches messages by UID
 func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 	if c.conn == nil {

@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import AppKit
 
 @MainActor
 class AccountManager: ObservableObject {
@@ -18,6 +19,9 @@ class AccountManager: ObservableObject {
     @Published var selectedFolder: String = "inbox"
     @Published var isLoadingEmails = false
     @Published var loadingProgress = ""
+
+    /// Set by notification click handler; ContentView observes and navigates to this thread
+    @Published var pendingNotificationThreadId: String?
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -239,6 +243,18 @@ class AccountManager: ObservableObject {
         syncFromNotmuch()
     }
     
+    // MARK: - Notification Navigation
+
+    /// Select an email by thread ID (called when user clicks a notification)
+    func selectEmail(threadId: String) {
+        guard mailMessages.contains(where: { $0.id == threadId }) else {
+            print("NOTMUCH: Notification thread \(threadId) not found in current list")
+            return
+        }
+        pendingNotificationThreadId = threadId
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // MARK: - Full Reload
     
     func reloadNotmuch() async {

@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import UserNotifications
 
 // MARK: - Sync State
 
@@ -60,7 +61,11 @@ class SyncManager: ObservableObject {
     private var consecutiveFailures: Int = 0
     private var userSawFailureBanner: Bool = false
     private var pendingOfflineBanner: DispatchWorkItem?
-    
+
+    // MARK: - SSE Event Stream
+    private var eventStream: EventStreamClient?
+    private var reloadDebounceTask: DispatchWorkItem?
+
     /// True if a sync is currently in progress
     var isSyncing: Bool { syncLock }
     
@@ -91,6 +96,16 @@ class SyncManager: ObservableObject {
             print("SYNC: Offline at startup, timers not started")
         }
         
+        // Start SSE event stream for real-time new-mail notifications
+        let stream = EventStreamClient()
+        stream.onNewMail = { [weak self] event in
+            Task { @MainActor in
+                self?.handleNewMailEvent(event)
+            }
+        }
+        stream.connect()
+        eventStream = stream
+
         // React to network changes
         NetworkMonitor.shared.$isConnected
             .dropFirst()
@@ -265,10 +280,11 @@ class SyncManager: ObservableObject {
             print("SYNC: Quick sync completed successfully")
             recordSyncSuccess()
             syncState = .success
-            lastSyncTime = Date()
 
-            // Reload email list to show new messages
+            // Reload email list to show new messages (before updating lastSyncTime
+            // so the notification recency filter uses the previous sync time)
             await reloadEmailList()
+            lastSyncTime = Date()
 
             // After 3 seconds, go back to idle
             Task {
@@ -312,10 +328,10 @@ class SyncManager: ObservableObject {
         if success {
             print("SYNC: Full sync completed successfully")
             recordSyncSuccess()
-            lastSyncTime = Date()
 
-            // Reload email list to show new messages
+            // Reload before updating lastSyncTime (notification recency filter)
             await reloadEmailList()
+            lastSyncTime = Date()
         } else {
             print("SYNC: Full sync failed")
             consecutiveFailures += 1
@@ -372,10 +388,65 @@ class SyncManager: ObservableObject {
     
     /// Reload the email list after sync to show new messages
     private func reloadEmailList() async {
-        // Get the current backend and refresh the email list
-        if let backend = AccountManager.shared.notmuchBackend {
-            print("SYNC: Reloading email list")
-            await backend.reload()
+        guard let backend = AccountManager.shared.notmuchBackend else { return }
+        print("SYNC: Reloading email list")
+        await backend.reload()
+    }
+
+    // MARK: - SSE New Mail Handler
+
+    /// Handle a new_mail SSE event — send notifications and refresh the email list.
+    private func handleNewMailEvent(_ event: NewMailEvent) {
+        // Debounced reload — multiple accounts fire SSE events within seconds
+        reloadDebounceTask?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                guard let backend = AccountManager.shared.notmuchBackend else { return }
+                await backend.reload()
+                self?.lastSyncTime = Date()
+            }
+        }
+        reloadDebounceTask = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+
+        // Notifications
+        guard SettingsManager.shared.settings.notificationsEnabled else { return }
+        guard !event.messages.isEmpty else { return }
+
+        let center = UNUserNotificationCenter.current()
+
+        if event.messages.count <= 3 {
+            // Individual notifications — user sees sender + subject
+            for msg in event.messages {
+                let content = UNMutableNotificationContent()
+                content.title = msg.from
+                content.body = msg.subject
+                content.sound = .default
+                content.userInfo = ["threadId": msg.thread_id]
+
+                let request = UNNotificationRequest(
+                    identifier: "newmail-\(msg.thread_id)-\(UUID().uuidString)",
+                    content: content,
+                    trigger: nil
+                )
+                center.add(request)
+            }
+        } else {
+            // Batch — less noisy for bulk arrivals
+            let content = UNMutableNotificationContent()
+            content.title = "\(event.total_new) new emails"
+            content.body = event.messages.prefix(3)
+                .map { $0.from }
+                .joined(separator: ", ")
+            content.sound = .default
+            content.userInfo = ["threadId": event.messages[0].thread_id]
+
+            let request = UNNotificationRequest(
+                identifier: "newmail-batch-\(event.account)-\(UUID().uuidString)",
+                content: content,
+                trigger: nil
+            )
+            center.add(request)
         }
     }
     

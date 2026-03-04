@@ -135,9 +135,13 @@ class NotmuchBackend: ObservableObject {
         env["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
         durianProcess?.environment = env
 
-        // Discard output so the pipe doesn't fill up
+        // Log server output to file for debugging (stdout to /dev/null, stderr to log)
         durianProcess?.standardOutput = FileHandle.nullDevice
-        durianProcess?.standardError = FileHandle.nullDevice
+        let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/durian")
+        let logFile = logDir.appendingPathComponent("serve.log")
+        FileManager.default.createFile(atPath: logFile.path, contents: nil)
+        durianProcess?.standardError = try? FileHandle(forWritingTo: logFile)
+        print("NOTMUCH Server logs at: \(logFile.path)")
 
         do {
             try durianProcess?.run()

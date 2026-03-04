@@ -8,20 +8,56 @@
 import SwiftUI
 import UserNotifications
 
+// MARK: - Notification Delegate
+
+class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    /// Handle notification click — route to the email thread
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let userInfo = response.notification.request.content.userInfo
+        if let threadId = userInfo["threadId"] as? String {
+            print("NOTIFICATIONS: Clicked notification for thread \(threadId)")
+            Task { @MainActor in
+                AccountManager.shared.selectEmail(threadId: threadId)
+            }
+        }
+        completionHandler()
+    }
+
+    /// Show notifications even when app is in foreground (needed for testing)
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+}
+
+// MARK: - App
+
 @main
 struct DurianApp: App {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var profileManager = ProfileManager.shared
     @StateObject private var accountManager = AccountManager.shared
-    
+
+    private static let notificationDelegate = NotificationDelegate()
+
     init() {
         // Setup sync manager (creates script + launchd agent if needed)
         SyncManager.shared.setup()
-        
+
+        // Set notification delegate before requesting permission
+        UNUserNotificationCenter.current().delegate = Self.notificationDelegate
+
         // Request notification permission for sync warnings/errors
         requestNotificationPermission()
     }
-    
+
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if granted {

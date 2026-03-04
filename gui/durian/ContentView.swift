@@ -64,8 +64,15 @@ struct ContentView: View {
                 .zIndex(100)
             }
         }
+        .onChange(of: accountManager.pendingNotificationThreadId) { _, threadId in
+            guard let threadId = threadId else { return }
+            accountManager.pendingNotificationThreadId = nil
+            cursorEmailId = threadId
+            markedEmails = [threadId]
+            handleNotmuchEmailSelection(threadId)
+        }
     }
-    
+
     // MARK: - Search Popup Overlay
     
     @ViewBuilder
