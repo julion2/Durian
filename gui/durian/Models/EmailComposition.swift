@@ -86,6 +86,21 @@ struct EmailDraft: Identifiable, Codable, Equatable {
         return hasRecipients && !subject.isEmpty
     }
     
+    /// Whether the user has typed any actual content (excludes signature, quoted content).
+    /// Subject-only changes are intentionally not counted — subject-only replies aren't a real use case.
+    var hasUserContent: Bool {
+        if !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        if let html = htmlBody {
+            let stripped = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            if !stripped.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
     var hasAttachments: Bool {
         return !attachments.isEmpty
     }

@@ -108,10 +108,12 @@ class DraftService: ObservableObject {
             throw DraftError.saveFailed("Draft not found")
         }
         
-        // Skip saving empty drafts
-        if draft.to.isEmpty && draft.subject.isEmpty && draft.body.isEmpty {
+        // Discard drafts where the user hasn't typed any content
+        // (signatures and quoted content don't count)
+        if !draft.hasUserContent {
             activeDrafts.removeValue(forKey: id)
-            print("DRAFT: Skipped saving empty draft \(id)")
+            DraftManager.shared.deleteDraft(id: id)
+            print("DRAFT: Discarded draft with no user content \(id)")
             return ""
         }
         
