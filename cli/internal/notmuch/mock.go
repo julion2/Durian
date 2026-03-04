@@ -102,6 +102,13 @@ func (m *MockClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 	return m.ThreadMessages, nil
 }
 
+func (m *MockClient) ShowMessages(_ string) ([]ThreadMessage, error) {
+	if m.ThreadErr != nil {
+		return nil, m.ThreadErr
+	}
+	return m.ThreadMessages, nil
+}
+
 func (m *MockClient) ListTags() ([]string, error) {
 	return m.Tags, m.TagsErr
 }

@@ -21,6 +21,7 @@ type NewMailInfo struct {
 	ThreadID string `json:"thread_id"`
 	Subject  string `json:"subject"`
 	From     string `json:"from"`
+	Snippet  string `json:"snippet"`
 }
 
 // EventHub is a fan-out broadcaster for SSE events.

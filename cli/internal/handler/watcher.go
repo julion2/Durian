@@ -249,21 +249,31 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	}
 
 	query := strings.Join(idQueries, " OR ")
-	results, err := w.notmuch.Search(query, 0)
+
+	// Fetch full message bodies via notmuch show (reuses ExtractBodyContent)
+	msgs, err := w.notmuch.ShowMessages(query)
 	if err != nil {
-		log.Printf("WATCHER: [%s] notmuch search failed: %v", account.Email, err)
+		log.Printf("WATCHER: [%s] notmuch show failed: %v", account.Email, err)
 		return
 	}
-	if len(results) == 0 {
+	if len(msgs) == 0 {
 		return
 	}
 
-	messages := make([]NewMailInfo, 0, len(results))
-	for _, r := range results {
+	messages := make([]NewMailInfo, 0, len(msgs))
+	for _, msg := range msgs {
+		// Look up thread ID for this message
+		results, err := w.notmuch.Search("id:"+msg.ID, 1)
+		if err != nil || len(results) == 0 {
+			continue
+		}
+		r := results[0]
+		text, _, _ := notmuch.ExtractBodyContent(msg.Body)
 		messages = append(messages, NewMailInfo{
 			ThreadID: r.Thread,
 			Subject:  r.Subject,
 			From:     r.Authors,
+			Snippet:  cleanSnippet(text, 150),
 		})
 	}
 
@@ -273,6 +283,40 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		TotalNew: len(messages),
 		Messages: messages,
 	})
+}
+
+// cleanSnippet transforms raw email body text into a notification-friendly preview.
+// Strips quoted replies, signatures, and collapses whitespace into a single line.
+func cleanSnippet(text string, maxLen int) string {
+	// Cut at signature marker
+	if idx := strings.Index(text, "\n-- \n"); idx >= 0 {
+		text = text[:idx]
+	}
+
+	// Strip quoted lines and build clean output
+	var parts []string
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, ">") {
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		parts = append(parts, trimmed)
+	}
+
+	result := strings.Join(parts, " ")
+	if len(result) <= maxLen {
+		return result
+	}
+
+	// Truncate at word boundary
+	truncated := result[:maxLen]
+	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > maxLen/2 {
+		truncated = truncated[:lastSpace]
+	}
+	return truncated + "…"
 }
 
 // logRetry logs retry errors with suppression for repeated identical errors

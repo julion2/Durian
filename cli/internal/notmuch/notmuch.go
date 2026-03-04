@@ -62,6 +62,7 @@ type Client interface {
 	GetFiles(query string, limit int) ([]string, error)
 	Tag(query string, tags []string) error
 	ShowThread(threadID string) ([]ThreadMessage, error)
+	ShowMessages(query string) ([]ThreadMessage, error)
 
 	// Tag listing
 	ListTags() ([]string, error)
@@ -178,6 +179,33 @@ func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 	var raw json.RawMessage
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return nil, err
+	}
+
+	var messages []ThreadMessage
+	flattenThread(raw, &messages)
+	return messages, nil
+}
+
+// ShowMessages returns individual messages matching a query (no thread expansion).
+// Unlike ShowThread, this uses --entire-thread=false so only the matched messages
+// are returned, not their entire threads. Useful for fetching bodies of specific
+// messages by ID (e.g. "id:xxx OR id:yyy").
+func (c *ExecClient) ShowMessages(query string) ([]ThreadMessage, error) {
+	args := []string{"show", "--format=json", "--entire-thread=false"}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+	args = append(args, query)
+
+	cmd := exec.Command("notmuch", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("notmuch show failed: %w", err)
+	}
+
+	var raw json.RawMessage
+	if err := json.Unmarshal(out, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse show results: %w", err)
 	}
 
 	var messages []ThreadMessage

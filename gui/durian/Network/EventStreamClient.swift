@@ -19,6 +19,7 @@ struct NewMailMessage: Decodable {
     let thread_id: String
     let subject: String
     let from: String
+    let snippet: String
 }
 
 // MARK: - Event Stream Client

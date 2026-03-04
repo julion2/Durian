@@ -416,11 +416,12 @@ class SyncManager: ObservableObject {
         let center = UNUserNotificationCenter.current()
 
         if event.messages.count <= 3 {
-            // Individual notifications — user sees sender + subject
+            // Individual notifications — sender, subject, body preview
             for msg in event.messages {
                 let content = UNMutableNotificationContent()
                 content.title = msg.from
-                content.body = msg.subject
+                content.subtitle = msg.subject
+                content.body = msg.snippet
                 content.sound = .default
                 content.userInfo = ["threadId": msg.thread_id]
 
@@ -436,8 +437,8 @@ class SyncManager: ObservableObject {
             let content = UNMutableNotificationContent()
             content.title = "\(event.total_new) new emails"
             content.body = event.messages.prefix(3)
-                .map { $0.from }
-                .joined(separator: ", ")
+                .map { "\($0.from): \($0.subject)" }
+                .joined(separator: "\n")
             content.sound = .default
             content.userInfo = ["threadId": event.messages[0].thread_id]
 
