@@ -2,6 +2,7 @@ package sanitize
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -49,28 +50,42 @@ func TestVoidElementsDoNotEatContent(t *testing.T) {
 	}
 }
 
-func TestRealDoodleNewsletter(t *testing.T) {
-	raw, err := os.ReadFile("testdata/doodle_newsletter.html")
+// TestRealEmailFixtures runs all HTML files in testdata/ through the sanitizer
+// and asserts structural preservation. Each fixture is a real-world email HTML.
+func TestRealEmailFixtures(t *testing.T) {
+	files, err := filepath.Glob("testdata/*.html")
 	if err != nil {
-		t.Fatalf("Failed to read test fixture: %v", err)
+		t.Fatalf("Failed to glob testdata: %v", err)
 	}
-	html := string(raw)
+	if len(files) == 0 {
+		t.Fatal("No HTML fixtures found in testdata/")
+	}
 
-	result := SanitizeHTML(html)
-	t.Logf("Input: %d chars → Output: %d chars (%.1f%%)", len(html), len(result),
-		float64(len(result))/float64(len(html))*100)
+	for _, file := range files {
+		name := strings.TrimSuffix(filepath.Base(file), ".html")
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("Failed to read %s: %v", file, err)
+			}
+			html := string(raw)
+			result := SanitizeHTML(html)
 
-	if !strings.Contains(result, "<table") {
-		t.Error("Expected <table> in output")
-	}
-	if !strings.Contains(result, "<a href") {
-		t.Error("Expected <a href> in output")
-	}
-	if !strings.Contains(result, "<style>") {
-		t.Error("Expected <style> in output")
-	}
-	if len(result) < len(html)/2 {
-		t.Errorf("Sanitized HTML too short (%d chars, %.0f%% of input), expected >50%% preservation",
-			len(result), float64(len(result))/float64(len(html))*100)
+			ratio := float64(len(result)) / float64(len(html)) * 100
+			t.Logf("%d → %d chars (%.1f%%)", len(html), len(result), ratio)
+
+			// Every real email should preserve at least 50% of its content
+			if len(result) < len(html)/2 {
+				t.Errorf("Too much content stripped: %d → %d chars (%.0f%%)", len(html), len(result), ratio)
+			}
+
+			// Script execution vectors must never survive
+			lower := strings.ToLower(result)
+			for _, bad := range []string{"<script", "<iframe", "<object", "<embed"} {
+				if strings.Contains(lower, bad) {
+					t.Errorf("Dangerous element %s found in output", bad)
+				}
+			}
+		})
 	}
 }

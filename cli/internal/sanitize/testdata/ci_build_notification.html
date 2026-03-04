@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width" />
+<title>Build Failed: main @ a3f829c</title>
+<style type="text/css">
+  body { margin: 0; padding: 0; background-color: #f6f8fa; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #24292e; }
+  pre { background-color: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; line-height: 1.45; }
+  code { background-color: rgba(27,31,35,0.05); border-radius: 3px; padding: 0.2em 0.4em; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 85%; }
+  .diff-add { color: #22863a; background-color: #f0fff4; }
+  .diff-del { color: #cb2431; background-color: #ffeef0; }
+  .status-fail { color: #cb2431; }
+  .status-pass { color: #22863a; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge-fail { background-color: #ffeef0; color: #cb2431; border: 1px solid #fdaeb7; }
+  .badge-pass { background-color: #dcffe4; color: #22863a; border: 1px solid #34d058; }
+  .badge-skip { background-color: #fff5b1; color: #735c0f; border: 1px solid #f9c513; }
+  a { color: #0366d6; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #e1e4e8; margin: 20px 0; }
+  @media (max-width: 600px) {
+    .container { width: 100% !important; padding: 16px !important; }
+    pre { font-size: 11px !important; }
+  }
+</style>
+</head>
+<body style="margin: 0; padding: 20px 0; background-color: #f6f8fa;">
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+<tr>
+<td align="center">
+<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" class="container" style="background-color: #ffffff; border: 1px solid #e1e4e8; border-radius: 6px;">
+<tr>
+<td style="padding: 32px;">
+  <!-- Header -->
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+  <tr>
+    <td valign="middle" width="32">
+      <img src="https://example.com/ci-logo.png" alt="" width="24" height="24" style="display: block; border-radius: 4px;" />
+    </td>
+    <td valign="middle" style="padding-left: 10px;">
+      <span style="font-size: 13px; color: #586069;">BuildBot &bull; <a href="https://example.com/repo/myapp" style="color: #0366d6;">myapp</a> &bull; <code>main</code></span>
+    </td>
+    <td valign="middle" align="right">
+      <span class="badge badge-fail" style="display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; background-color: #ffeef0; color: #cb2431; border: 1px solid #fdaeb7;">FAILED</span>
+    </td>
+  </tr>
+  </table>
+
+  <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 20px 0;" />
+
+  <!-- Summary -->
+  <h2 style="margin: 0 0 8px; font-size: 20px; font-weight: 600; color: #24292e;">Build <a href="https://example.com/builds/48291" style="color: #0366d6;">#48291</a> failed</h2>
+  <p style="margin: 0 0 16px; color: #586069; font-size: 13px;">
+    Triggered by push to <code style="background-color: rgba(27,31,35,0.05); border-radius: 3px; padding: 0.2em 0.4em; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 85%;">main</code> &mdash;
+    commit <a href="https://example.com/repo/myapp/commit/a3f829c" style="color: #0366d6;"><code>a3f829c</code></a> by J. Developer
+    <br />
+    <em>&ldquo;fix: handle nil pointer in user service&rdquo;</em>
+  </p>
+
+  <!-- Test results table -->
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #e1e4e8; border-radius: 6px; border-collapse: separate; overflow: hidden; margin-bottom: 16px;">
+    <tr bgcolor="#f6f8fa" style="background-color: #f6f8fa;">
+      <th align="left" style="padding: 8px 12px; font-size: 12px; color: #586069; font-weight: 600; border-bottom: 1px solid #e1e4e8;">Suite</th>
+      <th align="center" style="padding: 8px 12px; font-size: 12px; color: #586069; font-weight: 600; border-bottom: 1px solid #e1e4e8;" width="60">Tests</th>
+      <th align="center" style="padding: 8px 12px; font-size: 12px; color: #586069; font-weight: 600; border-bottom: 1px solid #e1e4e8;" width="60">Pass</th>
+      <th align="center" style="padding: 8px 12px; font-size: 12px; color: #586069; font-weight: 600; border-bottom: 1px solid #e1e4e8;" width="60">Fail</th>
+      <th align="center" style="padding: 8px 12px; font-size: 12px; color: #586069; font-weight: 600; border-bottom: 1px solid #e1e4e8;" width="70">Duration</th>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;"><code>internal/user</code></td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;">24</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #22863a;">22</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #cb2431; font-weight: 600;">2</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #586069;">3.2s</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;"><code>internal/auth</code></td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;">18</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #22863a;">18</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #586069;">0</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #586069;">1.8s</td>
+    </tr>
+    <tr>
+      <td style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;"><code>internal/api</code></td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0;">42</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #22863a;">42</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #586069;">0</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; color: #586069;">8.4s</td>
+    </tr>
+    <tr bgcolor="#f6f8fa">
+      <td style="padding: 8px 12px; font-size: 13px; font-weight: 600;">Total</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; font-weight: 600;">84</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; font-weight: 600; color: #22863a;">82</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; font-weight: 600; color: #cb2431;">2</td>
+      <td align="center" style="padding: 8px 12px; font-size: 13px; font-weight: 600; color: #586069;">13.4s</td>
+    </tr>
+  </table>
+
+  <!-- Failed test output -->
+  <h3 style="margin: 24px 0 8px; font-size: 14px; font-weight: 600; color: #cb2431;">&#10060; TestUserService_GetByID</h3>
+  <pre style="background-color: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word;">
+=== RUN   TestUserService_GetByID
+    user_test.go:47: expected user &quot;alice&quot;, got nil
+    user_test.go:48:
+        <span class="diff-del" style="color: #cb2431; background-color: #ffeef0;">- Expected: &amp;User{ID: &quot;u_123&quot;, Name: &quot;alice&quot;}</span>
+        <span class="diff-add" style="color: #22863a; background-color: #f0fff4;">+ Actual:   &lt;nil&gt;</span>
+--- FAIL: TestUserService_GetByID (0.02s)
+</pre>
+
+  <h3 style="margin: 24px 0 8px; font-size: 14px; font-weight: 600; color: #cb2431;">&#10060; TestUserService_UpdateEmail</h3>
+  <pre style="background-color: #f6f8fa; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; overflow-x: auto; font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word;">
+=== RUN   TestUserService_UpdateEmail
+    user_test.go:82: panic: runtime error: invalid memory address or nil pointer dereference
+    goroutine 34 [running]:
+    myapp/internal/user.(*Service).UpdateEmail(0xc0001a2000, {0x1043e20, 0xc0001b8000}, {0xc00018a0f0, 0x5}, {0xc00019c070, 0x15})
+        /workspace/internal/user/service.go:94 +0x128
+--- FAIL: TestUserService_UpdateEmail (0.01s)
+</pre>
+
+  <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 24px 0;" />
+
+  <!-- Action buttons -->
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+  <tr>
+    <td align="center" style="padding: 4px 0;">
+      <a href="https://example.com/builds/48291" style="display: inline-block; padding: 8px 20px; background-color: #0366d6; color: #ffffff; border-radius: 6px; font-size: 14px; font-weight: 600; text-decoration: none; margin-right: 8px;">View Build</a>
+      <a href="https://example.com/repo/myapp/commit/a3f829c" style="display: inline-block; padding: 8px 20px; background-color: #f6f8fa; color: #24292e; border: 1px solid #e1e4e8; border-radius: 6px; font-size: 14px; font-weight: 600; text-decoration: none;">View Commit</a>
+    </td>
+  </tr>
+  </table>
+
+  <hr style="border: none; border-top: 1px solid #e1e4e8; margin: 24px 0;" />
+
+  <!-- Footer -->
+  <p style="margin: 0; font-size: 12px; color: #959da5; text-align: center;">
+    Sent by <a href="https://example.com/ci" style="color: #0366d6;">BuildBot CI</a> &bull;
+    <a href="https://example.com/notifications/settings" style="color: #0366d6;">Notification settings</a> &bull;
+    <a href="https://example.com/unsubscribe" style="color: #0366d6;">Unsubscribe</a>
+  </p>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
