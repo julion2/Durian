@@ -61,6 +61,10 @@ func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountCo
 // cycle back to IDLE on the same connection. This avoids opening a second
 // connection which Microsoft 365 rejects with "connection reset by peer".
 func (w *WatcherManager) watchAccount(ctx context.Context, account *config.AccountConfig) {
+	backoff := 30 * time.Second
+	var lastErr string
+	var sameErrCount int
+
 	// Outer loop: reconnect on fatal errors
 	for {
 		select {
@@ -72,25 +76,30 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 		// Connect and authenticate
 		client := imap.NewClient(account)
 		if err := client.Connect(); err != nil {
-			log.Printf("WATCHER: [%s] connection error: %v, retrying in 30s", account.Email, err)
+			w.logRetry(&lastErr, &sameErrCount, &backoff, account.Email, "connection error", err)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(30 * time.Second):
+			case <-time.After(backoff):
 				continue
 			}
 		}
 
 		if err := client.Authenticate(); err != nil {
-			log.Printf("WATCHER: [%s] auth error: %v, retrying in 30s", account.Email, err)
+			w.logRetry(&lastErr, &sameErrCount, &backoff, account.Email, "auth error", err)
 			client.Close()
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(30 * time.Second):
+			case <-time.After(backoff):
 				continue
 			}
 		}
+
+		// Successful connect+auth — reset backoff
+		backoff = 30 * time.Second
+		lastErr = ""
+		sameErrCount = 0
 
 		// Initial sync on the watcher's connection (catch-up, no SSE notification).
 		// If this kills the connection, SELECT below will fail and the
@@ -236,4 +245,26 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		TotalNew: len(messages),
 		Messages: messages,
 	})
+}
+
+// logRetry logs retry errors with suppression for repeated identical errors
+// and advances the backoff. After 3 identical errors, logs only every 10th
+// occurrence to avoid spam.
+func (w *WatcherManager) logRetry(lastErr *string, count *int, backoff *time.Duration, email, kind string, err error) {
+	const maxBackoff = 10 * time.Minute
+
+	errStr := err.Error()
+	if errStr == *lastErr {
+		*count++
+		if *count > 3 && *count%10 != 0 {
+			*backoff = min(*backoff*2, maxBackoff)
+			return // suppress log
+		}
+		log.Printf("WATCHER: [%s] %s: %v (repeated %dx, retrying in %s)", email, kind, err, *count, *backoff)
+	} else {
+		*lastErr = errStr
+		*count = 1
+		log.Printf("WATCHER: [%s] %s: %v, retrying in %s", email, kind, err, *backoff)
+	}
+	*backoff = min(*backoff*2, maxBackoff)
 }
