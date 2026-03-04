@@ -1,13 +1,8 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"sync"
-	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -19,7 +14,6 @@ var (
 	syncDryRun       bool
 	syncQuiet        bool
 	syncNoNotmuch    bool
-	syncWatch        bool
 	syncNoFlags      bool
 	syncDownloadOnly bool
 	syncUploadOnly   bool
@@ -58,9 +52,6 @@ Examples:
   # Dry run - show what would be synced
   durian sync --dry-run
 
-  # Watch mode - stay running with IDLE for push notifications
-  durian sync --watch
-
   # Skip notmuch indexing
   durian sync --no-notmuch`,
 	RunE: runSync,
@@ -70,7 +61,6 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "show what would be synced without syncing")
 	syncCmd.Flags().BoolVarP(&syncQuiet, "quiet", "q", false, "suppress progress output")
 	syncCmd.Flags().BoolVar(&syncNoNotmuch, "no-notmuch", false, "don't run notmuch new after sync")
-	syncCmd.Flags().BoolVarP(&syncWatch, "watch", "w", false, "stay running with IDLE for push notifications")
 	syncCmd.Flags().BoolVar(&syncNoFlags, "no-flags", false, "skip flag synchronization")
 	syncCmd.Flags().BoolVar(&syncDownloadOnly, "download-only", false, "only download from server (no flag upload)")
 	syncCmd.Flags().BoolVar(&syncUploadOnly, "upload-only", false, "only upload local changes to server")
@@ -130,11 +120,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Watch mode
-	if syncWatch {
-		return runSyncWatch(accounts, options)
-	}
-
 	// Regular sync
 	results, err := imap.SyncAccounts(accounts, options)
 	if err != nil {
@@ -154,121 +139,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
-}
-
-func runSyncWatch(accounts []*config.AccountConfig, options *imap.SyncOptions) error {
-	fmt.Fprintf(os.Stderr, "Starting watch mode for %d account(s)...\n", len(accounts))
-	fmt.Fprintf(os.Stderr, "Press Ctrl+C to stop.\n\n")
-
-	// Setup signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		fmt.Fprintf(os.Stderr, "\nStopping watch mode...\n")
-		cancel()
-	}()
-
-	// Initial sync
-	_, _ = imap.SyncAccounts(accounts, options)
-
-	// Start watching each account
-	var wg sync.WaitGroup
-	for _, account := range accounts {
-		wg.Add(1)
-		go func(acc *config.AccountConfig) {
-			defer wg.Done()
-			watchAccount(ctx, acc, options)
-		}(account)
-	}
-
-	// Wait for cancellation, then wait for goroutines to finish
-	<-ctx.Done()
-	wg.Wait()
-	return nil
-}
-
-func watchAccount(ctx context.Context, account *config.AccountConfig, options *imap.SyncOptions) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Connect and authenticate
-		client := imap.NewClient(account)
-		if err := client.Connect(); err != nil {
-			fmt.Fprintf(os.Stderr, "[%s] Connection error: %v, retrying in 30s...\n", account.Email, err)
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(30 * time.Second):
-				continue
-			}
-		}
-
-		if err := client.Authenticate(); err != nil {
-			fmt.Fprintf(os.Stderr, "[%s] Auth error: %v, retrying in 30s...\n", account.Email, err)
-			client.Close()
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(30 * time.Second):
-				continue
-			}
-		}
-
-		// Select INBOX for IDLE
-		if _, err := client.SelectMailbox("INBOX"); err != nil {
-			fmt.Fprintf(os.Stderr, "[%s] Select error: %v\n", account.Email, err)
-			client.Close()
-			continue
-		}
-
-		fmt.Fprintf(os.Stderr, "[%s] Watching for new messages...\n", account.Email)
-
-		// Start IDLE
-		stopIdle := make(chan struct{})
-		updates := make(chan bool, 10)
-		idleDone := make(chan struct{})
-
-		go func() {
-			defer close(idleDone)
-			if err := client.Idle(stopIdle, updates); err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] IDLE error: %v\n", account.Email, err)
-			}
-		}()
-
-		// Wait for updates, IDLE error, or context cancellation
-		select {
-		case <-ctx.Done():
-			close(stopIdle)
-			client.Close()
-			return
-		case <-updates:
-			close(stopIdle)
-			client.Close()
-
-			fmt.Fprintf(os.Stderr, "[%s] New messages detected, syncing...\n", account.Email)
-
-			// Perform sync
-			syncer := imap.NewSyncer(account, options)
-			result, err := syncer.Sync()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "[%s] Sync error: %v\n", account.Email, err)
-			} else if result.TotalNew > 0 {
-				fmt.Fprintf(os.Stderr, "[%s] Synced %d new messages\n", account.Email, result.TotalNew)
-			}
-		case <-idleDone:
-			// IDLE goroutine exited (error or connection lost) — reconnect
-			client.Close()
-		}
-	}
 }
 
 func printSyncSummary(results []*imap.SyncResult) {
