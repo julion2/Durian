@@ -259,26 +259,14 @@ struct EmailDetailView: View {
                 .buttonStyle(.plain)
                 .help("Edit Draft")
             } else {
-                HStack(spacing: 8) {
-                    Button(action: onReply) {
-                        Image(systemName: "arrowshape.turn.up.left")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.Detail.textTertiary)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reply")
-
-                    Button(action: {}) {
-                        Image(systemName: "face.smiling")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(true)
-                    .help("React (coming soon)")
+                Button(action: onReply) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.Detail.textTertiary)
+                        .frame(width: 36, height: 36)
                 }
+                .buttonStyle(.plain)
+                .help("Reply")
             }
         }
         .padding(.top, 8)
@@ -848,26 +836,14 @@ struct ThreadMessageCardView: View {
                 .buttonStyle(.plain)
                 .help("Edit Draft")
             } else {
-                HStack(spacing: 8) {
-                    Button(action: onReply) {
-                        Image(systemName: "arrowshape.turn.up.left")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.Detail.textTertiary)
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Reply")
-
-                    Button(action: {}) {
-                        Image(systemName: "face.smiling")
-                            .font(.system(size: 16))
-                            .foregroundColor(Color.Detail.textTertiary.opacity(0.5))
-                            .frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(true)
-                    .help("React (coming soon)")
+                Button(action: onReply) {
+                    Image(systemName: "arrowshape.turn.up.left")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.Detail.textTertiary)
+                        .frame(width: 36, height: 36)
                 }
+                .buttonStyle(.plain)
+                .help("Reply")
             }
         }
         .padding(.top, 8)
