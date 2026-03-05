@@ -1,6 +1,26 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Attachment Info (from API)
+
+struct AttachmentInfo: Decodable, Equatable {
+    let partId: Int
+    let filename: String
+    let contentType: String
+    let size: Int
+    let disposition: String
+    let contentId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case partId = "part_id"
+        case filename
+        case contentType = "content_type"
+        case size
+        case disposition
+        case contentId = "content_id"
+    }
+}
+
 // MARK: - Thread Message
 
 struct ThreadMessage: Decodable, Identifiable, Equatable {
@@ -15,7 +35,7 @@ struct ThreadMessage: Decodable, Identifiable, Equatable {
     let references: String?
     let body: String
     let html: String?
-    let attachments: [String]?
+    let attachments: [AttachmentInfo]?
     let tags: [String]?
 }
 

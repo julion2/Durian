@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 // MARK: - Email Detail View
 
@@ -378,15 +379,21 @@ struct ThreadMessageCardView: View {
 
     // Each card manages its own expanded state
     @State private var isDetailsExpanded: Bool = false
-    
+    @State private var downloadStates: [Int: AttachmentDownloadState] = [:]
+
+    /// Non-inline attachments for this message
+    private var displayAttachments: [AttachmentInfo] {
+        (message.attachments ?? []).filter { $0.disposition != "inline" }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             senderRow
-            
+
             if isDetailsExpanded {
                 expandedDetails
             }
-            
+
             // Content: prefer HTML, fallback to plain text
             if let html = message.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 NonScrollingWebView(
@@ -403,7 +410,12 @@ struct ThreadMessageCardView: View {
                     .foregroundColor(Color.Detail.textPrimary)
                     .textSelection(.enabled)
             }
-            
+
+            // Attachment bar
+            if !displayAttachments.isEmpty {
+                attachmentBar
+            }
+
             // Action footer only on last (newest) card
             if isLast {
                 actionFooter
@@ -527,8 +539,91 @@ struct ThreadMessageCardView: View {
         }
     }
     
+    // MARK: - Attachment Bar
+
+    @ViewBuilder
+    private var attachmentBar: some View {
+        FlowLayout(spacing: 8) {
+            ForEach(displayAttachments, id: \.partId) { attachment in
+                attachmentChip(attachment)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentChip(_ attachment: AttachmentInfo) -> some View {
+        let state = downloadStates[attachment.partId] ?? .notDownloaded
+        let sizeLabel = ByteCountFormatter.string(fromByteCount: Int64(attachment.size), countStyle: .file)
+        let isFailed = if case .failed = state { true } else { false }
+        let isDownloading = if case .downloading = state { true } else { false }
+
+        Button {
+            downloadAndSave(attachment)
+        } label: {
+            HStack(spacing: 5) {
+                if isDownloading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 12))
+                }
+                Text(attachment.filename)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("(\(sizeLabel))")
+                    .foregroundColor(Color.Detail.textTertiary)
+            }
+            .font(.system(size: 12))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(isFailed ? Color.red.opacity(0.12) : Color(NSColor.controlBackgroundColor))
+            .foregroundColor(isFailed ? .red : Color.Detail.textSecondary)
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+        .disabled(isDownloading)
+    }
+
+    private func downloadAndSave(_ attachment: AttachmentInfo) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = attachment.filename
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let saveURL = panel.url else { return }
+
+        downloadStates[attachment.partId] = .downloading(progress: 0)
+
+        Task {
+            guard let backend = AccountManager.shared.notmuchBackend else {
+                downloadStates[attachment.partId] = .failed(error: "Not connected")
+                return
+            }
+            do {
+                let (data, _) = try await backend.downloadAttachment(
+                    messageId: message.id,
+                    partId: attachment.partId
+                )
+                try data.write(to: saveURL)
+                downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
+                print("ATTACHMENT: Saved \(attachment.filename) to \(saveURL.path)")
+            } catch {
+                downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
+                print("ATTACHMENT: Download failed for \(attachment.filename): \(error)")
+                // Auto-clear error after 5 seconds
+                Task {
+                    try? await Task.sleep(for: .seconds(5))
+                    if case .failed = downloadStates[attachment.partId] {
+                        downloadStates[attachment.partId] = .notDownloaded
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Expanded Details
-    
+
     @ViewBuilder
     private var expandedDetails: some View {
         VStack(alignment: .leading, spacing: 8) {

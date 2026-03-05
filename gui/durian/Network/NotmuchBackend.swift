@@ -47,7 +47,7 @@ struct NotmuchMailContent: Decodable {
     let references: String?
     let body: String
     let html: String?
-    let attachments: [String]?
+    let attachments: [AttachmentInfo]?
 }
 
 struct ThreadContent: Decodable {
@@ -320,6 +320,22 @@ class NotmuchBackend: ObservableObject {
                 emails[index].inReplyTo = newestMessage.in_reply_to
                 emails[index].references = newestMessage.references
             }
+            // Map attachment metadata from thread messages
+            let allAttachments = thread.messages.flatMap { msg in
+                (msg.attachments ?? []).map { att in
+                    IncomingAttachmentMetadata(
+                        section: msg.id,
+                        filename: att.filename,
+                        mimeType: att.contentType,
+                        sizeBytes: Int64(att.size),
+                        disposition: att.disposition == "inline" ? .inline : .attachment,
+                        contentId: att.contentId
+                    )
+                }
+            }
+            emails[index].incomingAttachments = allAttachments
+            emails[index].hasAttachment = !allAttachments.isEmpty
+
             let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
             emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
             print("NOTMUCH Loaded thread \(id) with \(thread.messages.count) messages")
@@ -442,6 +458,49 @@ class NotmuchBackend: ObservableObject {
         return response?.message_body
     }
 
+    // MARK: - Attachment Download
+
+    func downloadAttachment(messageId: String, partId: Int) async throws -> (Data, String) {
+        // Message IDs contain <, >, @, + which must be percent-encoded
+        guard let encodedId = messageId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
+            throw AttachmentError.parseError
+        }
+        guard let url = URL(string: "\(baseURL)/messages/\(encodedId)/attachments/\(partId)") else {
+            throw AttachmentError.parseError
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 60
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AttachmentError.networkError
+        }
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 404 {
+                throw AttachmentError.notFound
+            }
+            throw AttachmentError.networkError
+        }
+        guard !data.isEmpty else {
+            throw AttachmentError.corruptedData
+        }
+
+        // Extract filename from Content-Disposition header
+        let filename: String
+        if let disposition = httpResponse.value(forHTTPHeaderField: "Content-Disposition"),
+           let range = disposition.range(of: "filename=\""),
+           let endRange = disposition[range.upperBound...].range(of: "\"") {
+            filename = String(disposition[range.upperBound..<endRange.lowerBound])
+        } else {
+            filename = "attachment"
+        }
+
+        return (data, filename)
+    }
+
     // MARK: - Unchanged methods (markAsRead, togglePin, etc.)
     // These methods use `tag` internally and don't need to be changed.
     
@@ -531,6 +590,22 @@ class NotmuchBackend: ObservableObject {
                     emails[index].inReplyTo = lastMessage.in_reply_to
                     emails[index].references = lastMessage.references
                 }
+                // Restore attachment metadata from cached messages
+                let allAttachments = cached.messages.flatMap { msg in
+                    (msg.attachments ?? []).map { att in
+                        IncomingAttachmentMetadata(
+                            section: msg.id,
+                            filename: att.filename,
+                            mimeType: att.contentType,
+                            sizeBytes: Int64(att.size),
+                            disposition: att.disposition == "inline" ? .inline : .attachment,
+                            contentId: att.contentId
+                        )
+                    }
+                }
+                emails[index].incomingAttachments = allAttachments
+                emails[index].hasAttachment = !allAttachments.isEmpty
+
                 let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
                 emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
                 restoredCount += 1
