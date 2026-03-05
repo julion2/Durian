@@ -42,7 +42,7 @@ func (p *Parser) Parse(msg *mail.Message) *MailContent {
 }
 
 // extractBody extracts text, HTML and attachments from a mail message
-func (p *Parser) extractBody(msg *mail.Message) (string, string, []string) {
+func (p *Parser) extractBody(msg *mail.Message) (string, string, []AttachmentInfo) {
 	contentType := msg.Header.Get("Content-Type")
 	transferEncoding := msg.Header.Get("Content-Transfer-Encoding")
 	charset := encoding.GetCharset(contentType)
@@ -52,7 +52,7 @@ func (p *Parser) extractBody(msg *mail.Message) (string, string, []string) {
 	}
 
 	mediaType, params, _ := mime.ParseMediaType(contentType)
-	var attachments []string
+	var attachments []AttachmentInfo
 
 	if strings.HasPrefix(mediaType, "text/plain") {
 		body, _ := io.ReadAll(msg.Body)
@@ -75,10 +75,10 @@ func (p *Parser) extractBody(msg *mail.Message) (string, string, []string) {
 }
 
 // extractMultipart recursively extracts content from multipart messages
-func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string, []string) {
+func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string, []AttachmentInfo) {
 	mr := multipart.NewReader(r, boundary)
 	var textContent, htmlContent string
-	var attachments []string
+	var attachments []AttachmentInfo
 
 	for {
 		part, err := mr.NextPart()
@@ -92,12 +92,20 @@ func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string,
 		charset := encoding.GetCharset(contentType)
 		mediaType, params, _ := mime.ParseMediaType(contentType)
 
-		if strings.Contains(contentDisp, "attachment") {
+		if strings.Contains(contentDisp, "attachment") || (part.FileName() != "" && !strings.HasPrefix(mediaType, "text/")) {
 			name := part.FileName()
 			if name == "" {
 				name = "unnamed"
 			}
-			attachments = append(attachments, name)
+			disposition := "attachment"
+			if strings.Contains(contentDisp, "inline") {
+				disposition = "inline"
+			}
+			attachments = append(attachments, AttachmentInfo{
+				Filename:    name,
+				ContentType: mediaType,
+				Disposition: disposition,
+			})
 			continue
 		}
 

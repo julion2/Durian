@@ -6,12 +6,14 @@ package notmuch
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	internmail "github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/sanitize"
 )
 
@@ -50,6 +52,8 @@ type BodyPart struct {
 	ContentType        string          `json:"content-type"`
 	Content            json.RawMessage `json:"content,omitempty"` // Can be string or array
 	ContentDisposition string          `json:"content-disposition,omitempty"`
+	ContentLength      int             `json:"content-length"`
+	ContentID          string          `json:"content-id,omitempty"`
 	Filename           string          `json:"filename,omitempty"`
 }
 
@@ -63,6 +67,7 @@ type Client interface {
 	Tag(query string, tags []string) error
 	ShowThread(threadID string) ([]ThreadMessage, error)
 	ShowMessages(query string) ([]ThreadMessage, error)
+	ShowRawPart(messageID string, partID int, w io.Writer) error
 
 	// Tag listing
 	ListTags() ([]string, error)
@@ -211,6 +216,20 @@ func (c *ExecClient) ShowMessages(query string) ([]ThreadMessage, error) {
 	var messages []ThreadMessage
 	flattenThread(raw, &messages)
 	return messages, nil
+}
+
+// ShowRawPart streams a single MIME part's raw bytes from a message.
+// Uses notmuch show --format=raw --part=N to extract the part without buffering.
+func (c *ExecClient) ShowRawPart(messageID string, partID int, w io.Writer) error {
+	args := []string{"show", "--format=raw", "--part=" + strconv.Itoa(partID)}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+	args = append(args, "id:"+messageID)
+
+	cmd := exec.Command("notmuch", args...)
+	cmd.Stdout = w
+	return cmd.Run()
 }
 
 // ListTags returns all tags known to notmuch.
@@ -541,7 +560,7 @@ func (c *ExecClient) RunNew() error {
 
 // ExtractBodyContent extracts text/plain, text/html and attachments from a message.
 // HTML content is stripped of quoted reply content to avoid duplicates in thread view.
-func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments []string) {
+func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments []internmail.AttachmentInfo) {
 	for _, raw := range body {
 		extractFromRaw(raw, &text, &html, &attachments)
 	}
@@ -553,7 +572,7 @@ func ExtractBodyContent(body []json.RawMessage) (text, html string, attachments 
 // ExtractBodyContentFull extracts text/plain, text/html and attachments from a message.
 // Unlike ExtractBodyContent, it does NOT strip quoted reply content — used for reply
 // quoting where the full conversation chain must be preserved.
-func ExtractBodyContentFull(body []json.RawMessage) (text, html string, attachments []string) {
+func ExtractBodyContentFull(body []json.RawMessage) (text, html string, attachments []internmail.AttachmentInfo) {
 	for _, raw := range body {
 		extractFromRaw(raw, &text, &html, &attachments)
 	}
@@ -609,14 +628,26 @@ func StripQuotedContent(html string) string {
 
 // ---------- Internal helpers ----------
 
-func extractFromRaw(raw json.RawMessage, text, html *string, attachments *[]string) {
+func extractFromRaw(raw json.RawMessage, text, html *string, attachments *[]internmail.AttachmentInfo) {
 	var part BodyPart
 	if err := json.Unmarshal(raw, &part); err != nil {
 		return
 	}
 
-	if part.ContentDisposition == "attachment" && part.Filename != "" {
-		*attachments = append(*attachments, part.Filename)
+	// Capture any part with a filename as an attachment (inline or explicit)
+	if part.Filename != "" {
+		disposition := part.ContentDisposition
+		if disposition == "" {
+			disposition = "attachment"
+		}
+		*attachments = append(*attachments, internmail.AttachmentInfo{
+			PartID:      part.ID,
+			Filename:    part.Filename,
+			ContentType: part.ContentType,
+			Size:        part.ContentLength,
+			Disposition: disposition,
+			ContentID:   part.ContentID,
+		})
 		return
 	}
 

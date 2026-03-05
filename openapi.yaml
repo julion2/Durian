@@ -65,6 +65,33 @@ paths:
             text/event-stream:
               schema:
                 $ref: '#/components/schemas/NewMailEvent'
+  /messages/{message_id}/attachments/{part_id}:
+    get:
+      summary: Download a message attachment
+      description: >
+        Streams the raw bytes of a MIME part. Content-Type and Content-Disposition
+        headers are derived server-side from notmuch metadata.
+      parameters:
+        - name: message_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: part_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Raw attachment bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Message or attachment not found
   /threads/{thread_id}/tags:
     post:
       summary: Add or remove tags from an email thread
@@ -201,8 +228,23 @@ components:
         attachments:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/AttachmentInfo'
         tags:
           type: array
           items:
             type: string
+    AttachmentInfo:
+      type: object
+      properties:
+        part_id:
+          type: integer
+        filename:
+          type: string
+        content_type:
+          type: string
+        size:
+          type: integer
+        disposition:
+          type: string
+        content_id:
+          type: string

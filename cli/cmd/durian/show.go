@@ -75,7 +75,11 @@ func outputThreadFormatted(t *mail.ThreadContent) error {
 			fmt.Printf("To:   %s\n", msg.To)
 		}
 		if len(msg.Attachments) > 0 {
-			fmt.Printf("Attachments: %s\n", strings.Join(msg.Attachments, ", "))
+			names := make([]string, len(msg.Attachments))
+			for i, a := range msg.Attachments {
+				names[i] = a.Filename
+			}
+			fmt.Printf("Attachments: %s\n", strings.Join(names, ", "))
 		}
 		fmt.Println(strings.Repeat("-", 40))
 

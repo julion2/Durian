@@ -2,12 +2,13 @@ package handler
 
 import (
 	"errors"
+	"net/http"
 	"net/mail"
 	"os"
 	"sort"
 
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	internmail "github.com/durian-dev/durian/cli/internal/mail"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )
 
@@ -112,4 +113,33 @@ func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 		Body: body,
 		HTML: html,
 	})
+}
+
+// DownloadAttachment streams a raw attachment part, setting Content-Type and
+// Content-Disposition headers from server-derived metadata.
+func (h *Handler) DownloadAttachment(messageID string, partID int, w http.ResponseWriter) error {
+	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return errors.New("message not found")
+	}
+
+	_, _, attachments := notmuch.ExtractBodyContentFull(msgs[0].Body)
+	var att *internmail.AttachmentInfo
+	for i := range attachments {
+		if attachments[i].PartID == partID {
+			att = &attachments[i]
+			break
+		}
+	}
+	if att == nil {
+		return errors.New("attachment not found")
+	}
+
+	w.Header().Set("Content-Type", att.ContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(att.Filename)+`"`)
+
+	return h.notmuch.ShowRawPart(messageID, partID, w)
 }

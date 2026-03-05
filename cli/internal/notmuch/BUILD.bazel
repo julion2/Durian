@@ -8,7 +8,10 @@ go_library(
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/notmuch",
     visibility = ["//cli:__subpackages__"],
-    deps = ["//cli/internal/sanitize"],
+    deps = [
+        "//cli/internal/mail",
+        "//cli/internal/sanitize",
+    ],
 )
 
 go_test(
@@ -16,4 +19,5 @@ go_test(
     size = "small",
     srcs = ["notmuch_test.go"],
     embed = [":notmuch"],
+    deps = ["//cli/internal/mail"],
 )

@@ -142,10 +142,10 @@ func TestParserMultipartWithAttachment(t *testing.T) {
 	hasDocument := false
 	hasImage := false
 	for _, att := range content.Attachments {
-		if att == "document.pdf" {
+		if att.Filename == "document.pdf" {
 			hasDocument = true
 		}
-		if att == "image.png" {
+		if att.Filename == "image.png" {
 			hasImage = true
 		}
 	}

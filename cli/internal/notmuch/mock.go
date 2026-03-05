@@ -1,5 +1,7 @@
 package notmuch
 
+import "io"
+
 // Compile-time interface checks
 var (
 	_ Client = (*MockClient)(nil)
@@ -20,6 +22,10 @@ type MockClient struct {
 	// Tag listing results
 	Tags    []string
 	TagsErr error
+
+	// Raw part data
+	ShowRawPartData []byte
+	ShowRawPartErr  error
 
 	// Sync results
 	MessageExistsResult  bool
@@ -107,6 +113,14 @@ func (m *MockClient) ShowMessages(_ string) ([]ThreadMessage, error) {
 		return nil, m.ThreadErr
 	}
 	return m.ThreadMessages, nil
+}
+
+func (m *MockClient) ShowRawPart(_ string, _ int, w io.Writer) error {
+	if m.ShowRawPartErr != nil {
+		return m.ShowRawPartErr
+	}
+	_, err := w.Write(m.ShowRawPartData)
+	return err
 }
 
 func (m *MockClient) ListTags() ([]string, error) {

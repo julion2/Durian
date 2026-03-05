@@ -1,5 +1,15 @@
 package mail
 
+// AttachmentInfo represents metadata about a single email attachment
+type AttachmentInfo struct {
+	PartID      int    `json:"part_id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int    `json:"size"`
+	Disposition string `json:"disposition"`
+	ContentID   string `json:"content_id,omitempty"`
+}
+
 // Mail represents a mail summary for list views
 type Mail struct {
 	ThreadID  string `json:"thread_id"`
@@ -23,7 +33,7 @@ type MailContent struct {
 	References  string   `json:"references,omitempty"`
 	Body        string   `json:"body"`
 	HTML        string   `json:"html,omitempty"`
-	Attachments []string `json:"attachments,omitempty"`
+	Attachments []AttachmentInfo `json:"attachments,omitempty"`
 }
 
 // ThreadContent represents a complete email thread with all messages
@@ -52,6 +62,6 @@ type MessageInfo struct {
 	References  string   `json:"references,omitempty"`
 	Body        string   `json:"body"`
 	HTML        string   `json:"html,omitempty"`
-	Attachments []string `json:"attachments,omitempty"`
-	Tags        []string `json:"tags,omitempty"`
+	Attachments []AttachmentInfo `json:"attachments,omitempty"`
+	Tags        []string         `json:"tags,omitempty"`
 }

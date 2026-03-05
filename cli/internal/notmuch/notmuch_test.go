@@ -3,6 +3,8 @@ package notmuch
 import (
 	"encoding/json"
 	"testing"
+
+	internmail "github.com/durian-dev/durian/cli/internal/mail"
 )
 
 func TestParseFilenames(t *testing.T) {
@@ -71,7 +73,7 @@ func TestExtractBodyContent(t *testing.T) {
 		body            string // JSON array of body parts
 		wantText        string
 		wantHTML        string
-		wantAttachments []string
+		wantAttachments []internmail.AttachmentInfo
 	}{
 		{
 			name:     "text/plain only",
@@ -96,10 +98,12 @@ func TestExtractBodyContent(t *testing.T) {
 			name: "attachment",
 			body: `[
 				{"id": 1, "content-type": "text/plain", "content": "See attached"},
-				{"id": 2, "content-type": "application/pdf", "content-disposition": "attachment", "filename": "report.pdf"}
+				{"id": 2, "content-type": "application/pdf", "content-disposition": "attachment", "content-length": 12345, "filename": "report.pdf"}
 			]`,
-			wantText:        "See attached",
-			wantAttachments: []string{"report.pdf"},
+			wantText: "See attached",
+			wantAttachments: []internmail.AttachmentInfo{
+				{PartID: 2, Filename: "report.pdf", ContentType: "application/pdf", Size: 12345, Disposition: "attachment"},
+			},
 		},
 		{
 			name: "nested multipart with attachment",
@@ -108,11 +112,35 @@ func TestExtractBodyContent(t *testing.T) {
 					{"id": 3, "content-type": "text/plain", "content": "body text"},
 					{"id": 4, "content-type": "text/html", "content": "<p>body html</p>"}
 				]},
-				{"id": 5, "content-type": "image/png", "content-disposition": "attachment", "filename": "screenshot.png"}
+				{"id": 5, "content-type": "image/png", "content-disposition": "attachment", "content-length": 9999, "filename": "screenshot.png"}
 			]}]`,
-			wantText:        "body text",
-			wantHTML:        "<p>body html</p>",
-			wantAttachments: []string{"screenshot.png"},
+			wantText: "body text",
+			wantHTML: "<p>body html</p>",
+			wantAttachments: []internmail.AttachmentInfo{
+				{PartID: 5, Filename: "screenshot.png", ContentType: "image/png", Size: 9999, Disposition: "attachment"},
+			},
+		},
+		{
+			name: "inline attachment with content-id",
+			body: `[
+				{"id": 1, "content-type": "text/html", "content": "<p>See image below</p>"},
+				{"id": 2, "content-type": "image/jpeg", "content-disposition": "inline", "content-id": "img001@mail", "content-length": 5000, "filename": "photo.jpg"}
+			]`,
+			wantHTML: "<p>See image below</p>",
+			wantAttachments: []internmail.AttachmentInfo{
+				{PartID: 2, Filename: "photo.jpg", ContentType: "image/jpeg", Size: 5000, Disposition: "inline", ContentID: "img001@mail"},
+			},
+		},
+		{
+			name: "filename without disposition defaults to attachment",
+			body: `[
+				{"id": 1, "content-type": "text/plain", "content": "Here is a file"},
+				{"id": 2, "content-type": "application/zip", "filename": "archive.zip", "content-length": 2048}
+			]`,
+			wantText: "Here is a file",
+			wantAttachments: []internmail.AttachmentInfo{
+				{PartID: 2, Filename: "archive.zip", ContentType: "application/zip", Size: 2048, Disposition: "attachment"},
+			},
 		},
 		{
 			name: "empty body",
@@ -141,11 +169,14 @@ func TestExtractBodyContent(t *testing.T) {
 				t.Errorf("html = %q, want %q", gotHTML, tt.wantHTML)
 			}
 			if len(gotAttachments) != len(tt.wantAttachments) {
-				t.Errorf("attachments = %v, want %v", gotAttachments, tt.wantAttachments)
+				t.Errorf("attachments count = %d, want %d: %v", len(gotAttachments), len(tt.wantAttachments), gotAttachments)
 			} else {
 				for i, a := range gotAttachments {
-					if a != tt.wantAttachments[i] {
-						t.Errorf("attachment[%d] = %q, want %q", i, a, tt.wantAttachments[i])
+					want := tt.wantAttachments[i]
+					if a.PartID != want.PartID || a.Filename != want.Filename ||
+						a.ContentType != want.ContentType || a.Size != want.Size ||
+						a.Disposition != want.Disposition || a.ContentID != want.ContentID {
+						t.Errorf("attachment[%d] = %+v, want %+v", i, a, want)
 					}
 				}
 			}

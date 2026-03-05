@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
+	"unicode"
 
 	"github.com/gorilla/mux"
 )
@@ -62,6 +65,39 @@ func (h *Handler) ShowMessageBodyHandler(w http.ResponseWriter, r *http.Request)
 	}
 	response := h.ShowMessageBody(messageID)
 	writeJSON(w, response)
+}
+
+func (h *Handler) DownloadAttachmentHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	messageID := vars["message_id"]
+	partIDStr := vars["part_id"]
+
+	partID, err := strconv.Atoi(partIDStr)
+	if err != nil {
+		http.Error(w, "Invalid part_id parameter", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.DownloadAttachment(messageID, partID, w); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	}
+}
+
+// sanitizeFilename removes path separators and other dangerous characters from
+// an attachment filename to prevent directory traversal in Content-Disposition.
+func sanitizeFilename(name string) string {
+	name = filepath.Base(name)
+	name = strings.Map(func(r rune) rune {
+		if r == 0 || unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, name)
+	name = strings.ReplaceAll(name, `"`, "")
+	if name == "" || name == "." {
+		return "attachment"
+	}
+	return name
 }
 
 func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
