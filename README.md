@@ -53,6 +53,14 @@ bazel test //gui/...              # GUI tests
 bazel test //...                  # all tests
 ```
 
+## Logs
+
+```bash
+log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'  # nightly
+log stream --level debug --predicate 'subsystem == "org.js-lab.durian"'           # release
+log stream --level info  --predicate 'subsystem == "org.js-lab.durian.nightly"'  # info+ only
+```
+
 ## Keyboard Shortcuts
 
 | Key | Action |
