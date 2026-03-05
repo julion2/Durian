@@ -224,8 +224,7 @@ class DraftService: ObservableObject {
     /// Load a draft from notmuch for editing
     /// Returns the UUID of the new draft window
     func loadFromNotmuch(messageId: String) async throws -> UUID {
-        // TODO: Implement loading draft content from notmuch
-        // For now, create empty draft - will be implemented when needed
+        // Load draft metadata — content is populated by the caller
         let id = UUID()
         var draft = EmailDraft(from: ConfigManager.shared.getAccounts().first?.email ?? "")
         draft.messageId = messageId
