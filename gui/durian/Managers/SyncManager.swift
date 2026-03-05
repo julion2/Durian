@@ -411,6 +411,11 @@ class SyncManager: ObservableObject {
 
         // Notifications
         guard SettingsManager.shared.settings.notificationsEnabled else { return }
+        // Per-account notification filter
+        if let account = ConfigManager.shared.getAccounts().first(where: { $0.name == event.account }),
+           let notify = account.notifications, !notify {
+            return
+        }
         guard !event.messages.isEmpty else { return }
 
         let center = UNUserNotificationCenter.current()

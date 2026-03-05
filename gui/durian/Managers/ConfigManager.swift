@@ -17,25 +17,28 @@ struct MailAccount: Codable {
     let name: String
     let email: String
     let defaultSignature: String?
-    
+    let notifications: Bool?
+
     enum CodingKeys: String, CodingKey {
-        case name, email
+        case name, email, notifications
         case defaultSignature = "default_signature"
     }
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         email = try container.decode(String.self, forKey: .email)
         defaultSignature = try container.decodeIfPresent(String.self, forKey: .defaultSignature)
-        
+        notifications = try container.decodeIfPresent(Bool.self, forKey: .notifications)
+
         // Skip IMAP/SMTP/Auth sections - they're handled by CLI
     }
-    
-    init(name: String, email: String, defaultSignature: String? = nil) {
+
+    init(name: String, email: String, defaultSignature: String? = nil, notifications: Bool? = nil) {
         self.name = name
         self.email = email
         self.defaultSignature = defaultSignature
+        self.notifications = notifications
     }
 }
 
@@ -272,6 +275,9 @@ class ConfigManager {
             toml += "email = \"\(account.email)\"\n"
             if let sig = account.defaultSignature {
                 toml += "default_signature = \"\(sig)\"\n"
+            }
+            if let notify = account.notifications {
+                toml += "notifications = \(notify)\n"
             }
             toml += "\n"
         }

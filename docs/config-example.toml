@@ -48,6 +48,7 @@ email = "you@company.com"
 alias = "work"  # Short alias for CLI: durian sync work
 default = true
 default_signature = "work"
+notifications = true  # Per-account override (omit to use global setting)
 
 [accounts.smtp]
 host = "smtp.office365.com"

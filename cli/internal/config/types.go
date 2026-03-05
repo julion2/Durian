@@ -42,6 +42,7 @@ type AccountConfig struct {
 	Alias            string      `toml:"alias"` // Short alias for CLI (e.g., "gmx", "habric")
 	Default          bool        `toml:"default"`
 	DefaultSignature string      `toml:"default_signature"`
+	Notifications    *bool       `toml:"notifications"` // Per-account notification override (nil = use global setting)
 	SMTP             SMTPConfig  `toml:"smtp"`
 	IMAP             IMAPConfig  `toml:"imap"`
 	Auth             AuthConfig  `toml:"auth"`
