@@ -549,9 +549,25 @@ struct ThreadMessageCardView: View {
 
     @ViewBuilder
     private var attachmentBar: some View {
-        FlowLayout(spacing: 8) {
-            ForEach(displayAttachments, id: \.partId) { attachment in
-                attachmentChip(attachment)
+        VStack(alignment: .leading, spacing: 6) {
+            if displayAttachments.count > 1 {
+                Button {
+                    saveAllAttachments()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.down.circle")
+                            .font(.system(size: 11))
+                        Text("Save All (\(displayAttachments.count))")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(Color.Detail.textTertiary)
+                }
+                .buttonStyle(.plain)
+            }
+            FlowLayout(spacing: 8) {
+                ForEach(displayAttachments, id: \.partId) { attachment in
+                    attachmentChip(attachment)
+                }
             }
         }
         .onAppear { spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -672,6 +688,35 @@ struct ThreadMessageCardView: View {
                 downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
                 print("ATTACHMENT: Failed to write \(attachment.filename): \(error)")
                 scheduleErrorClear(attachment.partId)
+            }
+        }
+    }
+
+    private func saveAllAttachments() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Save All"
+
+        guard panel.runModal() == .OK, let folderURL = panel.url else { return }
+
+        for attachment in displayAttachments {
+            downloadStates[attachment.partId] = .downloading(progress: 0)
+        }
+
+        Task {
+            for attachment in displayAttachments {
+                guard let data = await fetchAttachmentData(attachment) else { continue }
+                let saveURL = folderURL.appendingPathComponent(attachment.filename)
+                do {
+                    try data.write(to: saveURL)
+                    downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
+                    print("ATTACHMENT: Saved \(attachment.filename) to \(folderURL.lastPathComponent)/")
+                } catch {
+                    downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
+                    scheduleErrorClear(attachment.partId)
+                }
             }
         }
     }
