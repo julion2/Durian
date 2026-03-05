@@ -8,6 +8,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 // MARK: - Email Detail View
 
@@ -394,6 +395,11 @@ struct ThreadMessageCardView: View {
                 expandedDetails
             }
 
+            // Attachment bar
+            if !displayAttachments.isEmpty {
+                attachmentBar
+            }
+
             // Content: prefer HTML, fallback to plain text
             if let html = message.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 NonScrollingWebView(
@@ -409,11 +415,6 @@ struct ThreadMessageCardView: View {
                     .font(.system(size: 14))
                     .foregroundColor(Color.Detail.textPrimary)
                     .textSelection(.enabled)
-            }
-
-            // Attachment bar
-            if !displayAttachments.isEmpty {
-                attachmentBar
             }
 
             // Action footer only on last (newest) card
@@ -560,30 +561,51 @@ struct ThreadMessageCardView: View {
         Button {
             downloadAndSave(attachment)
         } label: {
-            HStack(spacing: 5) {
-                if isDownloading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 14, height: 14)
-                } else {
-                    Image(systemName: "paperclip")
-                        .font(.system(size: 12))
+            HStack(spacing: 8) {
+                // File type icon in rounded rect box
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(isFailed ? Color.red.opacity(0.08) : Color(NSColor.separatorColor).opacity(0.3))
+                        .frame(width: 28, height: 28)
+                    if isDownloading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(nsImage: fileTypeIcon(for: attachment))
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 20, height: 20)
+                    }
                 }
-                Text(attachment.filename)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("(\(sizeLabel))")
-                    .foregroundColor(Color.Detail.textTertiary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(attachment.filename)
+                        .font(.system(size: 12, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(sizeLabel)
+                        .font(.system(size: 10))
+                        .foregroundColor(Color.Detail.textTertiary)
+                }
             }
-            .font(.system(size: 12))
             .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
             .background(isFailed ? Color.red.opacity(0.12) : Color(NSColor.controlBackgroundColor))
             .foregroundColor(isFailed ? .red : Color.Detail.textSecondary)
-            .cornerRadius(6)
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
         .disabled(isDownloading)
+    }
+
+    private func fileTypeIcon(for attachment: AttachmentInfo) -> NSImage {
+        let utType = UTType(mimeType: attachment.contentType)
+            ?? UTType(filenameExtension: (attachment.filename as NSString).pathExtension)
+            ?? .data
+        return NSWorkspace.shared.icon(for: utType)
     }
 
     private func downloadAndSave(_ attachment: AttachmentInfo) {
