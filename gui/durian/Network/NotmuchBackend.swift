@@ -253,13 +253,21 @@ class NotmuchBackend: ObservableObject {
             request.httpBody = bodyData
         }
 
+        let signposter = Log.signposter(for: "HTTP")
+        let state = signposter.beginInterval("Request", "\(method, privacy: .public) \(endpoint, privacy: .public)")
+        var status = "Error"
+        defer { signposter.endInterval("Request", state, "\(status)") }
+
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             let response = try decoder.decode(T.self, from: data)
+            status = "OK"
             return response
         } catch is CancellationError {
+            status = "Cancelled"
             return nil
         } catch let error as URLError where error.code == .cancelled {
+            status = "Cancelled"
             return nil
         } catch {
             Log.error("BACKEND", "Request to \(endpoint) failed: \(error)")
@@ -473,12 +481,19 @@ class NotmuchBackend: ObservableObject {
         request.httpMethod = "GET"
         request.timeoutInterval = 60
 
+        let signposter = Log.signposter(for: "HTTP")
+        let endpoint = "/messages/\(encodedId)/attachments/\(partId)"
+        let state = signposter.beginInterval("Request", "GET \(endpoint, privacy: .public)")
+        var status = "Error"
+        defer { signposter.endInterval("Request", state, "\(status)") }
+
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AttachmentError.networkError
         }
         guard httpResponse.statusCode == 200 else {
+            status = "Error \(httpResponse.statusCode)"
             if httpResponse.statusCode == 404 {
                 throw AttachmentError.notFound
             }
@@ -487,6 +502,8 @@ class NotmuchBackend: ObservableObject {
         guard !data.isEmpty else {
             throw AttachmentError.corruptedData
         }
+
+        status = "OK"
 
         // Extract filename from Content-Disposition header
         let filename: String
