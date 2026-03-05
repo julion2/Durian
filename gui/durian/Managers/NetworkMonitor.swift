@@ -29,18 +29,18 @@ class NetworkMonitor: ObservableObject {
                 
                 // Show "Back online" briefly when reconnecting
                 if !wasConnected && nowConnected {
-                    print("NETWORK: Back online")
+                    Log.info("NETWORK", "Back online")
                     self.showReconnectedBanner = true
                     
                     // Hide after 3 seconds
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                     self.showReconnectedBanner = false
                 } else if wasConnected && !nowConnected {
-                    print("NETWORK: Offline")
+                    Log.info("NETWORK", "Offline")
                 }
             }
         }
         monitor.start(queue: queue)
-        print("NETWORK: Monitor started")
+        Log.info("NETWORK", "Monitor started")
     }
 }

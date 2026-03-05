@@ -26,7 +26,7 @@ struct KeychainHelper {
            let password = String(data: data, encoding: .utf8) {
             return password
         } else {
-            print("Failed to retrieve password from keychain for \(account): \(status)")
+            Log.error("KEYCHAIN", "Failed to retrieve password from keychain for \(account): \(status)")
             return nil
         }
     }

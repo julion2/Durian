@@ -57,15 +57,15 @@ class SettingsManager: ObservableObject {
     
     func resetToDefaults() {
         settings = AppSettings()
-        print("SETTINGS: Reset to defaults")
+        Log.info("SETTINGS", "Reset to defaults")
     }
     
     @MainActor
     func reloadSettings() {
         ConfigManager.shared.reloadConfig()
         settings = ConfigManager.shared.getSettings()
-        print("SETTINGS: Reloaded from config file")
-        print("SETTINGS: Sync - guiAutoSync=\(guiAutoSync), autoFetchInterval=\(autoFetchInterval)s, fullSyncInterval=\(fullSyncInterval)s")
+        Log.info("SETTINGS", "Reloaded from config file")
+        Log.info("SETTINGS", "Sync - guiAutoSync=\(guiAutoSync), autoFetchInterval=\(autoFetchInterval)s, fullSyncInterval=\(fullSyncInterval)s")
         
         // Restart sync timers with new settings
         SyncManager.shared.restartTimers()

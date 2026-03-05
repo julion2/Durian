@@ -180,25 +180,25 @@ class EmailSendingManager: ObservableObject {
         
         // Execute durian send
         sendingProgress = "Sending email..."
-        print("EMAIL: Executing durian send")
-        print("EMAIL:   From: \(accountEmail)")
-        print("EMAIL:   To: \(draft.to.joined(separator: ", "))")
+        Log.debug("EMAIL", "Executing durian send")
+        Log.debug("EMAIL", "From: \(accountEmail)")
+        Log.debug("EMAIL", "To: \(draft.to.joined(separator: ", "))")
         if !draft.cc.isEmpty {
-            print("EMAIL:   CC: \(draft.cc.joined(separator: ", "))")
+            Log.debug("EMAIL", "CC: \(draft.cc.joined(separator: ", "))")
         }
         if !draft.bcc.isEmpty {
-            print("EMAIL:   BCC: \(draft.bcc.joined(separator: ", "))")
+            Log.debug("EMAIL", "BCC: \(draft.bcc.joined(separator: ", "))")
         }
-        print("EMAIL:   Subject: \(draft.subject)")
+        Log.debug("EMAIL", "Subject: \(draft.subject)")
         if !draft.attachments.isEmpty {
-            print("EMAIL:   Attachments: \(draft.attachments.count)")
+            Log.debug("EMAIL", "Attachments: \(draft.attachments.count)")
         }
         
         let result = await runCommand(args: args, timeout: 120)
         
         if result.success {
             sendingProgress = "Email sent successfully"
-            print("EMAIL: Sent successfully")
+            Log.info("EMAIL", "Sent successfully")
             BannerManager.shared.showSuccess(title: "Sent Successfully", message: "Your email has been delivered.")
             
             // Update contact usage statistics
@@ -208,7 +208,7 @@ class EmailSendingManager: ObservableObject {
             // Note: Draft deletion is handled by the caller (ComposeWindow.handleSend)
         } else {
             let errorMessage = result.error ?? "Unknown error"
-            print("EMAIL: Send failed: \(errorMessage)")
+            Log.error("EMAIL", "Send failed: \(errorMessage)")
             let sendError = EmailSendingError.sendFailed(errorMessage)
             lastError = sendError
             BannerManager.shared.showCritical(title: "Email Not Sent", message: errorMessage)
@@ -229,7 +229,7 @@ class EmailSendingManager: ObservableObject {
                 let email = self.extractEmail(from: recipient)
                 ContactsManager.shared.incrementUsage(for: email)
             }
-            print("EMAIL: Updated usage for \(recipients.count) recipients")
+            Log.info("EMAIL", "Updated usage for \(recipients.count) recipients")
         }
     }
     
@@ -314,7 +314,7 @@ class EmailSendingManager: ObservableObject {
                 
                 timeoutWorkItem = DispatchWorkItem {
                     if process.isRunning {
-                        print("EMAIL: Command timed out after \(timeout)s, terminating process")
+                        Log.error("EMAIL", "Command timed out after \(timeout)s, terminating process")
                         didTimeout = true
                         process.terminate()
                     }

@@ -609,7 +609,7 @@ struct ComposeForm: View {
                 var updatedDraft = draft
                 updatedDraft.updateModifiedDate()
                 
-                print("DRAFTING: Auto-saving draft locally only")
+                Log.debug("DRAFTING", "Auto-saving draft locally only")
                 DraftManager.shared.saveDraft(updatedDraft)
             }
     }
@@ -618,7 +618,7 @@ struct ComposeForm: View {
         var updatedDraft = draft
         updatedDraft.updateModifiedDate()
         
-        print("DRAFTING: Saving draft to local storage")
+        Log.debug("DRAFTING", "Saving draft to local storage")
         DraftManager.shared.saveDraft(updatedDraft)
     }
     
@@ -629,7 +629,7 @@ struct ComposeForm: View {
         case .success(let urls):
             for url in urls {
                 guard url.startAccessingSecurityScopedResource() else {
-                    print("Failed to access file: \(url.lastPathComponent)")
+                    Log.error("COMPOSE", "Failed to access file: \(url.lastPathComponent)")
                     continue
                 }
                 
@@ -655,13 +655,13 @@ struct ComposeForm: View {
                     scheduleAutoSave()
                     
                 } catch {
-                    print("Failed to read file: \(error)")
+                    Log.error("COMPOSE", "Failed to read file: \(error)")
                     showErrorMessage("Failed to attach: \(url.lastPathComponent)")
                 }
             }
             
         case .failure(let error):
-            print("File picker error: \(error)")
+            Log.error("COMPOSE", "File picker error: \(error)")
         }
     }
     
@@ -707,7 +707,7 @@ struct ComposeForm: View {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.keyCode == 49 {
                 if let index = self.selectedAttachmentIndex {
-                    print("QUICKLOOK: Space pressed, opening preview for attachment \(index)")
+                    Log.debug("QUICKLOOK", "Space pressed, opening preview for attachment \(index)")
                     QuickLookManager.shared.showPreview(for: self.draft.attachments, startingAt: index)
                     return nil
                 }

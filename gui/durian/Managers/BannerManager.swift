@@ -28,7 +28,7 @@ class BannerManager: ObservableObject {
         // Drop non-critical banners during startup — transient init chatter (NetworkMonitor, connect)
         let sinceStartup = Date().timeIntervalSince(startupTime)
         if sinceStartup < 4 && banner.severity != .critical {
-            print("BANNER: Suppressed startup banner: \(banner.title)")
+            Log.debug("BANNER", "Suppressed startup banner: \(banner.title)")
             return
         }
 

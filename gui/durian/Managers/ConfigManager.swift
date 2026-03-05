@@ -118,7 +118,7 @@ class ConfigManager {
             do {
                 try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
             } catch {
-                print("CONFIG_ERROR: Failed to create config directory: \(error)")
+                Log.error("CONFIG", "Failed to create config directory: \(error)")
                 return
             }
         }
@@ -132,9 +132,9 @@ class ConfigManager {
         do {
             let tomlString = try String(contentsOf: tomlURL, encoding: .utf8)
             config = try TOMLDecoder().decode(AppConfig.self, from: tomlString)
-            print("CONFIG: Loaded config from \(tomlURL.path)")
+            Log.info("CONFIG", "Loaded config from \(tomlURL.path)")
         } catch {
-            print("CONFIG_ERROR: Failed to load config: \(error)")
+            Log.error("CONFIG", "Failed to load config: \(error)")
         }
     }
     
@@ -178,13 +178,13 @@ class ConfigManager {
         
         do {
             try defaultTOML.write(to: url, atomically: true, encoding: .utf8)
-            print("CONFIG: Created default config at \(url.path)")
+            Log.debug("CONFIG", "Created default config at \(url.path)")
             
             // Load the config after creating it
             let tomlString = try String(contentsOf: url, encoding: .utf8)
             config = try TOMLDecoder().decode(AppConfig.self, from: tomlString)
         } catch {
-            print("CONFIG_ERROR: Failed to create default config: \(error)")
+            Log.error("CONFIG", "Failed to create default config: \(error)")
         }
     }
     
@@ -208,9 +208,9 @@ class ConfigManager {
     
     /// Reload config from disk (call after editing config.toml)
     func reloadConfig() {
-        print("CONFIG: Reloading config...")
+        Log.info("CONFIG", "Reloading config...")
         loadConfig()
-        print("CONFIG: Reload complete")
+        Log.info("CONFIG", "Reload complete")
     }
     
     func updateSettings(_ newSettings: AppSettings) {
@@ -229,9 +229,9 @@ class ConfigManager {
         do {
             let tomlString = generateTOML(from: config)
             try tomlString.write(to: configURL, atomically: true, encoding: .utf8)
-            print("CONFIG: Saved config to \(configURL.path)")
+            Log.debug("CONFIG", "Saved config to \(configURL.path)")
         } catch {
-            print("CONFIG_ERROR: Failed to save config: \(error)")
+            Log.error("CONFIG", "Failed to save config: \(error)")
         }
     }
     

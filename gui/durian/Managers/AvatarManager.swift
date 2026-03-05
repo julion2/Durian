@@ -109,7 +109,7 @@ class AvatarManager: ObservableObject {
                 // Found contact! Use their email for avatar lookup
                 emailForGravatar = contact.email.lowercased()
                 domain = extractDomain(from: contact.email)
-                print("AVATAR: Contacts lookup '\(cleanEmail)' → \(contact.email)")
+                Log.debug("AVATAR", "Contacts lookup '\(cleanEmail)' → \(contact.email)")
             } else {
                 // Fallback: guess domain from name (e.g., "Amazon.de" → "amazon.de")
                 domain = guessDomainFromName(cleanEmail)
@@ -250,7 +250,7 @@ class AvatarManager: ObservableObject {
 
             return image
         } catch {
-            print("AVATAR Failed to fetch \(request.url?.absoluteString ?? "unknown"): \(error.localizedDescription)")
+            Log.error("AVATAR", "Failed to fetch \(request.url?.absoluteString ?? "unknown"): \(error.localizedDescription)")
             return nil
         }
     }

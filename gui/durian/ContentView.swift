@@ -862,7 +862,7 @@ struct ContentView: View {
                 keymapHandler.engine.enterVisualMode(.line)
                 // Set anchor to current cursor position
                 visualModeAnchor = cursorEmailId
-                print("VISUAL: Entered LINE mode, anchor: \(visualModeAnchor ?? "nil")")
+                Log.debug("VISUAL", "Entered LINE mode, anchor: \(visualModeAnchor ?? "nil")")
             }
         }
         
@@ -875,7 +875,7 @@ struct ContentView: View {
                 if let currentId = cursorEmailId {
                     markedEmails = [currentId]
                 }
-                print("VISUAL: Entered TOGGLE mode, initial mark: \(cursorEmailId ?? "nil")")
+                Log.debug("VISUAL", "Entered TOGGLE mode, initial mark: \(cursorEmailId ?? "nil")")
             }
         }
         
@@ -915,7 +915,7 @@ struct ContentView: View {
                         markedEmails = [cursor]
                     }
                     visualModeAnchor = nil
-                    print("VISUAL: Exited visual mode")
+                    Log.debug("VISUAL", "Exited visual mode")
                 } else if showTagPicker {
                     showTagPicker = false
                 } else if showSearchPopup {
@@ -930,7 +930,7 @@ struct ContentView: View {
             }
         }
 
-        print("KEYMAPS: All handlers registered")
+        Log.debug("KEYMAPS", "All handlers registered")
     }
     
 }

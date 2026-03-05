@@ -58,19 +58,19 @@ class KeymapHandler: ObservableObject {
     /// Register a handler for a KeymapAction (goes through sequence engine)
     func registerHandler(for action: KeymapAction, handler: @escaping (Int) async -> Void) {
         sequenceEngine.registerHandler(for: action, handler: handler)
-        print("KEYMAPS: Handler registered for action: \(action.rawValue)")
+        Log.debug("KEYMAPS", "Handler registered for action: \(action.rawValue)")
     }
     
     /// Register a simple handler (count ignored)
     func registerSimpleHandler(for action: KeymapAction, handler: @escaping () async -> Void) {
         sequenceEngine.registerSimpleHandler(for: action, handler: handler)
-        print("KEYMAPS: Simple handler registered for action: \(action.rawValue)")
+        Log.debug("KEYMAPS", "Simple handler registered for action: \(action.rawValue)")
     }
     
     /// Register a legacy handler for keymaps.toml defined shortcuts (Cmd+r, etc.)
     func registerLegacyHandler(for action: String, handler: @escaping () async -> Void) {
         legacyActionHandlers[action] = handler
-        print("KEYMAPS: Legacy handler registered for action: \(action)")
+        Log.debug("KEYMAPS", "Legacy handler registered for action: \(action)")
     }
     
     func startKeyEventMonitoring() {
@@ -83,14 +83,14 @@ class KeymapHandler: ObservableObject {
             return event // Pass through
         }
         
-        print("KEYMAPS: Key event monitoring started")
+        Log.debug("KEYMAPS", "Key event monitoring started")
     }
     
     func stopKeyEventMonitoring() {
         if let monitor = keyEventMonitor {
             NSEvent.removeMonitor(monitor)
             keyEventMonitor = nil
-            print("KEYMAPS: Key event monitoring stopped")
+            Log.debug("KEYMAPS", "Key event monitoring stopped")
         }
     }
     
@@ -110,7 +110,7 @@ class KeymapHandler: ObservableObject {
             Task { @MainActor in
                 self?.isAppInForeground = true
                 self?.startKeyEventMonitoring()
-                print("KEYMAPS: App became active")
+                Log.debug("KEYMAPS", "App became active")
             }
         }
 
@@ -123,7 +123,7 @@ class KeymapHandler: ObservableObject {
                 self?.isAppInForeground = false
                 self?.stopKeyEventMonitoring()
                 self?.sequenceEngine.clearBuffer()
-                print("KEYMAPS: App resigned active")
+                Log.debug("KEYMAPS", "App resigned active")
             }
         }
     }
@@ -131,7 +131,7 @@ class KeymapHandler: ObservableObject {
     private func setupKeymapObserver() {
         keymapsManager.$keymaps
             .sink { _ in
-                print("KEYMAPS: Config updated")
+                Log.debug("KEYMAPS", "Config updated")
             }
             .store(in: &cancellables)
     }
@@ -155,22 +155,22 @@ class KeymapHandler: ObservableObject {
         
         guard isAppInForeground,
               keymapsManager.keymaps.globalSettings.keymapsEnabled else {
-            print("KEYMAPS: Event ignored - app not in foreground or keymaps disabled")
+            Log.debug("KEYMAPS", "Event ignored - app not in foreground or keymaps disabled")
             return false
         }
         
         let key = event.charactersIgnoringModifiers ?? ""
-        print("KEYMAPS: Received key event: '\(key)' keyCode: \(event.keyCode)")
+        Log.debug("KEYMAPS", "Received key event: '\(key)' keyCode: \(event.keyCode)")
         
         // First, check for legacy keymaps with modifiers (Cmd+r, etc.)
         if handleLegacyKeymap(event) {
-            print("KEYMAPS: Handled by legacy keymap")
+            Log.debug("KEYMAPS", "Handled by legacy keymap")
             return true
         }
         
         // Then delegate to sequence engine
         let consumed = sequenceEngine.handleKeyEvent(event)
-        print("KEYMAPS: Sequence engine returned: \(consumed)")
+        Log.debug("KEYMAPS", "Sequence engine returned: \(consumed)")
         return consumed
     }
     

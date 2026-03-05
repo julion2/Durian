@@ -95,7 +95,7 @@ class ProfileManager: ObservableObject {
         
         guard let data = try? Data(contentsOf: configPath),
               let config = try? TOMLDecoder().decode(ProfilesConfig.self, from: data) else {
-            print("PROFILES: Failed to load profiles.toml, using default")
+            Log.debug("PROFILE", "Failed to load profiles.toml, using default")
             profiles = [Profile(
                 name: "All",
                 accounts: ["*"],
@@ -125,9 +125,9 @@ class ProfileManager: ObservableObject {
         }
         
         currentProfile = profiles.first(where: { $0.isDefault }) ?? profiles.first
-        print("PROFILES: Loaded \(profiles.count) profiles, current: \(currentProfile?.name ?? "none")")
+        Log.info("PROFILE", "Loaded \(profiles.count) profiles, current: \(currentProfile?.name ?? "none")")
         if let profile = currentProfile {
-            print("PROFILES: Current profile has \(profile.folders.count) folders")
+            Log.debug("PROFILE", "Current profile has \(profile.folders.count) folders")
         }
     }
     
@@ -168,7 +168,7 @@ class ProfileManager: ObservableObject {
         let pathQuery = pathFilters.joined(separator: " OR ")
         
         let query = "(\(baseQuery)) AND (\(pathQuery))"
-        print("PROFILES: Built query: \(query)")
+        Log.debug("PROFILE", "Built query: \(query)")
         return query
     }
 }

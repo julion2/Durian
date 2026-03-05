@@ -119,13 +119,13 @@ class NotmuchBackend: ObservableObject {
 
     func connect() async {
         guard durianProcess == nil || !durianProcess!.isRunning else {
-            print("NOTMUCH Server already running")
+            Log.debug("BACKEND", "Server already running")
             return
         }
 
         guard let durianPath = resolveDurianPath() else {
             connectionStatus = "durian CLI not found"
-            print("NOTMUCH ERROR: \(connectionStatus)")
+            Log.error("BACKEND", connectionStatus)
             BannerManager.shared.showCritical(title: "Durian CLI Not Found", message: "Cannot start mail server.")
             return
         }
@@ -152,11 +152,11 @@ class NotmuchBackend: ObservableObject {
         let logFile = logDir.appendingPathComponent("serve.log")
         FileManager.default.createFile(atPath: logFile.path, contents: nil)
         durianProcess?.standardError = try? FileHandle(forWritingTo: logFile)
-        print("NOTMUCH Server logs at: \(logFile.path)")
+        Log.info("BACKEND", "Server logs at: \(logFile.path)")
 
         do {
             try durianProcess?.run()
-            print("NOTMUCH Started durian server process")
+            Log.info("BACKEND", "Started durian server process")
 
             // Give the server a moment to start
             try? await Task.sleep(for: .seconds(1))
@@ -170,14 +170,14 @@ class NotmuchBackend: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 { // 404 is ok, means our base endpoint is handled
                 isConnected = true
                 connectionStatus = "Connected to notmuch"
-                print("NOTMUCH Server is responsive")
+                Log.info("BACKEND", "Server is responsive")
                 await selectFolder("inbox")
             } else {
                 throw NSError(domain: "NotmuchBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server not responsive"])
             }
         } catch {
             connectionStatus = "Failed to start or connect to server: \(error.localizedDescription)"
-            print("NOTMUCH ERROR: \(connectionStatus)")
+            Log.error("BACKEND", connectionStatus)
             BannerManager.shared.showCritical(title: "Mail Server Error", message: "Could not connect. Try restarting.")
             durianProcess?.terminate()
             durianProcess = nil
@@ -190,7 +190,7 @@ class NotmuchBackend: ObservableObject {
         durianProcess = nil
         isConnected = false
         connectionStatus = "Disconnected"
-        print("NOTMUCH Disconnected and server terminated")
+        Log.info("BACKEND", "Disconnected and server terminated")
     }
 
     /// Kill any existing `durian serve` processes to free port 9723.
@@ -203,7 +203,7 @@ class NotmuchBackend: ObservableObject {
         try? task.run()
         task.waitUntilExit()
         if task.terminationStatus == 0 {
-            print("NOTMUCH Killed existing durian serve process")
+            Log.info("BACKEND", "Killed existing durian serve process")
             // Brief pause to let the port be released
             Thread.sleep(forTimeInterval: 0.5)
         }
@@ -218,7 +218,7 @@ class NotmuchBackend: ObservableObject {
         
         currentFolder = name
         currentQuery = ProfileManager.shared.buildQuery(folderName: name)
-        print("NOTMUCH selectFolder: \(currentQuery)")
+        Log.debug("BACKEND", "selectFolder: \(currentQuery)")
         await search(currentQuery)
     }
 
@@ -233,14 +233,14 @@ class NotmuchBackend: ObservableObject {
             let data = try JSONEncoder().encode(body)
             return await performRequest(endpoint: endpoint, method: method, bodyData: data)
         } catch {
-            print("NOTMUCH ERROR: Failed to encode request body: \(error)")
+            Log.error("BACKEND", "Failed to encode request body: \(error)")
             return nil
         }
     }
 
     private func performRequest<T: Decodable>(endpoint: String, method: String, bodyData: Data?) async -> T? {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
-            print("NOTMUCH ERROR: Invalid URL")
+            Log.error("BACKEND", "Invalid URL")
             return nil
         }
 
@@ -262,7 +262,7 @@ class NotmuchBackend: ObservableObject {
         } catch let error as URLError where error.code == .cancelled {
             return nil
         } catch {
-            print("NOTMUCH ERROR: Request to \(endpoint) failed: \(error)")
+            Log.error("BACKEND", "Request to \(endpoint) failed: \(error)")
             return nil
         }
     }
@@ -284,10 +284,10 @@ class NotmuchBackend: ObservableObject {
             if let index = emails.firstIndex(where: { $0.id == id }) {
                  if isPrefetch && (shouldCancelPrefetch || Task.isCancelled) {
                     emails[index].bodyState = .notLoaded
-                    print("NOTMUCH Prefetch cancelled for \(id)")
+                    Log.debug("BACKEND", "Prefetch cancelled for \(id)")
                 } else {
                     emails[index].bodyState = .failed(message: "Failed to load thread")
-                    print("NOTMUCH Body fetch failed for \(id)")
+                    Log.error("BACKEND", "Body fetch failed for \(id)")
                 }
             }
             return
@@ -338,7 +338,7 @@ class NotmuchBackend: ObservableObject {
 
             let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
             emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
-            print("NOTMUCH Loaded thread \(id) with \(thread.messages.count) messages")
+            Log.info("BACKEND", "Loaded thread \(id) with \(thread.messages.count) messages")
             cacheThread(id: id, messages: thread.messages)
         }
     }
@@ -382,7 +382,7 @@ class NotmuchBackend: ObservableObject {
         }
         
         restoreCachedThreads()
-        print("NOTMUCH Search returned \(emails.count) emails")
+        Log.debug("BACKEND", "Search returned \(emails.count) emails")
         isLoadingEmails = false
         loadingProgress = ""
         
@@ -430,10 +430,10 @@ class NotmuchBackend: ObservableObject {
         )
 
         if response?.ok == true {
-            print("NOTMUCH Tagged \(query) with \(tags)")
+            Log.info("BACKEND", "Tagged \(query) with \(tags)")
         } else {
             let msg = response?.error ?? "unknown error"
-            print("NOTMUCH Tag error: \(msg)")
+            Log.error("BACKEND", "Tag error: \(msg)")
             throw NotmuchTagError.tagFailed(msg)
         }
     }
@@ -535,7 +535,7 @@ class NotmuchBackend: ObservableObject {
         try await tag(query: "thread:\(id)", tags: tags)
 
         emails[index].isPinned = !isCurrentlyPinned
-        print("NOTMUCH Toggled pin for \(id): \(!isCurrentlyPinned)")
+        Log.debug("BACKEND", "Toggled pin for \(id): \(!isCurrentlyPinned)")
         await reload()
     }
 
@@ -571,7 +571,7 @@ class NotmuchBackend: ObservableObject {
             for key in keysToRemove {
                 threadCache.removeValue(forKey: key)
             }
-            print("NOTMUCH Cache cleanup: removed \(keysToRemove.count) old entries")
+            Log.debug("BACKEND", "Cache cleanup: removed \(keysToRemove.count) old entries")
         }
     }
     
@@ -612,7 +612,7 @@ class NotmuchBackend: ObservableObject {
             }
         }
         if restoredCount > 0 {
-            print("NOTMUCH Restored \(restoredCount) threads from cache")
+            Log.debug("BACKEND", "Restored \(restoredCount) threads from cache")
         }
     }
     
@@ -624,11 +624,11 @@ class NotmuchBackend: ObservableObject {
         
         guard !emailsToFetch.isEmpty else { return }
         
-        print("NOTMUCH Prefetching \(emailsToFetch.count) bodies...")
+        Log.debug("BACKEND", "Prefetching \(emailsToFetch.count) bodies...")
         
         for email in emailsToFetch {
             if shouldCancelPrefetch || Task.isCancelled {
-                print("NOTMUCH Prefetch cancelled")
+                Log.debug("BACKEND", "Prefetch cancelled")
                 return
             }
             await fetchEmailBodyInternal(id: email.id, isPrefetch: true)

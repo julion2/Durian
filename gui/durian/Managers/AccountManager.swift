@@ -42,7 +42,7 @@ class AccountManager: ObservableObject {
     // MARK: - Notmuch Setup
     
     private func setupNotmuchBackend() {
-        print("NOTMUCH AccountManager: Setting up notmuch backend")
+        Log.debug("BACKEND", "AccountManager: Setting up notmuch backend")
         notmuchBackend = NotmuchBackend()
         
         // Subscribe to backend changes
@@ -63,9 +63,9 @@ class AccountManager: ObservableObject {
     // MARK: - Connection
     
     func connectToAllAccounts() async {
-        print("NOTMUCH AccountManager: Connecting to notmuch...")
+        Log.debug("BACKEND", "AccountManager: Connecting to notmuch...")
         guard let backend = notmuchBackend else {
-            print("NOTMUCH ERROR: Backend not initialized")
+            Log.error("BACKEND", "Backend not initialized")
             return
         }
         await backend.connect()
@@ -88,7 +88,7 @@ class AccountManager: ObservableObject {
     func switchProfile(_ profile: Profile) async {
         // Update ProfileManager
         ProfileManager.shared.currentProfile = profile
-        print("NOTMUCH AccountManager: Switched to profile '\(profile.name)'")
+        Log.info("BACKEND", "Switched to profile '\(profile.name)'")
         
         // Reload current folder with new profile filter
         await selectNotmuchTag(selectedFolder)
@@ -107,7 +107,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.markAsRead(id: id)
         } catch {
-            print("NOTMUCH: Failed to mark as read: \(error)")
+            Log.error("BACKEND", "Failed to mark as read: \(error)")
         }
         syncFromNotmuch()
     }
@@ -123,7 +123,7 @@ class AccountManager: ObservableObject {
                 }
             }
         } catch {
-            print("NOTMUCH: Failed to toggle read status: \(error)")
+            Log.error("BACKEND", "Failed to toggle read status: \(error)")
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
         }
         syncFromNotmuch()
@@ -134,7 +134,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.deleteMessage(id: id)
         } catch {
-            print("NOTMUCH: Failed to delete message: \(error)")
+            Log.error("BACKEND", "Failed to delete message: \(error)")
             BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete message.")
         }
         syncFromNotmuch()
@@ -145,7 +145,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.addTag(id: id, tag: tag)
         } catch {
-            print("NOTMUCH: Failed to add tag: \(error)")
+            Log.error("BACKEND", "Failed to add tag: \(error)")
             BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not add tag '\(tag)'.")
         }
         syncFromNotmuch()
@@ -156,7 +156,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.removeTag(id: id, tag: tag)
         } catch {
-            print("NOTMUCH: Failed to remove tag: \(error)")
+            Log.error("BACKEND", "Failed to remove tag: \(error)")
             BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not remove tag '\(tag)'.")
         }
         syncFromNotmuch()
@@ -172,7 +172,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.togglePin(id: id)
         } catch {
-            print("NOTMUCH: Failed to toggle pin: \(error)")
+            Log.error("BACKEND", "Failed to toggle pin: \(error)")
             BannerManager.shared.showWarning(title: "Pin Failed", message: "Could not toggle pin.")
         }
         syncFromNotmuch()
@@ -183,7 +183,7 @@ class AccountManager: ObservableObject {
         do {
             try await backend.toggleRead(id: id)
         } catch {
-            print("NOTMUCH: Failed to toggle read: \(error)")
+            Log.error("BACKEND", "Failed to toggle read: \(error)")
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
         }
         syncFromNotmuch()
@@ -196,7 +196,7 @@ class AccountManager: ObservableObject {
         var failCount = 0
         for id in ids {
             do { try await backend.deleteMessage(id: id) }
-            catch { failCount += 1; print("NOTMUCH: Failed to delete \(id): \(error)") }
+            catch { failCount += 1; Log.error("BACKEND", "Failed to delete \(id): \(error)") }
         }
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete \(failCount) message(s).")
@@ -209,7 +209,7 @@ class AccountManager: ObservableObject {
         var failCount = 0
         for id in ids {
             do { try await backend.toggleRead(id: id) }
-            catch { failCount += 1; print("NOTMUCH: Failed to toggle read \(id): \(error)") }
+            catch { failCount += 1; Log.error("BACKEND", "Failed to toggle read \(id): \(error)") }
         }
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
@@ -222,7 +222,7 @@ class AccountManager: ObservableObject {
         var failCount = 0
         for id in ids {
             do { try await backend.markAsRead(id: id) }
-            catch { failCount += 1; print("NOTMUCH: Failed to mark read \(id): \(error)") }
+            catch { failCount += 1; Log.error("BACKEND", "Failed to mark read \(id): \(error)") }
         }
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
@@ -235,7 +235,7 @@ class AccountManager: ObservableObject {
         var failCount = 0
         for id in ids {
             do { try await backend.markAsUnread(id: id) }
-            catch { failCount += 1; print("NOTMUCH: Failed to mark unread \(id): \(error)") }
+            catch { failCount += 1; Log.error("BACKEND", "Failed to mark unread \(id): \(error)") }
         }
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
@@ -248,7 +248,7 @@ class AccountManager: ObservableObject {
     /// Select an email by thread ID (called when user clicks a notification)
     func selectEmail(threadId: String) {
         guard mailMessages.contains(where: { $0.id == threadId }) else {
-            print("NOTMUCH: Notification thread \(threadId) not found in current list")
+            Log.debug("BACKEND", "Notification thread \(threadId) not found in current list")
             return
         }
         pendingNotificationThreadId = threadId
@@ -273,7 +273,7 @@ class AccountManager: ObservableObject {
         
         // Reload from notmuch
         loadingProgress = "Loading..."
-        print("NOTMUCH Reload: Reloading from notmuch")
+        Log.debug("BACKEND", "Reloading from notmuch")
         await backend.reload()
         syncFromNotmuch()
     }

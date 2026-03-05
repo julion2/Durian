@@ -26,7 +26,7 @@ class KeymapsManager: ObservableObject {
         
         // Migration: Check if JSON exists but TOML doesn't
         if FileManager.default.fileExists(atPath: jsonURL.path) && !FileManager.default.fileExists(atPath: tomlURL.path) {
-            print("KEYMAPS: Migrating from JSON to TOML...")
+            Log.debug("KEYMAPS", "Migrating from JSON to TOML...")
             migrateFromJSON(jsonURL: jsonURL, tomlURL: tomlURL)
         }
         
@@ -38,12 +38,12 @@ class KeymapsManager: ObservableObject {
         do {
             let tomlString = try String(contentsOf: tomlURL, encoding: .utf8)
             keymaps = try TOMLDecoder().decode(KeymapConfig.self, from: tomlString)
-            print("KEYMAPS: Loaded from: \(tomlURL.path)")
+            Log.info("KEYMAPS", "Loaded from: \(tomlURL.path)")
             
             // Merge missing keymaps from defaults
             mergeWithDefaults()
         } catch {
-            print("KEYMAPS_ERROR: Failed to load: \(error)")
+            Log.error("KEYMAPS", "Failed to load: \(error)")
             keymaps = KeymapConfig()
         }
         
@@ -54,7 +54,7 @@ class KeymapsManager: ObservableObject {
     private func migrateFromJSON(jsonURL: URL, tomlURL: URL) {
         // For now, just create new TOML - old JSON structure was different
         // Users can manually migrate if needed
-        print("KEYMAPS: Old JSON config found, creating new TOML config")
+        Log.debug("KEYMAPS", "Old JSON config found, creating new TOML config")
     }
     
     private func setupAutoSave() {
@@ -73,9 +73,9 @@ class KeymapsManager: ObservableObject {
         do {
             let tomlString = generateTOML(from: keymaps)
             try tomlString.write(to: configURL, atomically: true, encoding: .utf8)
-            print("KEYMAPS: Saved to \(configURL.path)")
+            Log.debug("KEYMAPS", "Saved to \(configURL.path)")
         } catch {
-            print("KEYMAPS_ERROR: Failed to save: \(error)")
+            Log.error("KEYMAPS", "Failed to save: \(error)")
         }
     }
     
@@ -91,12 +91,12 @@ class KeymapsManager: ObservableObject {
             if !existingActions.contains(key) {
                 keymaps.keymaps.append(defaultEntry)
                 addedCount += 1
-                print("KEYMAPS: Added missing keymap: \(defaultEntry.action) -> \(defaultEntry.key)")
+                Log.debug("KEYMAPS", "Added missing keymap: \(defaultEntry.action) -> \(defaultEntry.key)")
             }
         }
         
         if addedCount > 0 {
-            print("KEYMAPS: Merged \(addedCount) missing keymaps from defaults")
+            Log.info("KEYMAPS", "Merged \(addedCount) missing keymaps from defaults")
             saveKeymaps()
         }
     }
@@ -334,14 +334,14 @@ class KeymapsManager: ObservableObject {
         if let index = keymaps.keymaps.firstIndex(where: { $0.action == action }) {
             keymaps.keymaps[index].key = key
             keymaps.keymaps[index].modifiers = modifiers
-            print("KEYMAPS: Set \(action) = \(formatKeymap(key: key, modifiers: modifiers))")
+            Log.debug("KEYMAPS", "Set \(action) = \(formatKeymap(key: key, modifiers: modifiers))")
         }
     }
     
     func enableKeymap(for action: String, enabled: Bool) {
         if let index = keymaps.keymaps.firstIndex(where: { $0.action == action }) {
             keymaps.keymaps[index].enabled = enabled
-            print("KEYMAPS: \(action) \(enabled ? "enabled" : "disabled")")
+            Log.debug("KEYMAPS", "\(action) \(enabled ? "enabled" : "disabled")")
         }
     }
     
@@ -375,9 +375,9 @@ class KeymapsManager: ObservableObject {
     
     // Public method to manually reload keymaps
     func reloadKeymaps() {
-        print("🎹 Manual keymaps reload requested")
+        Log.info("KEYMAPS", "Manual keymaps reload requested")
         loadKeymaps()
-        print("🎹 Keymaps reloaded from file")
+        Log.info("KEYMAPS", "Keymaps reloaded from file")
     }
 }
 

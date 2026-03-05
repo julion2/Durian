@@ -260,20 +260,20 @@ struct ComposeWindow: View {
                         showInvalidEmailWarning = true
                     }
                 } else {
-                    print("COMPOSE: Send failed - \(error)")
+                    Log.error("COMPOSE", "Send failed - \(error)")
                     await MainActor.run {
                         BannerManager.shared.show(error.bannerMessage)
                     }
                 }
             } catch {
-                print("COMPOSE: Send failed - \(error)")
+                Log.error("COMPOSE", "Send failed - \(error)")
                 await MainActor.run {
                     BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
                 }
             }
         }
     }
-    
+
     private func handleSendWithSkipValidation() {
         guard let draft = draftService.getDraft(id: draftId) else { return }
         
@@ -288,12 +288,12 @@ struct ComposeWindow: View {
                     dismiss()
                 }
             } catch let error as EmailSendingError {
-                print("COMPOSE: Send failed - \(error)")
+                Log.error("COMPOSE", "Send failed - \(error)")
                 await MainActor.run {
                     BannerManager.shared.show(error.bannerMessage)
                 }
             } catch {
-                print("COMPOSE: Send failed - \(error)")
+                Log.error("COMPOSE", "Send failed - \(error)")
                 await MainActor.run {
                     BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
                 }

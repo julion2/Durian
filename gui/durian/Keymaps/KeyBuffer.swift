@@ -136,7 +136,7 @@ class KeyBuffer: ObservableObject {
     }
     
     private func handleTimeout() {
-        print("KEYBUFFER: Timeout - clearing buffer '\(asString)'")
+        Log.debug("KEYBUFFER", "Timeout - clearing buffer '\(asString)'")
         clear()
         onTimeout?()
     }

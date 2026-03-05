@@ -23,7 +23,7 @@ class QuickLookPreviewController: NSObject, QLPreviewPanelDataSource, QLPreviewP
     }
     
     func showPreview(for attachments: [EmailAttachment], startingAt index: Int) {
-        print("QUICKLOOK: showPreview called with \(attachments.count) attachments, index: \(index)")
+        Log.debug("QUICKLOOK", "showPreview called with \(attachments.count) attachments, index: \(index)")
         
         self.attachments = attachments
         self.currentIndex = index
@@ -31,23 +31,23 @@ class QuickLookPreviewController: NSObject, QLPreviewPanelDataSource, QLPreviewP
         cleanupTempFiles()
         tempURLs = createTempFiles()
         
-        print("QUICKLOOK: Created \(tempURLs.count) temp files")
+        Log.debug("QUICKLOOK", "Created \(tempURLs.count) temp files")
         
         guard let panel = QLPreviewPanel.shared() else {
-            print("QUICKLOOK: Failed to get shared preview panel")
+            Log.error("QUICKLOOK", "Failed to get shared preview panel")
             return
         }
         
-        print("QUICKLOOK: Got preview panel, setting datasource and delegate")
+        Log.debug("QUICKLOOK", "Got preview panel, setting datasource and delegate")
         
         panel.dataSource = self
         panel.delegate = self
         panel.currentPreviewItemIndex = index
         
-        print("QUICKLOOK: Making panel key and ordering front")
+        Log.debug("QUICKLOOK", "Making panel key and ordering front")
         panel.makeKeyAndOrderFront(nil)
         
-        print("QUICKLOOK: Panel shown, isVisible: \(panel.isVisible)")
+        Log.debug("QUICKLOOK", "Panel shown, isVisible: \(panel.isVisible)")
     }
     
     private func createTempFiles() -> [URL] {
@@ -60,9 +60,9 @@ class QuickLookPreviewController: NSObject, QLPreviewPanelDataSource, QLPreviewP
             do {
                 try attachment.data.write(to: tempURL)
                 urls.append(tempURL)
-                print("QUICKLOOK: Created temp file: \(tempURL.lastPathComponent)")
+                Log.debug("QUICKLOOK", "Created temp file: \(tempURL.lastPathComponent)")
             } catch {
-                print("QUICKLOOK: Failed to write temp file: \(error)")
+                Log.error("QUICKLOOK", "Failed to write temp file: \(error)")
             }
         }
         

@@ -19,7 +19,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         if let threadId = userInfo["threadId"] as? String {
-            print("NOTIFICATIONS: Clicked notification for thread \(threadId)")
+            Log.info("NOTIFICATIONS", "Clicked notification for thread \(threadId)")
             Task { @MainActor in
                 AccountManager.shared.selectEmail(threadId: threadId)
             }
@@ -61,11 +61,11 @@ struct DurianApp: App {
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if granted {
-                print("NOTIFICATIONS: Permission granted")
+                Log.info("NOTIFICATIONS", "Permission granted")
             } else if let error = error {
-                print("NOTIFICATIONS: Permission error - \(error.localizedDescription)")
+                Log.error("NOTIFICATIONS", "Permission error - \(error.localizedDescription)")
             } else {
-                print("NOTIFICATIONS: Permission denied")
+                Log.warning("NOTIFICATIONS", "Permission denied")
             }
         }
     }

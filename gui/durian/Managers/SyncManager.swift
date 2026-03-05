@@ -85,15 +85,15 @@ class SyncManager: ObservableObject {
     // MARK: - Setup (call on app start)
     
     func setup() {
-        print("SYNC: Setting up SyncManager...")
-        print("SYNC: Config - guiAutoSync=\(SettingsManager.shared.guiAutoSync), autoFetchInterval=\(SettingsManager.shared.autoFetchInterval)s, fullSyncInterval=\(SettingsManager.shared.fullSyncInterval)s")
+        Log.debug("SYNC", "Setting up SyncManager...")
+        Log.debug("SYNC", "Config - guiAutoSync=\(SettingsManager.shared.guiAutoSync), autoFetchInterval=\(SettingsManager.shared.autoFetchInterval)s, fullSyncInterval=\(SettingsManager.shared.fullSyncInterval)s")
         
         // Start timers based on config (if online)
         if NetworkMonitor.shared.isConnected {
             startQuickSyncTimer()
             startFullSyncTimer()
         } else {
-            print("SYNC: Offline at startup, timers not started")
+            Log.debug("SYNC", "Offline at startup, timers not started")
         }
         
         // Start SSE event stream for real-time new-mail notifications
@@ -113,7 +113,7 @@ class SyncManager: ObservableObject {
             .sink { [weak self] isConnected in
                 Task { @MainActor in
                     if isConnected {
-                        print("SYNC: Back online, restarting timers and syncing")
+                        Log.warning("SYNC", "Back online, restarting timers and syncing")
                         self?.pendingOfflineBanner?.cancel()
                         self?.pendingOfflineBanner = nil
                         if self?.userSawFailureBanner == true {
@@ -123,7 +123,7 @@ class SyncManager: ObservableObject {
                         self?.restartTimers()
                         await self?.quickSync()
                     } else {
-                        print("SYNC: Went offline, stopping timers")
+                        Log.warning("SYNC", "Went offline, stopping timers")
                         self?.stopTimers()
                         // Delay offline banner — brief disconnects (WiFi switch) shouldn't notify
                         let work = DispatchWorkItem { [weak self] in
@@ -140,34 +140,34 @@ class SyncManager: ObservableObject {
             }
             .store(in: &cancellables)
         
-        print("SYNC: Setup complete")
+        Log.info("SYNC", "Setup complete")
     }
     
     // MARK: - Timer Management
     
     func startQuickSyncTimer() {
         guard SettingsManager.shared.guiAutoSync else {
-            print("SYNC: GUI auto-sync disabled, not starting quick sync timer")
+            Log.debug("SYNC", "GUI auto-sync disabled, not starting quick sync timer")
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("SYNC: Offline, not starting quick sync timer")
+            Log.debug("SYNC", "Offline, not starting quick sync timer")
             return
         }
         
         let interval = SettingsManager.shared.autoFetchInterval
-        print("SYNC: Starting quick sync timer with interval \(interval)s")
+        Log.debug("SYNC", "Starting quick sync timer with interval \(interval)s")
         
         quickSyncTimer?.invalidate()
         quickSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
                 guard !self.syncLock else {
-                    print("SYNC: Quick sync timer skipped - sync already in progress")
+                    Log.debug("SYNC", "Quick sync timer skipped - sync already in progress")
                     return
                 }
                 guard NetworkMonitor.shared.isConnected else {
-                    print("SYNC: Quick sync timer skipped - offline")
+                    Log.debug("SYNC", "Quick sync timer skipped - offline")
                     return
                 }
                 await self.quickSync()
@@ -177,27 +177,27 @@ class SyncManager: ObservableObject {
     
     func startFullSyncTimer() {
         guard SettingsManager.shared.guiAutoSync else {
-            print("SYNC: GUI auto-sync disabled, not starting full sync timer")
+            Log.debug("SYNC", "GUI auto-sync disabled, not starting full sync timer")
             return
         }
         guard NetworkMonitor.shared.isConnected else {
-            print("SYNC: Offline, not starting full sync timer")
+            Log.debug("SYNC", "Offline, not starting full sync timer")
             return
         }
         
         let interval = SettingsManager.shared.fullSyncInterval
-        print("SYNC: Starting full sync timer with interval \(interval)s (\(interval/3600)h)")
+        Log.debug("SYNC", "Starting full sync timer with interval \(interval)s (\(interval/3600)h)")
         
         fullSyncTimer?.invalidate()
         fullSyncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
                 guard !self.syncLock else {
-                    print("SYNC: Full sync timer skipped - sync already in progress")
+                    Log.debug("SYNC", "Full sync timer skipped - sync already in progress")
                     return
                 }
                 guard NetworkMonitor.shared.isConnected else {
-                    print("SYNC: Full sync timer skipped - offline")
+                    Log.debug("SYNC", "Full sync timer skipped - offline")
                     return
                 }
                 await self.fullSync()
@@ -206,7 +206,7 @@ class SyncManager: ObservableObject {
     }
     
     func stopTimers() {
-        print("SYNC: Stopping all sync timers")
+        Log.debug("SYNC", "Stopping all sync timers")
         quickSyncTimer?.invalidate()
         quickSyncTimer = nil
         fullSyncTimer?.invalidate()
@@ -214,7 +214,7 @@ class SyncManager: ObservableObject {
     }
     
     func restartTimers() {
-        print("SYNC: Restarting timers with new settings")
+        Log.debug("SYNC", "Restarting timers with new settings")
         stopTimers()
         if SettingsManager.shared.guiAutoSync {
             startQuickSyncTimer()
@@ -227,7 +227,7 @@ class SyncManager: ObservableObject {
     /// Show banner only after 3+ consecutive failures
     private func showFailureBannerIfThresholdMet(title: String, message: String) {
         guard consecutiveFailures >= 3 else {
-            print("SYNC: Suppressing banner (\(consecutiveFailures)/3 consecutive failures)")
+            Log.debug("SYNC", "Suppressing banner (\(consecutiveFailures)/3 consecutive failures)")
             return
         }
         userSawFailureBanner = true
@@ -246,7 +246,7 @@ class SyncManager: ObservableObject {
     @discardableResult
     func quickSync() async -> Bool {
         guard !syncLock else {
-            print("SYNC: Quick sync - already syncing, skipping")
+            Log.debug("SYNC", "Quick sync - already syncing, skipping")
             return false
         }
         
@@ -255,7 +255,7 @@ class SyncManager: ObservableObject {
         
         // Get current profile for targeted sync
         guard let currentProfile = ProfileManager.shared.currentProfile else {
-            print("SYNC: Quick sync - no current profile, skipping")
+            Log.debug("SYNC", "Quick sync - no current profile, skipping")
             return false
         }
 
@@ -271,13 +271,13 @@ class SyncManager: ObservableObject {
         } else {
             accountName = nil
         }
-        print("SYNC: Quick sync starting for \(accountName ?? "all") INBOX")
+        Log.debug("SYNC", "Quick sync starting for \(accountName ?? "all") INBOX")
         syncState = .syncing
 
         let success = await runDurianSync(account: accountName, mailbox: "INBOX", timeout: 60)
         
         if success {
-            print("SYNC: Quick sync completed successfully")
+            Log.info("SYNC", "Quick sync completed successfully")
             recordSyncSuccess()
             syncState = .success
 
@@ -294,7 +294,7 @@ class SyncManager: ObservableObject {
                 }
             }
         } else {
-            print("SYNC: Quick sync failed")
+            Log.error("SYNC", "Quick sync failed")
             consecutiveFailures += 1
             syncState = .failed("sync error")
             if !NetworkMonitor.shared.isConnected {
@@ -313,27 +313,27 @@ class SyncManager: ObservableObject {
     @discardableResult
     func fullSync() async -> Bool {
         guard !syncLock else {
-            print("SYNC: Full sync - already syncing, skipping")
+            Log.debug("SYNC", "Full sync - already syncing, skipping")
             return false
         }
         
         syncLock = true
         defer { syncLock = false }
         
-        print("SYNC: Full sync starting (all accounts)")
+        Log.debug("SYNC", "Full sync starting (all accounts)")
         // No UI feedback for full sync (runs in background)
         
         let success = await runDurianSync(account: nil, mailbox: nil, timeout: 300)
         
         if success {
-            print("SYNC: Full sync completed successfully")
+            Log.info("SYNC", "Full sync completed successfully")
             recordSyncSuccess()
 
             // Reload before updating lastSyncTime (notification recency filter)
             await reloadEmailList()
             lastSyncTime = Date()
         } else {
-            print("SYNC: Full sync failed")
+            Log.error("SYNC", "Full sync failed")
             consecutiveFailures += 1
             if !NetworkMonitor.shared.isConnected {
                 showFailureBannerIfThresholdMet(title: "Offline", message: "Background sync skipped — no network connection.")
@@ -354,7 +354,7 @@ class SyncManager: ObservableObject {
     ///   - timeout: Command timeout in seconds
     private func runDurianSync(account: String?, mailbox: String?, timeout: TimeInterval) async -> Bool {
         guard let resolvedPath = FileManager.default.resolveDurianPath() else {
-            print("SYNC: durian CLI not found in ~/.local/bin or /usr/local/bin")
+            Log.error("SYNC", "durian CLI not found in ~/.local/bin or /usr/local/bin")
             BannerManager.shared.showCritical(title: "Durian CLI Not Found", message: "Install durian to sync emails.")
             return false
         }
@@ -368,18 +368,18 @@ class SyncManager: ObservableObject {
             }
         }
         
-        print("SYNC: Running \(resolvedPath) \(args.joined(separator: " ")) (timeout: \(Int(timeout))s)")
+        Log.debug("SYNC", "Running \(resolvedPath) \(args.joined(separator: " ")) (timeout: \(Int(timeout))s)")
         let result = await runCommand(resolvedPath, args: args, timeout: timeout)
         
         if result.success {
-            print("SYNC: durian sync completed successfully")
+            Log.debug("SYNC", "durian sync completed successfully")
             if let output = result.output, !output.isEmpty {
-                print("SYNC: Output: \(output.prefix(500))")
+                Log.debug("SYNC", "Output: \(output.prefix(500))")
             }
         } else {
-            print("SYNC: durian sync failed")
+            Log.error("SYNC", "durian sync failed")
             if let error = result.error, !error.isEmpty {
-                print("SYNC: Error: \(error)")
+                Log.error("SYNC", "Error: \(error)")
             }
         }
         
@@ -389,7 +389,7 @@ class SyncManager: ObservableObject {
     /// Reload the email list after sync to show new messages
     private func reloadEmailList() async {
         guard let backend = AccountManager.shared.notmuchBackend else { return }
-        print("SYNC: Reloading email list")
+        Log.debug("SYNC", "Reloading email list")
         await backend.reload()
     }
 
@@ -493,7 +493,7 @@ class SyncManager: ObservableObject {
                 
                 timeoutWorkItem = DispatchWorkItem {
                     if process.isRunning {
-                        print("SYNC: Command timed out after \(timeout)s, terminating process")
+                        Log.error("SYNC", "Command timed out after \(timeout)s, terminating process")
                         didTimeout = true
                         process.terminate()
                     }

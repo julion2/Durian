@@ -62,7 +62,7 @@ class SequenceMatcher {
             .filter { $0.enabled && $0.modifiers.isEmpty }
             .compactMap { entry -> SequenceDefinition? in
                 guard let action = KeymapAction(rawValue: entry.action) else {
-                    print("SEQMATCH: Unknown action '\(entry.action)' - skipping")
+                    Log.debug("SEQMATCH", "Unknown action '\(entry.action)' - skipping")
                     return nil
                 }
                 return SequenceDefinition(entry.key, action, entry.description)
@@ -77,7 +77,7 @@ class SequenceMatcher {
         
         rebuildLookups()
         
-        print("SEQMATCH: Loaded \(sequences.count) sequences, \(countSupportedActions.count) with count support")
+        Log.debug("SEQMATCH", "Loaded \(sequences.count) sequences, \(countSupportedActions.count) with count support")
     }
     
     private func rebuildLookups() {
@@ -97,7 +97,7 @@ class SequenceMatcher {
             }
         }
         
-        print("SEQMATCH: Prefixes for partial matching: \(allPrefixes.sorted())")
+        Log.debug("SEQMATCH", "Prefixes for partial matching: \(allPrefixes.sorted())")
     }
     
     // MARK: - Public API

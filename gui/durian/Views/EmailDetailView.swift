@@ -671,10 +671,10 @@ struct ThreadMessageCardView: View {
             do {
                 try data.write(to: saveURL)
                 downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
-                print("ATTACHMENT: Saved \(attachment.filename) to Downloads")
+                Log.info("ATTACHMENT", "Saved \(attachment.filename) to Downloads")
             } catch {
                 downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
-                print("ATTACHMENT: Failed to write \(attachment.filename): \(error)")
+                Log.error("ATTACHMENT", "Failed to write \(attachment.filename): \(error)")
                 scheduleErrorClear(attachment.partId)
             }
         }
@@ -700,7 +700,7 @@ struct ThreadMessageCardView: View {
                 do {
                     try data.write(to: saveURL)
                     downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
-                    print("ATTACHMENT: Saved \(attachment.filename) to \(folderURL.lastPathComponent)/")
+                    Log.info("ATTACHMENT", "Saved \(attachment.filename) to \(folderURL.lastPathComponent)/")
                 } catch {
                     downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
                     scheduleErrorClear(attachment.partId)
@@ -723,10 +723,10 @@ struct ThreadMessageCardView: View {
             do {
                 try data.write(to: saveURL)
                 downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
-                print("ATTACHMENT: Saved \(attachment.filename) to \(saveURL.path)")
+                Log.info("ATTACHMENT", "Saved \(attachment.filename) to \(saveURL.path)")
             } catch {
                 downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
-                print("ATTACHMENT: Failed to write \(attachment.filename): \(error)")
+                Log.error("ATTACHMENT", "Failed to write \(attachment.filename): \(error)")
                 scheduleErrorClear(attachment.partId)
             }
         }
@@ -746,7 +746,7 @@ struct ThreadMessageCardView: View {
             return data
         } catch {
             downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
-            print("ATTACHMENT: Download failed for \(attachment.filename): \(error)")
+            Log.error("ATTACHMENT", "Download failed for \(attachment.filename): \(error)")
             scheduleErrorClear(attachment.partId)
             return nil
         }

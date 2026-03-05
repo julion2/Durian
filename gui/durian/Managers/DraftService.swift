@@ -71,7 +71,7 @@ class DraftService: ObservableObject {
         let fromAddress = account ?? ConfigManager.shared.getAccounts().first?.email ?? ""
         let draft = EmailDraft(from: fromAddress)
         activeDrafts[id] = draft
-        print("DRAFT: Created new draft \(id)")
+        Log.debug("DRAFT", "Created new draft \(id)")
         return id
     }
     
@@ -79,7 +79,7 @@ class DraftService: ObservableObject {
     func createDraft(with draft: EmailDraft) -> UUID {
         let id = draft.id
         activeDrafts[id] = draft
-        print("DRAFT: Created draft from template \(id)")
+        Log.debug("DRAFT", "Created draft from template \(id)")
         return id
     }
     
@@ -96,7 +96,7 @@ class DraftService: ObservableObject {
     /// Discard a draft without saving to IMAP
     func discard(id: UUID) {
         activeDrafts.removeValue(forKey: id)
-        print("DRAFT: Discarded draft \(id)")
+        Log.debug("DRAFT", "Discarded draft \(id)")
     }
     
     // MARK: - IMAP Operations
@@ -113,7 +113,7 @@ class DraftService: ObservableObject {
         if !draft.hasUserContent {
             activeDrafts.removeValue(forKey: id)
             DraftManager.shared.deleteDraft(id: id)
-            print("DRAFT: Discarded draft with no user content \(id)")
+            Log.debug("DRAFT", "Discarded draft with no user content \(id)")
             return ""
         }
         
@@ -178,7 +178,7 @@ class DraftService: ObservableObject {
         updatedDraft.messageId = response.message_id
         activeDrafts[id] = updatedDraft
         
-        print("DRAFT: Saved to IMAP - Message-ID: \(response.message_id ?? "unknown")")
+        Log.info("DRAFT", "Saved to IMAP - Message-ID: \(response.message_id ?? "unknown")")
         
         return response.message_id ?? ""
     }
@@ -212,10 +212,10 @@ class DraftService: ObservableObject {
             if let data = result.data(using: .utf8),
                let response = try? JSONDecoder().decode(DraftDeleteResponse.self, from: data),
                response.ok {
-                print("DRAFT: Deleted from IMAP - \(messageId)")
+                Log.info("DRAFT", "Deleted from IMAP - \(messageId)")
             }
         } catch {
-            print("DRAFT: Failed to delete from IMAP - \(error)")
+            Log.error("DRAFT", "Failed to delete from IMAP - \(error)")
         }
         
         activeDrafts.removeValue(forKey: id)

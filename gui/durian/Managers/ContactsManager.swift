@@ -63,17 +63,17 @@ class ContactsManager {
     private func openDatabase() {
         // Check if DB file exists
         guard FileManager.default.fileExists(atPath: dbPath) else {
-            print("CONTACTS: Database not found at \(dbPath)")
-            print("CONTACTS: Run 'durian contacts import' to create the contacts database")
+            Log.debug("CONTACTS", "Database not found at \(dbPath)")
+            Log.debug("CONTACTS", "Run 'durian contacts import' to create the contacts database")
             return
         }
         
         // Open in read-only mode for GUI
         if sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK {
-            print("CONTACTS: Opened database at \(dbPath)")
+            Log.debug("CONTACTS", "Opened database at \(dbPath)")
             isInitialized = true
         } else {
-            print("CONTACTS_ERROR: Failed to open database: \(String(cString: sqlite3_errmsg(db)))")
+            Log.error("CONTACTS", "Failed to open database: \(String(cString: sqlite3_errmsg(db)))")
         }
     }
     
@@ -113,7 +113,7 @@ class ContactsManager {
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            print("CONTACTS_ERROR: Failed to prepare search query")
+            Log.error("CONTACTS", "Failed to prepare search query")
             return []
         }
         defer { sqlite3_finalize(statement) }
@@ -148,7 +148,7 @@ class ContactsManager {
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            print("CONTACTS_ERROR: Failed to prepare findByExactName query")
+            Log.error("CONTACTS", "Failed to prepare findByExactName query")
             return nil
         }
         defer { sqlite3_finalize(statement) }
@@ -175,7 +175,7 @@ class ContactsManager {
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            print("CONTACTS_ERROR: Failed to prepare list query")
+            Log.error("CONTACTS", "Failed to prepare list query")
             return []
         }
         defer { sqlite3_finalize(statement) }
@@ -215,14 +215,14 @@ class ContactsManager {
     func incrementUsage(for email: String) {
         // Validate email before writing
         guard email.contains("@"), email.contains(".") else {
-            print("CONTACTS: Skipping invalid email: \(email)")
+            Log.debug("CONTACTS", "Skipping invalid email: \(email)")
             return
         }
 
         // Open in write mode
         var writeDb: OpaquePointer?
         guard sqlite3_open_v2(dbPath, &writeDb, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
-            print("CONTACTS_ERROR: Failed to open database for writing")
+            Log.error("CONTACTS", "Failed to open database for writing")
             return
         }
         defer { sqlite3_close(writeDb) }
@@ -235,7 +235,7 @@ class ContactsManager {
         
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(writeDb, sql, -1, &statement, nil) == SQLITE_OK else {
-            print("CONTACTS_ERROR: Failed to prepare update query")
+            Log.error("CONTACTS", "Failed to prepare update query")
             return
         }
         defer { sqlite3_finalize(statement) }
@@ -245,7 +245,7 @@ class ContactsManager {
         sqlite3_bind_text(statement, 2, email.lowercased(), -1, SQLITE_TRANSIENT)
         
         if sqlite3_step(statement) == SQLITE_DONE {
-            print("CONTACTS: Incremented usage for \(email)")
+            Log.debug("CONTACTS", "Incremented usage for \(email)")
         }
     }
     

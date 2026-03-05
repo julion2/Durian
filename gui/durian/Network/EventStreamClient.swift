@@ -38,12 +38,12 @@ class EventStreamClient: ObservableObject {
 
     func connect() {
         guard streamTask == nil else { return }
-        print("EVENTS: Starting SSE connection...")
+        Log.debug("EVENTS", "Starting SSE connection...")
         streamTask = Task { await streamLoop() }
     }
 
     func disconnect() {
-        print("EVENTS: Disconnecting SSE")
+        Log.debug("EVENTS", "Disconnecting SSE")
         streamTask?.cancel()
         streamTask = nil
         isConnected = false
@@ -54,7 +54,7 @@ class EventStreamClient: ObservableObject {
     private func streamLoop() async {
         while !Task.isCancelled {
             guard NetworkMonitor.shared.isConnected else {
-                print("EVENTS: Offline, waiting to retry...")
+                Log.debug("EVENTS", "Offline, waiting to retry...")
                 isConnected = false
                 try? await Task.sleep(nanoseconds: reconnectDelay)
                 continue
@@ -65,12 +65,12 @@ class EventStreamClient: ObservableObject {
             } catch is CancellationError {
                 break
             } catch {
-                print("EVENTS: Stream error: \(error.localizedDescription)")
+                Log.error("EVENTS", "Stream error: \(error.localizedDescription)")
             }
 
             isConnected = false
             guard !Task.isCancelled else { break }
-            print("EVENTS: Reconnecting in 5s...")
+            Log.warning("EVENTS", "Reconnecting in 5s...")
             try? await Task.sleep(nanoseconds: reconnectDelay)
         }
         isConnected = false
@@ -82,12 +82,12 @@ class EventStreamClient: ObservableObject {
         let (bytes, response) = try await URLSession.shared.bytes(from: eventsURL)
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            print("EVENTS: Server returned non-200, will retry")
+            Log.warning("EVENTS", "Server returned non-200, will retry")
             return
         }
 
         isConnected = true
-        print("EVENTS: Connected to SSE stream")
+        Log.info("EVENTS", "Connected to SSE stream")
 
         var currentEvent: String?
         var dataBuffer: String = ""
@@ -134,7 +134,7 @@ class EventStreamClient: ObservableObject {
 
     private func handleSSEEvent(type: String, data: String) {
         guard type == "new_mail" else {
-            print("EVENTS: Unknown event type: \(type)")
+            Log.debug("EVENTS", "Unknown event type: \(type)")
             return
         }
 
@@ -142,10 +142,10 @@ class EventStreamClient: ObservableObject {
 
         do {
             let event = try JSONDecoder().decode(NewMailEvent.self, from: jsonData)
-            print("EVENTS: new_mail — \(event.total_new) message(s) for \(event.account)")
+            Log.info("EVENTS", "new_mail — \(event.total_new) message(s) for \(event.account)")
             onNewMail?(event)
         } catch {
-            print("EVENTS: Failed to decode new_mail event: \(error)")
+            Log.error("EVENTS", "Failed to decode new_mail event: \(error)")
         }
     }
 }

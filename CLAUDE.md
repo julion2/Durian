@@ -7,6 +7,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **CLI:** `bazel build //cli/cmd/durian` → install: `cli/install.sh` (copies to /usr/local/bin)
 - **GUI:** `bazel build //gui:Durian` → dev run: `gui/run.sh` (debug build → `/Applications/DurianNightly.app`) → install: `gui/install.sh` (release build → `/Applications/Durian.app`)
 - **Tests:** `bazel test //cli/...` (CLI) / `bazel test //gui/...` (GUI) / `bazel test //...` (all)
+- **Logs:** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
 
 ## Project Structure
 
@@ -35,7 +36,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - Use `// MARK:` sections
 - Managers: singleton with `static let shared`, `@MainActor`, `@Published` for state
 - User-facing errors: `ErrorManager.shared.showWarning/showCritical` (toast banners)
-- Debug: `print("PREFIX: message")` — prefix = uppercase module name (e.g. `SYNC:`, `EMAIL:`, `KEYMAPS:`, `CONFIG:`). New code should follow this pattern.
+- Logging: `Log.debug("PREFIX", "message")` via `os_log` wrapper (`gui/durian/Utilities/Log.swift`). Levels: `.debug` (trace), `.info` (notable events), `.warning` (recoverable), `.error` (failures). Prefix = uppercase module name (e.g. `SYNC`, `EMAIL`, `KEYMAPS`, `CONFIG`). Never use `print()` — it goes to `/dev/null` when launched from `/Applications`.
 
 ### General
 - UI text: English (all user-facing strings)

@@ -94,7 +94,7 @@ class KeySequenceEngine: ObservableObject {
                 buffer.clear()
                 currentSequence = ""
                 isWaitingForMore = false
-                print("KEYSEQ: Escape - buffer cleared")
+                Log.debug("KEYSEQ", "Escape - buffer cleared")
             }
 
             if isVisualMode {
@@ -134,13 +134,13 @@ class KeySequenceEngine: ObservableObject {
     func enterVisualMode(_ type: VisualModeType = .line) {
         guard visualModeType == .none else { return }  // Ignore if already in visual mode
         visualModeType = type
-        print("KEYSEQ: Entered visual mode: \(type)")
+        Log.debug("KEYSEQ", "Entered visual mode: \(type)")
     }
     
     /// Exit visual mode
     func exitVisualMode() {
         visualModeType = .none
-        print("KEYSEQ: Exited visual mode")
+        Log.debug("KEYSEQ", "Exited visual mode")
     }
     
     // MARK: - Private
@@ -149,20 +149,20 @@ class KeySequenceEngine: ObservableObject {
         // Create key event
         let keyEvent = KeyEvent(key: key, modifiers: modifiers)
         
-        print("KEYSEQ: Key pressed: '\(key)' modifiers: \(modifiers) normalized: '\(keyEvent.normalized)'")
+        Log.debug("KEYSEQ", "Key pressed: '\(key)' modifiers: \(modifiers) normalized: '\(keyEvent.normalized)'")
         
         // Add to buffer
         buffer.append(keyEvent)
         currentSequence = buffer.displayString
         
-        print("KEYSEQ: Buffer = '\(buffer.asString)' (count: \(buffer.count))")
+        Log.debug("KEYSEQ", "Buffer = '\(buffer.asString)' (count: \(buffer.count))")
         
         // Try to match
         let result = matcher.match(buffer: buffer.asString)
         
         switch result {
         case .match(let action, let count):
-            print("KEYSEQ: Match! action=\(action.rawValue) count=\(count)")
+            Log.debug("KEYSEQ", "Match! action=\(action.rawValue) count=\(count)")
             executeAction(action, count: count)
             buffer.clear()
             currentSequence = ""
@@ -170,12 +170,12 @@ class KeySequenceEngine: ObservableObject {
             return true
             
         case .partial:
-            print("KEYSEQ: Partial match, waiting for more...")
+            Log.debug("KEYSEQ", "Partial match, waiting for more...")
             isWaitingForMore = true
             return true
             
         case .noMatch:
-            print("KEYSEQ: No match, clearing buffer")
+            Log.debug("KEYSEQ", "No match, clearing buffer")
             buffer.clear()
             currentSequence = ""
             isWaitingForMore = false
@@ -185,7 +185,7 @@ class KeySequenceEngine: ObservableObject {
     
     private func executeAction(_ action: KeymapAction, count: Int) {
         guard let handler = actionHandlers[action] else {
-            print("KEYSEQ: No handler registered for \(action.rawValue)")
+            Log.debug("KEYSEQ", "No handler registered for \(action.rawValue)")
             return
         }
         

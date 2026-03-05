@@ -575,9 +575,9 @@ class DraftManager {
         if !FileManager.default.fileExists(atPath: draftsDirectory.path) {
             do {
                 try FileManager.default.createDirectory(at: draftsDirectory, withIntermediateDirectories: true)
-                print("Created drafts directory at: \(draftsDirectory.path)")
+                Log.debug("DRAFTING", "Created drafts directory at: \(draftsDirectory.path)")
             } catch {
-                print("Failed to create drafts directory: \(error)")
+                Log.error("DRAFTING", "Failed to create drafts directory: \(error)")
             }
         }
     }
@@ -596,9 +596,9 @@ class DraftManager {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(cleaned)
             try data.write(to: fileURL)
-            print("Draft saved: \(fileURL.lastPathComponent)")
+            Log.debug("DRAFTING", "Draft saved: \(fileURL.lastPathComponent)")
         } catch {
-            print("DRAFTING: Failed to save draft: \(error)")
+            Log.error("DRAFTING", "Failed to save draft: \(error)")
             Task { @MainActor in
                 BannerManager.shared.showWarning(title: "Draft Not Saved", message: "Could not save draft to disk.")
             }
@@ -622,7 +622,7 @@ class DraftManager {
             draft.bcc = Self.filterValidAddresses(draft.bcc)
             return draft
         } catch {
-            print("Failed to load draft: \(error)")
+            Log.error("DRAFTING", "Failed to load draft: \(error)")
             return nil
         }
     }
@@ -632,9 +632,9 @@ class DraftManager {
         
         do {
             try FileManager.default.removeItem(at: fileURL)
-            print("Draft deleted: \(fileURL.lastPathComponent)")
+            Log.debug("DRAFTING", "Draft deleted: \(fileURL.lastPathComponent)")
         } catch {
-            print("Failed to delete draft: \(error)")
+            Log.error("DRAFTING", "Failed to delete draft: \(error)")
         }
     }
     
@@ -653,7 +653,7 @@ class DraftManager {
                 let draft = try decoder.decode(EmailDraft.self, from: data)
                 drafts.append(draft)
             } catch {
-                print("Failed to load draft from \(fileURL.lastPathComponent): \(error)")
+                Log.error("DRAFTING", "Failed to load draft from \(fileURL.lastPathComponent): \(error)")
             }
         }
         
