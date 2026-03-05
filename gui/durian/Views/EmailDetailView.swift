@@ -9,6 +9,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import Quartz
 
 // MARK: - Email Detail View
 
@@ -381,6 +382,8 @@ struct ThreadMessageCardView: View {
     // Each card manages its own expanded state
     @State private var isDetailsExpanded: Bool = false
     @State private var downloadStates: [Int: AttachmentDownloadState] = [:]
+    @State private var selectedAttachmentId: Int? = nil
+    @State private var spaceMonitor: AnyObject? = nil
 
     /// Non-inline attachments for this message
     private var displayAttachments: [AttachmentInfo] {
@@ -422,6 +425,8 @@ struct ThreadMessageCardView: View {
                 actionFooter
             }
         }
+        // Click anywhere outside attachment chips clears selection
+        .onTapGesture { selectedAttachmentId = nil }
         .padding(.top, 24)
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
@@ -549,6 +554,17 @@ struct ThreadMessageCardView: View {
                 attachmentChip(attachment)
             }
         }
+        .onAppear { spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 49, selectedAttachmentId != nil else { return event }
+            // Toggle: close if already showing, otherwise open preview
+            if let panel = QLPreviewPanel.shared(), panel.isVisible {
+                panel.close()
+            } else if let attachment = displayAttachments.first(where: { $0.partId == selectedAttachmentId }) {
+                previewAttachment(attachment)
+            }
+            return nil
+        } as AnyObject? }
+        .onDisappear { if let monitor = spaceMonitor { NSEvent.removeMonitor(monitor); spaceMonitor = nil } }
     }
 
     @ViewBuilder
@@ -557,48 +573,65 @@ struct ThreadMessageCardView: View {
         let sizeLabel = ByteCountFormatter.string(fromByteCount: Int64(attachment.size), countStyle: .file)
         let isFailed = if case .failed = state { true } else { false }
         let isDownloading = if case .downloading = state { true } else { false }
+        let isSelected = selectedAttachmentId == attachment.partId
 
-        Button {
-            downloadAndSave(attachment)
-        } label: {
-            HStack(spacing: 8) {
-                // File type icon in rounded rect box
-                ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isFailed ? Color.red.opacity(0.08) : Color(NSColor.separatorColor).opacity(0.3))
-                        .frame(width: 28, height: 28)
-                    if isDownloading {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(nsImage: fileTypeIcon(for: attachment))
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 20, height: 20)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(attachment.filename)
-                        .font(.system(size: 12, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(sizeLabel)
-                        .font(.system(size: 10))
-                        .foregroundColor(Color.Detail.textTertiary)
+        HStack(spacing: 8) {
+            // File type icon in rounded rect box
+            ZStack {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isFailed ? Color.red.opacity(0.08) : Color(NSColor.separatorColor).opacity(0.3))
+                    .frame(width: 28, height: 28)
+                if isDownloading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(nsImage: fileTypeIcon(for: attachment))
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 20, height: 20)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(isFailed ? Color.red.opacity(0.12) : Color(NSColor.controlBackgroundColor))
-            .foregroundColor(isFailed ? .red : Color.Detail.textSecondary)
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5)
-            )
+            VStack(alignment: .leading, spacing: 1) {
+                Text(attachment.filename)
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(sizeLabel)
+                    .font(.system(size: 10))
+                    .foregroundColor(isSelected ? Color.accentColor.opacity(0.8) : Color.Detail.textTertiary)
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(isDownloading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            isFailed ? Color.red.opacity(0.12) :
+            isSelected ? Color.accentColor.opacity(0.1) :
+            Color(NSColor.controlBackgroundColor)
+        )
+        .foregroundColor(isFailed ? .red : isSelected ? Color.accentColor : Color.Detail.textSecondary)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    isFailed ? Color.red.opacity(0.3) :
+                    isSelected ? Color.accentColor.opacity(0.5) :
+                    Color(NSColor.separatorColor).opacity(0.5),
+                    lineWidth: isSelected ? 1.5 : 0.5
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !isDownloading else { return }
+            selectedAttachmentId = isSelected ? nil : attachment.partId
+        }
+        .contextMenu {
+            Button("Save to Downloads") {
+                saveToDownloads(attachment)
+            }
+            Button("Save As...") {
+                saveAttachment(attachment)
+            }
+        }
     }
 
     private func fileTypeIcon(for attachment: AttachmentInfo) -> NSImage {
@@ -608,7 +641,42 @@ struct ThreadMessageCardView: View {
         return NSWorkspace.shared.icon(for: utType)
     }
 
-    private func downloadAndSave(_ attachment: AttachmentInfo) {
+    private func previewAttachment(_ attachment: AttachmentInfo) {
+        downloadStates[attachment.partId] = .downloading(progress: 0)
+
+        Task {
+            guard let data = await fetchAttachmentData(attachment) else { return }
+            let emailAttachment = EmailAttachment(
+                filename: attachment.filename,
+                mimeType: attachment.contentType,
+                data: data
+            )
+            QuickLookManager.shared.showPreview(for: [emailAttachment], startingAt: 0)
+            downloadStates[attachment.partId] = .notDownloaded
+        }
+    }
+
+    private func saveToDownloads(_ attachment: AttachmentInfo) {
+        guard let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return }
+        let saveURL = downloadsURL.appendingPathComponent(attachment.filename)
+
+        downloadStates[attachment.partId] = .downloading(progress: 0)
+
+        Task {
+            guard let data = await fetchAttachmentData(attachment) else { return }
+            do {
+                try data.write(to: saveURL)
+                downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
+                print("ATTACHMENT: Saved \(attachment.filename) to Downloads")
+            } catch {
+                downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
+                print("ATTACHMENT: Failed to write \(attachment.filename): \(error)")
+                scheduleErrorClear(attachment.partId)
+            }
+        }
+    }
+
+    private func saveAttachment(_ attachment: AttachmentInfo) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = attachment.filename
         panel.canCreateDirectories = true
@@ -618,28 +686,44 @@ struct ThreadMessageCardView: View {
         downloadStates[attachment.partId] = .downloading(progress: 0)
 
         Task {
-            guard let backend = AccountManager.shared.notmuchBackend else {
-                downloadStates[attachment.partId] = .failed(error: "Not connected")
-                return
-            }
+            guard let data = await fetchAttachmentData(attachment) else { return }
             do {
-                let (data, _) = try await backend.downloadAttachment(
-                    messageId: message.id,
-                    partId: attachment.partId
-                )
                 try data.write(to: saveURL)
                 downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
                 print("ATTACHMENT: Saved \(attachment.filename) to \(saveURL.path)")
             } catch {
                 downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
-                print("ATTACHMENT: Download failed for \(attachment.filename): \(error)")
-                // Auto-clear error after 5 seconds
-                Task {
-                    try? await Task.sleep(for: .seconds(5))
-                    if case .failed = downloadStates[attachment.partId] {
-                        downloadStates[attachment.partId] = .notDownloaded
-                    }
-                }
+                print("ATTACHMENT: Failed to write \(attachment.filename): \(error)")
+                scheduleErrorClear(attachment.partId)
+            }
+        }
+    }
+
+    private func fetchAttachmentData(_ attachment: AttachmentInfo) async -> Data? {
+        guard let backend = AccountManager.shared.notmuchBackend else {
+            downloadStates[attachment.partId] = .failed(error: "Not connected")
+            scheduleErrorClear(attachment.partId)
+            return nil
+        }
+        do {
+            let (data, _) = try await backend.downloadAttachment(
+                messageId: message.id,
+                partId: attachment.partId
+            )
+            return data
+        } catch {
+            downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
+            print("ATTACHMENT: Download failed for \(attachment.filename): \(error)")
+            scheduleErrorClear(attachment.partId)
+            return nil
+        }
+    }
+
+    private func scheduleErrorClear(_ partId: Int) {
+        Task {
+            try? await Task.sleep(for: .seconds(5))
+            if case .failed = downloadStates[partId] {
+                downloadStates[partId] = .notDownloaded
             }
         }
     }
