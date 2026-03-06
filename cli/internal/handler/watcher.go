@@ -222,14 +222,17 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	// Detect new messages via UIDNEXT: any UID >= prevUidNext is new since
 	// the last IDLE cycle, regardless of whether another process synced it.
 	// Fetch envelopes for UIDs in [prevUidNext, *) to get their Message-IDs.
+	log.Printf("WATCHER: [%s] searching for UIDs >= %d", account.Email, prevUidNext)
 	newUIDs, err := client.SearchUIDRange(prevUidNext, 0)
 	if err != nil {
 		log.Printf("WATCHER: [%s] UID search failed: %v", account.Email, err)
 		return
 	}
 	if len(newUIDs) == 0 {
+		log.Printf("WATCHER: [%s] no new UIDs found (prevUidNext=%d)", account.Email, prevUidNext)
 		return
 	}
+	log.Printf("WATCHER: [%s] found %d new UIDs: %v", account.Email, len(newUIDs), newUIDs)
 
 	envelopes, err := client.FetchEnvelopes(newUIDs)
 	if err != nil {
@@ -239,16 +242,19 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 
 	// Collect Message-IDs and query notmuch for thread/subject/from
 	var idQueries []string
-	for _, messageID := range envelopes {
+	for uid, messageID := range envelopes {
 		if messageID != "" {
+			log.Printf("WATCHER: [%s] UID %d → Message-ID: %s", account.Email, uid, messageID)
 			idQueries = append(idQueries, fmt.Sprintf("id:%s", messageID))
 		}
 	}
 	if len(idQueries) == 0 {
+		log.Printf("WATCHER: [%s] no Message-IDs found in %d envelopes", account.Email, len(envelopes))
 		return
 	}
 
 	query := strings.Join(idQueries, " OR ")
+	log.Printf("WATCHER: [%s] notmuch query: %s", account.Email, query)
 
 	// Fetch full message bodies via notmuch show (reuses ExtractBodyContent)
 	msgs, err := w.notmuch.ShowMessages(query)
@@ -257,6 +263,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		return
 	}
 	if len(msgs) == 0 {
+		log.Printf("WATCHER: [%s] notmuch returned 0 messages for query", account.Email)
 		return
 	}
 
@@ -265,6 +272,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		// Look up thread ID for this message
 		results, err := w.notmuch.Search("id:"+msg.ID, 1)
 		if err != nil || len(results) == 0 {
+			log.Printf("WATCHER: [%s] notmuch search for id:%s failed or empty", account.Email, msg.ID)
 			continue
 		}
 		r := results[0]
@@ -275,6 +283,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 			From:     r.Authors,
 			Snippet:  cleanSnippet(text, 150),
 		})
+		log.Printf("WATCHER: [%s] new mail: thread=%s from=%q subject=%q", account.Email, r.Thread, r.Authors, r.Subject)
 	}
 
 	log.Printf("WATCHER: [%s] broadcasting %d new message(s)", account.Email, len(messages))

@@ -256,7 +256,15 @@ func (c *Client) SearchUIDRange(minUID, maxUID uint32) ([]uint32, error) {
 		return nil, fmt.Errorf("failed to search UIDs %d:*: %w", minUID, err)
 	}
 
-	return uids, nil
+	// IMAP UID range "minUID:*" always includes the highest UID even if it's
+	// below minUID (RFC 3501 §6.4.8). Filter out false positives.
+	filtered := uids[:0]
+	for _, uid := range uids {
+		if uid >= minUID {
+			filtered = append(filtered, uid)
+		}
+	}
+	return filtered, nil
 }
 
 // FetchMessages fetches messages by UID

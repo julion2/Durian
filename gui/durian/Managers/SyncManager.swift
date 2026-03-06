@@ -397,6 +397,11 @@ class SyncManager: ObservableObject {
 
     /// Handle a new_mail SSE event — send notifications and refresh the email list.
     private func handleNewMailEvent(_ event: NewMailEvent) {
+        Log.info("NOTIFY", "SSE event: account=\(event.account) total_new=\(event.total_new) messages=\(event.messages.count)")
+        for (i, msg) in event.messages.enumerated() {
+            Log.debug("NOTIFY", "  [\(i)] thread=\(msg.thread_id) from=\(msg.from) subject=\(msg.subject)")
+        }
+
         // Debounced reload — multiple accounts fire SSE events within seconds
         reloadDebounceTask?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -410,10 +415,14 @@ class SyncManager: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
 
         // Notifications
-        guard SettingsManager.shared.settings.notificationsEnabled else { return }
+        guard SettingsManager.shared.settings.notificationsEnabled else {
+            Log.debug("NOTIFY", "Notifications disabled globally, skipping")
+            return
+        }
         // Per-account notification filter
-        if let account = ConfigManager.shared.getAccounts().first(where: { $0.name == event.account }),
+        if let account = ConfigManager.shared.getAccounts().first(where: { $0.email == event.account }),
            let notify = account.notifications, !notify {
+            Log.debug("NOTIFY", "Notifications disabled for account \(event.account), skipping")
             return
         }
         guard !event.messages.isEmpty else { return }
@@ -430,8 +439,10 @@ class SyncManager: ObservableObject {
                 content.sound = .default
                 content.userInfo = ["threadId": msg.thread_id]
 
+                let identifier = "newmail-\(msg.thread_id)"
+                Log.info("NOTIFY", "Posting notification: id=\(identifier) thread=\(msg.thread_id) from=\(msg.from) subject=\(msg.subject)")
                 let request = UNNotificationRequest(
-                    identifier: "newmail-\(msg.thread_id)-\(UUID().uuidString)",
+                    identifier: identifier,
                     content: content,
                     trigger: nil
                 )
@@ -447,8 +458,10 @@ class SyncManager: ObservableObject {
             content.sound = .default
             content.userInfo = ["threadId": event.messages[0].thread_id]
 
+            let identifier = "newmail-batch-\(event.account)"
+            Log.info("NOTIFY", "Posting batch notification: id=\(identifier) count=\(event.total_new)")
             let request = UNNotificationRequest(
-                identifier: "newmail-batch-\(event.account)-\(UUID().uuidString)",
+                identifier: identifier,
                 content: content,
                 trigger: nil
             )

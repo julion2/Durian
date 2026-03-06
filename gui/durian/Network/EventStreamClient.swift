@@ -138,11 +138,15 @@ class EventStreamClient: ObservableObject {
             return
         }
 
+        Log.debug("EVENTS", "Raw SSE data: \(data.prefix(500))")
         guard let jsonData = data.data(using: .utf8) else { return }
 
         do {
             let event = try JSONDecoder().decode(NewMailEvent.self, from: jsonData)
             Log.info("EVENTS", "new_mail — \(event.total_new) message(s) for \(event.account)")
+            for msg in event.messages {
+                Log.debug("EVENTS", "  thread=\(msg.thread_id) from=\(msg.from) subject=\(msg.subject)")
+            }
             onNewMail?(event)
         } catch {
             Log.error("EVENTS", "Failed to decode new_mail event: \(error)")
