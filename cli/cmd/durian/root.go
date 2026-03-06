@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/durian-dev/durian/cli/internal/config"
-	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +53,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
 
 	// Load config before command execution
-	cobra.OnInitialize(initConfig, initDebug)
+	cobra.OnInitialize(initConfig, initLogger)
 }
 
 func formatVersion() string {
@@ -96,7 +96,13 @@ func GetConfig() *config.Config {
 	return cfg
 }
 
-// initDebug sets up debug mode based on the --debug flag
-func initDebug() {
-	debug.SetEnabled(debugMode)
+// initLogger configures the default slog logger.
+// Non-serve commands: Error on stderr (or Debug with --debug).
+// The serve command overrides this to write to serve.log.
+func initLogger() {
+	level := slog.LevelError
+	if debugMode {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }

@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -31,6 +32,17 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) {
+	// Override default logger: write to serve.log (truncated on each start)
+	level := slog.LevelInfo
+	if debugMode {
+		level = slog.LevelDebug
+	}
+	logPath := filepath.Join(filepath.Dir(config.DefaultPath()), "serve.log")
+	if f, err := os.Create(logPath); err == nil {
+		defer f.Close()
+		slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: level})))
+	}
+
 	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
 	eventHub := handler.NewEventHub()
@@ -50,15 +62,15 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		log.Printf("SERVE: warning: could not load config: %v", err)
+		slog.Warn("Could not load config", "module", "SERVE", "err", err)
 	} else {
 		accounts := cfg.GetAccountsWithIMAP()
 		if len(accounts) == 0 {
-			log.Printf("SERVE: no IMAP accounts configured, skipping watchers")
+			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
 			watcher := handler.NewWatcherManager(eventHub, nmClient)
 			go watcher.Start(watcherCtx, accounts)
-			log.Printf("SERVE: started IDLE watchers for %d account(s)", len(accounts))
+			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))
 		}
 	}
 
@@ -70,7 +82,8 @@ func runServe(cmd *cobra.Command, args []string) {
 	// Graceful shutdown
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("could not listen on %s: %v\n", server.Addr, err)
+			slog.Error("Could not listen", "module", "SERVE", "addr", server.Addr, "err", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -87,7 +100,8 @@ func runServe(cmd *cobra.Command, args []string) {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "module", "SERVE", "err", err)
+		os.Exit(1)
 	}
 
 	fmt.Println("Server exiting")

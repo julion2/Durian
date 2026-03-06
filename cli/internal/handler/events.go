@@ -3,7 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -60,7 +60,7 @@ func (h *EventHub) Unsubscribe(ch chan []byte) {
 func (h *EventHub) Broadcast(event NewMailEvent) {
 	data, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("EVENTS: failed to marshal event: %v", err)
+		slog.Error("Failed to marshal event", "module", "EVENTS", "err", err)
 		return
 	}
 
@@ -73,7 +73,7 @@ func (h *EventHub) Broadcast(event NewMailEvent) {
 		select {
 		case ch <- msg:
 		default:
-			log.Printf("EVENTS: dropped event for slow subscriber")
+			slog.Warn("Dropped event for slow subscriber", "module", "EVENTS")
 		}
 	}
 }
@@ -93,8 +93,8 @@ func (h *EventHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ch := h.Subscribe()
 	defer h.Unsubscribe(ch)
 
-	log.Printf("EVENTS: SSE client connected (%s)", r.RemoteAddr)
-	defer log.Printf("EVENTS: SSE client disconnected (%s)", r.RemoteAddr)
+	slog.Info("SSE client connected", "module", "EVENTS", "remote", r.RemoteAddr)
+	defer slog.Info("SSE client disconnected", "module", "EVENTS", "remote", r.RemoteAddr)
 
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()

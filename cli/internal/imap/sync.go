@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/mail"
 	"os"
 	"os/exec"
@@ -15,7 +16,6 @@ import (
 	goimap "github.com/emersion/go-imap"
 
 	"github.com/durian-dev/durian/cli/internal/config"
-	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
 )
 
@@ -195,7 +195,7 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 	// Cache server mailbox list for exclusion tag logic
 	s.serverMailboxes, err = s.client.ListMailboxes()
 	if err != nil {
-		debug.Log("Sync: failed to cache server mailbox list: %v (folder tags won't apply)", err)
+		slog.Debug("Failed to cache server mailbox list", "module", "SYNC", "err", err)
 	}
 
 	// Sync each mailbox with automatic reconnection on failure
@@ -208,17 +208,17 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 				// Caller owns the connection — don't reconnect (would open a
 				// new socket that aggressive servers like M365 reject). Abort
 				// early and let the caller's IDLE loop catch up next cycle.
-				debug.Log("Sync: connection lost during %s, aborting (caller-owned connection)", mbox)
+				slog.Debug("Connection lost, aborting (caller-owned connection)", "module", "SYNC", "mailbox", mbox)
 				result.Mailboxes = append(result.Mailboxes, mboxResult)
 				result.Error = mboxResult.Error
 				break
 			}
 
-			debug.Log("Sync: connection lost during %s, attempting reconnect...", mbox)
+			slog.Debug("Connection lost, attempting reconnect", "module", "SYNC", "mailbox", mbox)
 			fmt.Fprintf(s.output, "  ⚠ Connection lost, reconnecting...\n")
 
 			if err := s.client.Reconnect(); err != nil {
-				debug.Log("Sync: reconnect failed: %v", err)
+				slog.Debug("Reconnect failed", "module", "SYNC", "err", err)
 				result.Mailboxes = append(result.Mailboxes, mboxResult)
 				result.Error = fmt.Errorf("reconnect failed: %w", err)
 				break // Can't continue without connection
@@ -315,13 +315,13 @@ func (s *Syncer) getMailboxesToSync() ([]string, error) {
 	// This auto-detects localized folder names (e.g., "Gesendete Elemente" for Sent)
 	mailboxes, err := s.client.GetSyncMailboxes()
 	if err != nil {
-		debug.Log("getMailboxesToSync: SPECIAL-USE detection failed: %v, falling back to defaults", err)
+		slog.Debug("SPECIAL-USE detection failed, falling back to defaults", "module", "SYNC", "err", err)
 		// Fallback to default names (legacy behavior)
 		return s.getMailboxesByName(config.DefaultIMAPMailboxes)
 	}
 
 	if len(mailboxes) == 0 {
-		debug.Log("getMailboxesToSync: no mailboxes detected via SPECIAL-USE, falling back to defaults")
+		slog.Debug("No mailboxes detected via SPECIAL-USE, falling back to defaults", "module", "SYNC")
 		return s.getMailboxesByName(config.DefaultIMAPMailboxes)
 	}
 
@@ -379,7 +379,7 @@ func matchMailbox(name, pattern string) bool {
 // syncMailbox syncs a single mailbox
 func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	result := MailboxResult{Name: mailboxName}
-	debug.Log("syncMailbox: %s", mailboxName)
+	slog.Debug("Syncing mailbox", "module", "SYNC", "mailbox", mailboxName)
 
 	// Ensure maildir exists
 	if !s.options.DryRun {
@@ -415,11 +415,11 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		result.Error = fmt.Errorf("failed to search messages: %w", err)
 		return result
 	}
-	debug.Log("syncMailbox: %d total UIDs on server", len(allUIDs))
+	slog.Debug("Total UIDs on server", "module", "SYNC", "count", len(allUIDs))
 
 	// Get unsynced UIDs
 	unsyncedUIDs := mboxState.GetUnsyncedUIDs(allUIDs)
-	debug.Log("syncMailbox: %d unsynced UIDs", len(unsyncedUIDs))
+	slog.Debug("Unsynced UIDs", "module", "SYNC", "count", len(unsyncedUIDs))
 
 	// Check for deleted/moved messages (UIDs that are locally synced but no longer on server)
 	deletedUIDs := mboxState.GetDeletedUIDs(allUIDs)
@@ -433,16 +433,16 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				// Get Message-ID from state to find the file
 				messageID, hasID := mboxState.GetMessageID(uid)
 				if hasID && messageID != "" {
-					debug.Log("syncMailbox: removing deleted UID %d (Message-ID: %s)", uid, messageID)
+					slog.Debug("Removing deleted message", "module", "SYNC", "uid", uid, "message_id", messageID)
 					if err := s.notmuch.DeleteMessageFiles(messageID); err != nil {
-						debug.Log("syncMailbox: failed to delete file for UID %d: %v", uid, err)
+						slog.Debug("Failed to delete file", "module", "SYNC", "uid", uid, "err", err)
 					}
 					// Remove folder-specific tags when message disappears from this folder
 					if strings.EqualFold(mailboxName, "INBOX") {
 						_ = s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"})
 					}
 				} else {
-					debug.Log("syncMailbox: no Message-ID for deleted UID %d, skipping file deletion", uid)
+					slog.Debug("No Message-ID for deleted UID, skipping file deletion", "module", "SYNC", "uid", uid)
 				}
 				mboxState.RemoveSyncedUID(uid)
 				result.DeletedMsgs++
@@ -479,12 +479,12 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	// Fetch Message-IDs for unsynced UIDs first
 	var toDownload []uint32
 	if !s.options.DryRun && len(unsyncedUIDs) > 0 {
-		debug.Log("syncMailbox: checking for duplicates among %d unsynced UIDs", len(unsyncedUIDs))
+		slog.Debug("Checking for duplicates among unsynced UIDs", "module", "SYNC", "count", len(unsyncedUIDs))
 
 		// Fetch envelopes to get Message-IDs
 		envelopes, err := s.client.FetchEnvelopes(unsyncedUIDs)
 		if err != nil {
-			debug.Log("syncMailbox: failed to fetch envelopes for dedup: %v", err)
+			slog.Debug("Failed to fetch envelopes for dedup", "module", "SYNC", "err", err)
 			// Fall back to downloading everything
 			toDownload = unsyncedUIDs
 		} else {
@@ -511,18 +511,18 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				// Check if this message already exists in notmuch
 				if s.notmuch.MessageExists(messageID) {
 					// Message exists! Update tags instead of downloading
-					debug.Log("syncMailbox: UID %d (Message-ID: %s) already exists, updating tags", uid, messageID)
+					slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
 
 					query := fmt.Sprintf("id:%s", messageID)
 					if tagMapping != nil {
 						if err := s.notmuch.ModifyTags(query, tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
-							debug.Log("syncMailbox: failed to update tags for %s: %v", messageID, err)
+							slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
 						}
 					} else if !strings.EqualFold(mailboxName, "INBOX") {
 						// Custom folder with no special-use mapping — remove inbox tag
 						// since the message was moved out of INBOX
 						if err := s.notmuch.ModifyTags(query, nil, []string{"inbox"}); err != nil {
-							debug.Log("syncMailbox: failed to remove inbox tag for %s: %v", messageID, err)
+							slog.Debug("Failed to remove inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
 						}
 					}
 
@@ -598,7 +598,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			}
 
 			if len(msgBody) == 0 {
-				debug.Log("syncMailbox: UID %d has no body data", msg.Uid)
+				slog.Debug("Message has no body data", "module", "SYNC", "uid", msg.Uid)
 				fmt.Fprintf(s.output, "    Warning: failed to write message %d: message has no body\n", msg.Uid)
 				result.SkippedMsgs++
 				continue
@@ -676,11 +676,11 @@ func (s *Syncer) ensureMessageIDMapping(mailboxName string, mboxState *MailboxSt
 	missingUIDs := mboxState.GetMissingMappingUIDs(allUIDs)
 
 	if len(missingUIDs) == 0 {
-		debug.Log("ensureMessageIDMapping: all %d UIDs already mapped", len(allUIDs))
+		slog.Debug("All UIDs already mapped", "module", "SYNC", "count", len(allUIDs))
 		return nil // All mapped
 	}
 
-	debug.Log("ensureMessageIDMapping: fetching Message-IDs for %d/%d UIDs", len(missingUIDs), len(allUIDs))
+	slog.Debug("Fetching Message-IDs for mapping", "module", "SYNC", "missing", len(missingUIDs), "total", len(allUIDs))
 	fmt.Fprintf(s.output, "    Building Message-ID mapping for %d messages...\n", len(missingUIDs))
 
 	// Fetch ENVELOPEs for missing UIDs (in batches)
@@ -698,7 +698,7 @@ func (s *Syncer) ensureMessageIDMapping(mailboxName string, mboxState *MailboxSt
 		}
 	}
 
-	debug.Log("ensureMessageIDMapping: mapped %d new UIDs", mappedCount)
+	slog.Debug("Mapped new UIDs", "module", "SYNC", "count", mappedCount)
 	return nil
 }
 
@@ -726,9 +726,9 @@ func (s *Syncer) applyFolderTags(mailboxName string) {
 	query := fmt.Sprintf("folder:\"%s\"", folderPath)
 
 	if err := s.notmuch.ModifyTags(query, mapping.AddTags, mapping.RemoveTags); err != nil {
-		debug.Log("applyFolderTags: failed to apply tags to %s: %v", mailboxName, err)
+		slog.Debug("Failed to apply folder tags", "module", "SYNC", "mailbox", mailboxName, "err", err)
 	} else {
-		debug.Log("applyFolderTags: applied +%v -%v to %s", mapping.AddTags, mapping.RemoveTags, mailboxName)
+		slog.Debug("Applied folder tags", "module", "SYNC", "mailbox", mailboxName, "add", mapping.AddTags, "remove", mapping.RemoveTags)
 	}
 }
 
@@ -736,7 +736,7 @@ func (s *Syncer) applyFolderTags(mailboxName string) {
 // This is idempotent: messages already tagged are excluded by the query.
 func (s *Syncer) applyContentTags() {
 	if err := s.notmuch.ModifyTags("mimetype:text/calendar AND NOT tag:cal", []string{"cal"}, nil); err != nil {
-		debug.Log("applyContentTags: failed to tag calendar messages: %v", err)
+		slog.Debug("Failed to tag calendar messages", "module", "SYNC", "err", err)
 	}
 }
 
@@ -787,7 +787,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 	// 1. Ensure we have Message-ID mapping for all UIDs
 	if err := s.ensureMessageIDMapping(mailboxName, mboxState, allUIDs); err != nil {
-		debug.Log("syncFlags: warning - failed to build Message-ID mapping: %v", err)
+		slog.Debug("Failed to build Message-ID mapping", "module", "SYNC", "err", err)
 		// Continue anyway - we'll work with what we have
 	}
 
@@ -800,17 +800,16 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 	// 3. Build folder path for notmuch query
 	folderName := s.buildNotmuchFolderName(mailboxName)
-	debug.Log("syncFlags: folder=%s, %d UIDs on server, %d with mapping",
-		folderName, len(allUIDs), mboxState.GetMappedUIDCount())
+	slog.Debug("Starting flag sync", "module", "SYNC", "folder", folderName, "server_uids", len(allUIDs), "mapped_uids", mboxState.GetMappedUIDCount())
 
 	// 4. Get all local messages with tags in a single batch query
 	// This is much faster than calling GetTags() for each message individually
 	localMessages, err := s.notmuch.GetAllMessagesWithTags(folderName)
 	if err != nil {
-		debug.Log("syncFlags: warning - failed to get local messages: %v", err)
+		slog.Debug("Failed to get local messages", "module", "SYNC", "err", err)
 		localMessages = make(map[string][]string) // Continue with empty map
 	}
-	debug.Log("syncFlags: %d local messages in folder", len(localMessages))
+	slog.Debug("Local messages in folder", "module", "SYNC", "count", len(localMessages))
 
 	// 5. For each UID on server, sync flags
 	checkedCount := 0
@@ -850,11 +849,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 			if !localState.Equal(serverState) && s.options.Mode != SyncUploadOnly {
 				if err := s.downloadFlagChanges(messageID, localState, serverState); err != nil {
-					debug.Log("syncFlags: error downloading flags for UID %d: %v", uid, err)
+					slog.Debug("Error downloading flags", "module", "SYNC", "uid", uid, "err", err)
 					flagErrors++
 				} else {
 					downloaded++
-					debug.Log("syncFlags: first-sync downloaded flags for UID %d (Message-ID: %s): %+v", uid, messageID, serverState)
+					slog.Debug("First-sync downloaded flags", "module", "SYNC", "uid", uid, "message_id", messageID, "flags", serverState)
 				}
 			}
 			continue
@@ -863,11 +862,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		// Check for local changes (local differs from stored)
 		if NeedsUpload(localState, storedState) && s.options.Mode != SyncDownloadOnly {
 			if err := s.uploadFlagChanges(uid, localState, serverState); err != nil {
-				debug.Log("syncFlags: error uploading flags for UID %d: %v", uid, err)
+				slog.Debug("Error uploading flags", "module", "SYNC", "uid", uid, "err", err)
 				flagErrors++
 			} else {
 				uploaded++
-				debug.Log("syncFlags: uploaded flags for UID %d: %+v -> %+v", uid, storedState, localState)
+				slog.Debug("Uploaded flags", "module", "SYNC", "uid", uid, "from", storedState, "to", localState)
 				// Update stored state (skip in dry-run)
 				if !s.options.DryRun {
 					mboxState.SetMessageFlags(uid, localState)
@@ -884,7 +883,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			if localChanged {
 				// Conflict: both local and server changed - merge (local wins)
 				targetState = localState.Merge(serverState)
-				debug.Log("syncFlags: conflict for UID %d - merging local and server changes", uid)
+				slog.Debug("Flag conflict, merging", "module", "SYNC", "uid", uid)
 			} else {
 				// No local change - server wins (allows server to remove flags)
 				targetState = serverState
@@ -892,11 +891,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 
 			if !targetState.Equal(localState) {
 				if err := s.downloadFlagChanges(messageID, localState, targetState); err != nil {
-					debug.Log("syncFlags: error downloading flags for UID %d: %v", uid, err)
+					slog.Debug("Error downloading flags", "module", "SYNC", "uid", uid, "err", err)
 					flagErrors++
 				} else {
 					downloaded++
-					debug.Log("syncFlags: downloaded flags for UID %d: %+v -> %+v", uid, localState, targetState)
+					slog.Debug("Downloaded flags", "module", "SYNC", "uid", uid, "from", localState, "to", targetState)
 				}
 			}
 			// Update stored state (skip in dry-run)
@@ -928,19 +927,19 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			}
 			if hasInbox && !serverMessageIDs[messageID] {
 				if err := s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"}); err != nil {
-					debug.Log("syncFlags: failed to remove stale inbox tag for %s: %v", messageID, err)
+					slog.Debug("Failed to remove stale inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
 				} else {
 					cleaned++
 				}
 			}
 		}
 		if cleaned > 0 {
-			debug.Log("syncFlags: removed stale inbox tag from %d messages", cleaned)
+			slog.Debug("Removed stale inbox tags", "module", "SYNC", "count", cleaned)
 			fmt.Fprintf(s.output, "    ✗ Removed stale inbox tag from %d messages\n", cleaned)
 		}
 	}
 
-	debug.Log("syncFlags: checked %d messages, uploaded %d, downloaded %d, errors %d", checkedCount, uploaded, downloaded, flagErrors)
+	slog.Debug("Flag sync complete", "module", "SYNC", "checked", checkedCount, "uploaded", uploaded, "downloaded", downloaded, "errors", flagErrors)
 
 	if uploaded > 0 || downloaded > 0 || flagErrors > 0 {
 		if s.options.DryRun {
@@ -966,19 +965,19 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 		if s.trashMailbox == "" {
 			trash, err := s.client.FindTrashMailbox()
 			if err != nil {
-				debug.Log("uploadFlagChanges: could not find trash mailbox: %v", err)
+				slog.Debug("Could not find trash mailbox", "module", "SYNC", "err", err)
 				// Continue without copy - just set flag
 			} else {
 				s.trashMailbox = trash
-				debug.Log("uploadFlagChanges: found trash mailbox: %s", trash)
+				slog.Debug("Found trash mailbox", "module", "SYNC", "mailbox", trash)
 			}
 		}
 
 		if s.options.DryRun {
 			if s.trashMailbox != "" {
-				debug.Log("syncFlags: [dry-run] would copy UID %d to %s, set \\Deleted, and expunge", uid, s.trashMailbox)
+				slog.Debug("[dry-run] Would copy to trash, set \\Deleted, and expunge", "module", "SYNC", "uid", uid, "trash", s.trashMailbox)
 			} else {
-				debug.Log("syncFlags: [dry-run] would set \\Deleted on UID %d and expunge (no trash mailbox found)", uid)
+				slog.Debug("[dry-run] Would set \\Deleted and expunge (no trash mailbox)", "module", "SYNC", "uid", uid)
 			}
 			return nil
 		}
@@ -986,10 +985,10 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 		// Copy to trash first (if trash mailbox found)
 		if s.trashMailbox != "" {
 			if err := s.client.CopyToMailbox(uid, s.trashMailbox); err != nil {
-				debug.Log("uploadFlagChanges: copy to trash failed: %v", err)
+				slog.Debug("Copy to trash failed", "module", "SYNC", "uid", uid, "err", err)
 				return fmt.Errorf("copy to trash failed for UID %d: %w", uid, err)
 			}
-			debug.Log("uploadFlagChanges: copied UID %d to %s", uid, s.trashMailbox)
+			slog.Debug("Copied to trash", "module", "SYNC", "uid", uid, "trash", s.trashMailbox)
 		}
 
 		// Set \Deleted flag (use AddFlags to preserve server-only keywords like $Completed)
@@ -999,7 +998,7 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 
 		// Expunge to permanently remove from current mailbox
 		if err := s.client.Expunge(); err != nil {
-			debug.Log("uploadFlagChanges: expunge failed: %v", err)
+			slog.Debug("Expunge failed", "module", "SYNC", "err", err)
 		}
 
 		return nil
@@ -1010,7 +1009,7 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 	toAdd, toRemove := DiffFlags(local, server)
 
 	if s.options.DryRun {
-		debug.Log("syncFlags: [dry-run] would upload flags for UID %d: add=%v remove=%v", uid, toAdd, toRemove)
+		slog.Debug("[dry-run] Would upload flags", "module", "SYNC", "uid", uid, "add", toAdd, "remove", toRemove)
 		return nil
 	}
 
@@ -1030,7 +1029,7 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	addTags, removeTags := target.ToNotmuchTags()
 
 	if s.options.DryRun {
-		debug.Log("syncFlags: [dry-run] would update tags for %s: add=%v remove=%v", messageID, addTags, removeTags)
+		slog.Debug("[dry-run] Would update tags", "module", "SYNC", "message_id", messageID, "add", addTags, "remove", removeTags)
 		return nil
 	}
 

@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +18,7 @@ import (
 type WatcherManager struct {
 	hub     *EventHub
 	notmuch notmuch.Client
+	log     *slog.Logger
 	locks   map[string]*sync.Mutex // per-account sync locks keyed by email
 	locksMu sync.Mutex             // protects the locks map
 }
@@ -27,6 +28,7 @@ func NewWatcherManager(hub *EventHub, nm notmuch.Client) *WatcherManager {
 	return &WatcherManager{
 		hub:     hub,
 		notmuch: nm,
+		log:     slog.Default().With("module", "WATCHER"),
 		locks:   make(map[string]*sync.Mutex),
 	}
 }
@@ -107,13 +109,13 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 		initOpts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}}
 		initSyncer := imap.NewSyncerWithClient(account, client, initOpts)
 		if _, err := initSyncer.Sync(); err != nil {
-			log.Printf("WATCHER: [%s] initial sync failed: %v", account.Email, err)
+			w.log.Error("Initial sync failed", "account", account.Email, "err", err)
 		}
 
 		// Select INBOX for IDLE (sync may have left a different mailbox selected)
 		status, err := client.SelectMailbox("INBOX")
 		if err != nil {
-			log.Printf("WATCHER: [%s] select INBOX failed after sync: %v, reconnecting in 30s", account.Email, err)
+			w.log.Error("Select INBOX failed after sync, reconnecting in 30s", "account", account.Email, "err", err)
 			client.Close()
 			select {
 			case <-ctx.Done():
@@ -126,7 +128,7 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 		// process (e.g. GUI quickSync) already synced them to disk.
 		uidNext := status.UidNext
 
-		log.Printf("WATCHER: [%s] watching for new messages... (UIDNEXT=%d)", account.Email, uidNext)
+		w.log.Info("Watching for new messages", "account", account.Email, "uidnext", uidNext)
 
 		// Inner loop: IDLE ↔ sync cycles on the SAME connection
 		connectionAlive := true
@@ -138,7 +140,7 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			go func() {
 				defer close(idleDone)
 				if err := client.Idle(stopIdle, updates); err != nil {
-					log.Printf("WATCHER: [%s] IDLE error: %v", account.Email, err)
+					w.log.Error("IDLE error", "account", account.Email, "err", err)
 				}
 			}()
 
@@ -150,12 +152,12 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			case <-updates:
 				close(stopIdle)
 				<-idleDone // wait for IDLE goroutine to exit before reusing connection
-				log.Printf("WATCHER: [%s] new messages detected, syncing...", account.Email)
+				w.log.Info("New messages detected, syncing", "account", account.Email)
 				w.syncAndNotify(account, client, uidNext)
 				// Re-SELECT INBOX (sync iterates all mailboxes, last selected may differ)
 				newStatus, err := client.SelectMailbox("INBOX")
 				if err != nil {
-					log.Printf("WATCHER: [%s] re-SELECT INBOX failed: %v, reconnecting", account.Email, err)
+					w.log.Error("Re-SELECT INBOX failed, reconnecting", "account", account.Email, "err", err)
 					connectionAlive = false
 				} else {
 					uidNext = newStatus.UidNext
@@ -166,11 +168,11 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			case <-time.After(10 * time.Minute):
 				close(stopIdle)
 				<-idleDone
-				log.Printf("WATCHER: [%s] fallback poll, syncing...", account.Email)
+				w.log.Info("Fallback poll, syncing", "account", account.Email)
 				w.syncAndNotify(account, client, uidNext)
 				newStatus, err := client.SelectMailbox("INBOX")
 				if err != nil {
-					log.Printf("WATCHER: [%s] re-SELECT INBOX failed: %v, reconnecting", account.Email, err)
+					w.log.Error("Re-SELECT INBOX failed, reconnecting", "account", account.Email, "err", err)
 					connectionAlive = false
 				} else {
 					uidNext = newStatus.UidNext
@@ -211,32 +213,32 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	select {
 	case out := <-ch:
 		if out.err != nil {
-			log.Printf("WATCHER: [%s] sync failed: %v", account.Email, out.err)
+			w.log.Error("Sync failed", "account", account.Email, "err", out.err)
 			return
 		}
 	case <-time.After(2 * time.Minute):
-		log.Printf("WATCHER: [%s] sync timed out after 2m", account.Email)
+		w.log.Error("Sync timed out after 2m", "account", account.Email)
 		return
 	}
 
 	// Detect new messages via UIDNEXT: any UID >= prevUidNext is new since
 	// the last IDLE cycle, regardless of whether another process synced it.
 	// Fetch envelopes for UIDs in [prevUidNext, *) to get their Message-IDs.
-	log.Printf("WATCHER: [%s] searching for UIDs >= %d", account.Email, prevUidNext)
+	w.log.Debug("Searching for new UIDs", "account", account.Email, "min_uid", prevUidNext)
 	newUIDs, err := client.SearchUIDRange(prevUidNext, 0)
 	if err != nil {
-		log.Printf("WATCHER: [%s] UID search failed: %v", account.Email, err)
+		w.log.Error("UID search failed", "account", account.Email, "err", err)
 		return
 	}
 	if len(newUIDs) == 0 {
-		log.Printf("WATCHER: [%s] no new UIDs found (prevUidNext=%d)", account.Email, prevUidNext)
+		w.log.Debug("No new UIDs found", "account", account.Email, "prev_uidnext", prevUidNext)
 		return
 	}
-	log.Printf("WATCHER: [%s] found %d new UIDs: %v", account.Email, len(newUIDs), newUIDs)
+	w.log.Debug("Found new UIDs", "account", account.Email, "count", len(newUIDs), "uids", newUIDs)
 
 	envelopes, err := client.FetchEnvelopes(newUIDs)
 	if err != nil {
-		log.Printf("WATCHER: [%s] envelope fetch failed: %v", account.Email, err)
+		w.log.Error("Envelope fetch failed", "account", account.Email, "err", err)
 		return
 	}
 
@@ -244,26 +246,26 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	var idQueries []string
 	for uid, messageID := range envelopes {
 		if messageID != "" {
-			log.Printf("WATCHER: [%s] UID %d → Message-ID: %s", account.Email, uid, messageID)
+			w.log.Debug("UID to Message-ID mapping", "account", account.Email, "uid", uid, "message_id", messageID)
 			idQueries = append(idQueries, fmt.Sprintf("id:%s", messageID))
 		}
 	}
 	if len(idQueries) == 0 {
-		log.Printf("WATCHER: [%s] no Message-IDs found in %d envelopes", account.Email, len(envelopes))
+		w.log.Debug("No Message-IDs found in envelopes", "account", account.Email, "envelope_count", len(envelopes))
 		return
 	}
 
 	query := strings.Join(idQueries, " OR ")
-	log.Printf("WATCHER: [%s] notmuch query: %s", account.Email, query)
+	w.log.Debug("Running notmuch query", "account", account.Email, "query", query)
 
 	// Fetch full message bodies via notmuch show (reuses ExtractBodyContent)
 	msgs, err := w.notmuch.ShowMessages(query)
 	if err != nil {
-		log.Printf("WATCHER: [%s] notmuch show failed: %v", account.Email, err)
+		w.log.Error("Notmuch show failed", "account", account.Email, "err", err)
 		return
 	}
 	if len(msgs) == 0 {
-		log.Printf("WATCHER: [%s] notmuch returned 0 messages for query", account.Email)
+		w.log.Debug("Notmuch returned 0 messages for query", "account", account.Email)
 		return
 	}
 
@@ -272,7 +274,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		// Look up thread ID for this message
 		results, err := w.notmuch.Search("id:"+msg.ID, 1)
 		if err != nil || len(results) == 0 {
-			log.Printf("WATCHER: [%s] notmuch search for id:%s failed or empty", account.Email, msg.ID)
+			w.log.Debug("Notmuch search failed or empty", "account", account.Email, "message_id", msg.ID)
 			continue
 		}
 		r := results[0]
@@ -283,10 +285,10 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 			From:     r.Authors,
 			Snippet:  cleanSnippet(text, 150),
 		})
-		log.Printf("WATCHER: [%s] new mail: thread=%s from=%q subject=%q", account.Email, r.Thread, r.Authors, r.Subject)
+		w.log.Info("New mail", "account", account.Email, "thread", r.Thread, "from", r.Authors, "subject", r.Subject)
 	}
 
-	log.Printf("WATCHER: [%s] broadcasting %d new message(s)", account.Email, len(messages))
+	w.log.Info("Broadcasting new messages", "account", account.Email, "count", len(messages))
 	w.hub.Broadcast(NewMailEvent{
 		Account:  account.Email,
 		TotalNew: len(messages),
@@ -341,11 +343,11 @@ func (w *WatcherManager) logRetry(lastErr *string, count *int, backoff *time.Dur
 			*backoff = min(*backoff*2, maxBackoff)
 			return // suppress log
 		}
-		log.Printf("WATCHER: [%s] %s: %v (repeated %dx, retrying in %s)", email, kind, err, *count, *backoff)
+		w.log.Error("Retry", "account", email, "kind", kind, "err", err, "repeat", *count, "backoff", *backoff)
 	} else {
 		*lastErr = errStr
 		*count = 1
-		log.Printf("WATCHER: [%s] %s: %v, retrying in %s", email, kind, err, *backoff)
+		w.log.Error("Retry", "account", email, "kind", kind, "err", err, "backoff", *backoff)
 	}
 	*backoff = min(*backoff*2, maxBackoff)
 }

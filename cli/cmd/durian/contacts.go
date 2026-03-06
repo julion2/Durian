@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"text/tabwriter"
 
 	"github.com/durian-dev/durian/cli/internal/contacts"
-	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/spf13/cobra"
 )
 
@@ -94,7 +94,7 @@ func getDBPath() string {
 
 func runContactsInit(cmd *cobra.Command, args []string) error {
 	dbPath := getDBPath()
-	debug.Log("Initializing contacts database at: %s", dbPath)
+	slog.Debug("Initializing contacts database", "path", dbPath)
 
 	db, err := contacts.Open(dbPath)
 	if err != nil {
@@ -122,7 +122,7 @@ func runContactsInit(cmd *cobra.Command, args []string) error {
 
 func runContactsImport(cmd *cobra.Command, args []string) error {
 	dbPath := getDBPath()
-	debug.Log("Importing contacts to: %s", dbPath)
+	slog.Debug("Importing contacts", "path", dbPath)
 
 	// Open/create database
 	db, err := contacts.Open(dbPath)
@@ -143,7 +143,7 @@ func runContactsImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("import from notmuch: %w", err)
 	}
 
-	debug.Log("Found %d unique addresses", len(contactList))
+	slog.Debug("Found unique addresses", "count", len(contactList))
 
 	// Add to database
 	fmt.Printf("Importing %d contacts...\n", len(contactList))

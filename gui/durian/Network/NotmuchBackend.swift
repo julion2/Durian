@@ -147,13 +147,9 @@ class NotmuchBackend: ObservableObject {
         env["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
         durianProcess?.environment = env
 
-        // Log server output to file for debugging (stdout to /dev/null, stderr to log)
+        // Go manages serve.log directly (truncate-on-start, leveled via slog)
         durianProcess?.standardOutput = FileHandle.nullDevice
-        let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/durian")
-        let logFile = logDir.appendingPathComponent("serve.log")
-        FileManager.default.createFile(atPath: logFile.path, contents: nil)
-        durianProcess?.standardError = try? FileHandle(forWritingTo: logFile)
-        Log.info("BACKEND", "Server logs at: \(logFile.path)")
+        durianProcess?.standardError = FileHandle.nullDevice
 
         do {
             try durianProcess?.run()

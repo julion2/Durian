@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"github.com/emersion/go-sasl"
 
 	"github.com/durian-dev/durian/cli/internal/config"
-	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/durian-dev/durian/cli/internal/keychain"
 	"github.com/durian-dev/durian/cli/internal/oauth"
 )
@@ -290,7 +290,7 @@ func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 		imap.FetchRFC822,
 	}
 
-	debug.Log("FetchMessages: fetching %d UIDs with items: %v", len(uids), items)
+	slog.Debug("Fetching messages", "module", "IMAP", "uids", len(uids), "items", items)
 
 	messages := make(chan *imap.Message, len(uids))
 	done := make(chan error, 1)
@@ -301,16 +301,16 @@ func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 
 	var result []*imap.Message
 	for msg := range messages {
-		debug.Log("FetchMessages: received UID %d, Body map size: %d", msg.Uid, len(msg.Body))
+		slog.Debug("Received message", "module", "IMAP", "uid", msg.Uid, "body_parts", len(msg.Body))
 		result = append(result, msg)
 	}
 
 	if err := <-done; err != nil {
-		debug.Log("FetchMessages: error: %v", err)
+		slog.Debug("Fetch error", "module", "IMAP", "err", err)
 		return nil, fmt.Errorf("failed to fetch messages: %w", err)
 	}
 
-	debug.Log("FetchMessages: completed, got %d messages", len(result))
+	slog.Debug("Fetch completed", "module", "IMAP", "count", len(result))
 	return result, nil
 }
 
@@ -767,7 +767,7 @@ func (c *Client) GetSyncMailboxes() ([]string, error) {
 		}
 	}
 
-	debug.Log("GetSyncMailboxes: returning %d mailboxes (all except \\Noselect)", len(result))
+	slog.Debug("Sync mailboxes", "module", "IMAP", "count", len(result))
 	return result, nil
 }
 
@@ -814,7 +814,7 @@ func (c *Client) Reconnect() error {
 		return fmt.Errorf("reconnect auth failed: %w", err)
 	}
 
-	debug.Log("Reconnect: successfully reconnected to %s", c.account.IMAP.Host)
+	slog.Debug("Reconnected", "module", "IMAP", "host", c.account.IMAP.Host)
 	return nil
 }
 

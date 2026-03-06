@@ -2,11 +2,11 @@ package imap
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/durian-dev/durian/cli/internal/debug"
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-maildir"
 )
@@ -47,11 +47,11 @@ func (w *MaildirWriter) WriteMessage(mailboxName string, msg *imap.Message, body
 	}
 
 	if len(body) == 0 {
-		debug.Log("WriteMessage UID %d: ERROR - empty body provided", msg.Uid)
+		slog.Debug("Empty body provided", "module", "MAILDIR", "uid", msg.Uid)
 		return "", fmt.Errorf("message has no body")
 	}
 
-	debug.Log("WriteMessage UID %d: writing %d bytes", msg.Uid, len(body))
+	slog.Debug("Writing message", "module", "MAILDIR", "uid", msg.Uid, "bytes", len(body))
 
 	path := w.mailboxPath(mailboxName)
 	dir := maildir.Dir(path)

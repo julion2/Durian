@@ -13,7 +13,7 @@ go_library(
     visibility = ["//cli:__subpackages__"],
     deps = [
         "//cli/internal/config",
-        "//cli/internal/debug",
+
         "//cli/internal/keychain",
         "//cli/internal/notmuch",
         "//cli/internal/oauth",

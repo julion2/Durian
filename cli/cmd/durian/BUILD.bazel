@@ -21,7 +21,7 @@ go_library(
         "//cli/internal/notmuch",
         "//cli/internal/config",
         "//cli/internal/contacts",
-        "//cli/internal/debug",
+
         "//cli/internal/draft",
         "//cli/internal/handler",
         "//cli/internal/imap",
