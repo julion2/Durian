@@ -163,6 +163,32 @@ func (d *DB) CleanInvalid() (int, error) {
 	return int(removed), nil
 }
 
+// FindByExactName finds a contact by exact name match (case-insensitive).
+// Returns the most frequently used contact with that name.
+func (d *DB) FindByExactName(name string) (*Contact, error) {
+	row := d.db.QueryRow(`
+		SELECT id, email, name, last_used, usage_count, source, created_at
+		FROM contacts
+		WHERE LOWER(name) = LOWER(?)
+		ORDER BY usage_count DESC
+		LIMIT 1
+	`, name)
+
+	var c Contact
+	var lastUsed sql.NullTime
+	err := row.Scan(&c.ID, &c.Email, &c.Name, &lastUsed, &c.UsageCount, &c.Source, &c.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find by exact name: %w", err)
+	}
+	if lastUsed.Valid {
+		c.LastUsed = lastUsed.Time
+	}
+	return &c, nil
+}
+
 // Search searches for contacts by email or name prefix
 // Results are ordered by usage_count DESC, last_used DESC
 func (d *DB) Search(query string, limit int) ([]Contact, error) {

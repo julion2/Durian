@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
 )
@@ -44,7 +45,19 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	nmClient := notmuch.NewClient("")
-	h := handler.New(nmClient)
+
+	// Open contacts database (non-fatal if missing)
+	var contactsDB *contacts.DB
+	contactsDBPath := contacts.DefaultDBPath()
+	if cdb, err := contacts.Open(contactsDBPath); err != nil {
+		slog.Warn("Could not open contacts database", "module", "SERVE", "path", contactsDBPath, "err", err)
+	} else {
+		contactsDB = cdb
+		defer contactsDB.Close()
+		slog.Info("Opened contacts database", "module", "SERVE", "path", contactsDBPath)
+	}
+
+	h := handler.New(nmClient, contactsDB)
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
@@ -54,6 +67,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
 	r.HandleFunc("/api/v1/message/body", h.ShowMessageBodyHandler).Methods("GET")
 	r.HandleFunc("/api/v1/messages/{message_id}/attachments/{part_id}", h.DownloadAttachmentHandler).Methods("GET")
+	r.HandleFunc("/api/v1/contacts/search", h.SearchContactsHandler).Methods("GET")
+	r.HandleFunc("/api/v1/contacts/usage", h.IncrementContactUsageHandler).Methods("POST")
+	r.HandleFunc("/api/v1/contacts", h.ListContactsHandler).Methods("GET")
 	r.Handle("/api/v1/events", eventHub).Methods("GET")
 
 	// Start IMAP IDLE watchers if accounts are configured

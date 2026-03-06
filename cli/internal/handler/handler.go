@@ -1,22 +1,25 @@
 package handler
 
 import (
-	"github.com/durian-dev/durian/cli/internal/notmuch"
+	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/mail"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )
 
 // Handler processes commands and returns responses
 type Handler struct {
-	notmuch notmuch.Client
-	parser  *mail.Parser
+	notmuch  notmuch.Client
+	parser   *mail.Parser
+	contacts *contacts.DB
 }
 
-// New creates a new Handler with the given notmuch client
-func New(nm notmuch.Client) *Handler {
+// New creates a new Handler with the given notmuch client and optional contacts DB.
+func New(nm notmuch.Client, contactsDB *contacts.DB) *Handler {
 	return &Handler{
-		notmuch: nm,
-		parser:  mail.NewParser(),
+		notmuch:  nm,
+		parser:   mail.NewParser(),
+		contacts: contactsDB,
 	}
 }
 

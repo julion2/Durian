@@ -43,7 +43,7 @@ func runTag(cmd *cobra.Command, args []string) error {
 	}
 
 	nmClient := notmuch.NewClient("")
-	h := handler.New(nmClient)
+	h := handler.New(nmClient, nil)
 
 	// Join tags back to string for handler (current interface expects string)
 	tagsStr := strings.Join(tags, " ")

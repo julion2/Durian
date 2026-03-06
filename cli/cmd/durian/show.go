@@ -38,7 +38,7 @@ func runShow(cmd *cobra.Command, args []string) error {
 	threadID := args[0]
 
 	nmClient := notmuch.NewClient("")
-	h := handler.New(nmClient)
+	h := handler.New(nmClient, nil)
 
 	// Use new ShowThread for full thread support
 	resp := h.ShowThread(threadID)

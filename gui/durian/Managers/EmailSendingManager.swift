@@ -221,16 +221,9 @@ class EmailSendingManager: ObservableObject {
     /// Update contact usage statistics for sent recipients
     private func updateContactUsage(for recipients: [String]) {
         guard !recipients.isEmpty else { return }
-        
-        // Run in background to not block UI
-        Task.detached(priority: .utility) {
-            for recipient in recipients {
-                // Extract email from "Name <email>" format if needed
-                let email = self.extractEmail(from: recipient)
-                ContactsManager.shared.incrementUsage(for: email)
-            }
-            Log.info("EMAIL", "Updated usage for \(recipients.count) recipients")
-        }
+
+        let emails = recipients.map { extractEmail(from: $0) }
+        ContactsManager.shared.incrementUsage(for: emails)
     }
     
     /// Quote the display name in an address if it contains a comma

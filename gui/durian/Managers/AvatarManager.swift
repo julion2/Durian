@@ -104,7 +104,7 @@ class AvatarManager: ObservableObject {
             domain = extractDomain(from: cleanEmail)
         } else {
             // No email address (list view) - try contacts DB lookup first
-            if let contact = ContactsManager.shared.findByExactName(cleanEmail),
+            if let contact = await ContactsManager.shared.findByExactName(cleanEmail),
                !contact.email.isEmpty {
                 // Found contact! Use their email for avatar lookup
                 emailForGravatar = contact.email.lowercased()

@@ -98,6 +98,74 @@ paths:
                 format: binary
         '404':
           description: Message or attachment not found
+  /contacts/search:
+    get:
+      summary: Search contacts by email or name
+      parameters:
+        - name: query
+          in: query
+          description: Prefix search on email/name
+          schema:
+            type: string
+        - name: name
+          in: query
+          description: Exact name match (case-insensitive)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Matching contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contact'
+        '400':
+          description: Missing query or name parameter
+        '503':
+          description: Contacts database not available
+  /contacts:
+    get:
+      summary: List contacts ordered by usage
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Contacts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Contact'
+        '503':
+          description: Contacts database not available
+  /contacts/usage:
+    post:
+      summary: Increment usage count for emails
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageRequest'
+      responses:
+        '200':
+          description: Usage counts updated
+        '400':
+          description: Invalid request body
+        '503':
+          description: Contacts database not available
   /threads/{thread_id}/tags:
     post:
       summary: Add or remove tags from an email thread
@@ -244,6 +312,40 @@ components:
           type: array
           items:
             type: string
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        last_used:
+          type: string
+          format: date-time
+        usage_count:
+          type: integer
+        source:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - usage_count
+        - source
+        - created_at
+    UsageRequest:
+      type: object
+      properties:
+        emails:
+          type: array
+          items:
+            type: string
+      required:
+        - emails
     AttachmentInfo:
       type: object
       properties:

@@ -48,7 +48,8 @@ struct ComposeForm: View {
     @State private var activeTokenField: ComposeField? = nil
     @State private var activeNSTokenField: NSTokenField? = nil  // Reference to actual NSTokenField
     @State private var showingContactPopup = false
-    
+    @State private var contactSearchTask: Task<Void, Never>?
+
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
     private let maxTotalSize: Int64 = 50_000_000
@@ -729,46 +730,55 @@ struct ComposeForm: View {
     private func handlePartialTextChange(query: String, tokenField: NSTokenField, field: ComposeField) {
         activeTokenField = field
         activeNSTokenField = tokenField  // Store reference for later use
-        
+
         // Require at least 2 characters to search
         guard query.count >= 2 else {
+            contactSearchTask?.cancel()
             dismissContactSuggestions()
             return
         }
-        
-        // Get existing tokens to filter out duplicates
-        let existingEmails = currentTokensForField(field)
-        
-        // Search contacts and filter out already-added ones
-        let results = ContactsManager.shared.search(query: query, limit: 8)
-            .filter { contact in
-                !existingEmails.contains { existing in
-                    // Check if email matches (case-insensitive)
-                    existing.lowercased().contains(contact.email.lowercased())
+
+        // Debounce: cancel previous search, wait 150ms before firing
+        contactSearchTask?.cancel()
+        contactSearchTask = Task {
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
+
+            // Get existing tokens to filter out duplicates
+            let existingEmails = currentTokensForField(field)
+
+            // Search contacts via HTTP API
+            let results = await ContactsManager.shared.search(query: query, limit: 8)
+                .filter { contact in
+                    !existingEmails.contains { existing in
+                        existing.lowercased().contains(contact.email.lowercased())
+                    }
                 }
-            }
-        
-        guard !results.isEmpty else {
-            dismissContactSuggestions()
-            return
-        }
-        
-        contactSuggestions = results
-        selectedSuggestionIndex = 0
-        showingContactPopup = true
-        
-        // Show popup at cursor position
-        ContactSuggestionController.shared.show(
-            for: tokenField,
-            contacts: results,
-            selectedIndex: 0,
-            onSelect: { [self] contact in
-                selectContact(contact)
-            },
-            onDismiss: { [self] in
+
+            guard !Task.isCancelled else { return }
+
+            guard !results.isEmpty else {
                 dismissContactSuggestions()
+                return
             }
-        )
+
+            contactSuggestions = results
+            selectedSuggestionIndex = 0
+            showingContactPopup = true
+
+            // Show popup at cursor position
+            ContactSuggestionController.shared.show(
+                for: tokenField,
+                contacts: results,
+                selectedIndex: 0,
+                onSelect: { [self] contact in
+                    selectContact(contact)
+                },
+                onDismiss: { [self] in
+                    dismissContactSuggestions()
+                }
+            )
+        }
     }
     
     /// Handle keyboard commands when suggestion popup is visible

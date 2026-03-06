@@ -14,7 +14,7 @@ func TestHandleDispatchSearch(t *testing.T) {
 		{Thread: "123", Subject: "Test", Authors: "sender@example.com"},
 	}
 
-	h := New(mock)
+	h := New(mock, nil)
 	cmd := protocol.Command{Cmd: "search", Query: "*", Limit: 10}
 
 	resp := h.Handle(cmd)
@@ -35,7 +35,7 @@ func TestHandleDispatchShowByThread(t *testing.T) {
 	// ShowThread will return empty, causing NOT_FOUND - that's fine for dispatch test
 	mock.ThreadMessages = []notmuch.ThreadMessage{}
 
-	h := New(mock)
+	h := New(mock, nil)
 	cmd := protocol.Command{Cmd: "show", Thread: "abc123"}
 
 	resp := h.Handle(cmd)
@@ -59,7 +59,7 @@ func TestHandleDispatchShowByThread(t *testing.T) {
 
 func TestHandleDispatchTag(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 	cmd := protocol.Command{Cmd: "tag", Query: "thread:123", Tags: "+read -unread"}
 
 	resp := h.Handle(cmd)
@@ -77,7 +77,7 @@ func TestHandleDispatchTag(t *testing.T) {
 
 func TestHandleUnknownCommand(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 	cmd := protocol.Command{Cmd: "invalid_command"}
 
 	resp := h.Handle(cmd)
@@ -112,7 +112,7 @@ func TestSearchSuccess(t *testing.T) {
 		},
 	}
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.Search("*", 10, 0)
 
 	if !resp.OK {
@@ -146,7 +146,7 @@ func TestSearchEmpty(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	mock.SearchResults = []notmuch.SearchResult{}
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.Search("nonexistent", 10, 0)
 
 	if !resp.OK {
@@ -161,7 +161,7 @@ func TestSearchBackendError(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	mock.SearchErr = errors.New("notmuch not found")
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.Search("*", 10, 0)
 
 	if resp.OK {
@@ -177,7 +177,7 @@ func TestSearchBackendError(t *testing.T) {
 
 func TestSearchDefaultLimit(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 
 	h.Search("*", 0, 0)
 
@@ -215,7 +215,7 @@ func TestShowThreadSuccess(t *testing.T) {
 		},
 	}
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.ShowThread("abc123")
 
 	// ShowThread should be called
@@ -245,7 +245,7 @@ func TestShowThreadNotFound(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	mock.ThreadMessages = []notmuch.ThreadMessage{} // Empty = no messages found
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.ShowThread("nonexistent")
 
 	if resp.OK {
@@ -260,7 +260,7 @@ func TestShowThreadBackendError(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	mock.ThreadErr = errors.New("backend unavailable")
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.ShowThread("abc123")
 
 	if resp.OK {
@@ -273,7 +273,7 @@ func TestShowThreadBackendError(t *testing.T) {
 
 func TestTagSuccess(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 
 	resp := h.Tag("thread:123", "+read -unread")
 
@@ -301,7 +301,7 @@ func TestTagSuccess(t *testing.T) {
 
 func TestTagEmptyTags(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 
 	resp := h.Tag("thread:123", "")
 
@@ -320,7 +320,7 @@ func TestTagBackendError(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	mock.TagErr = errors.New("permission denied")
 
-	h := New(mock)
+	h := New(mock, nil)
 	resp := h.Tag("thread:123", "+read")
 
 	if resp.OK {
@@ -336,7 +336,7 @@ func TestTagBackendError(t *testing.T) {
 
 func TestNewHandler(t *testing.T) {
 	mock := notmuch.NewMockClient()
-	h := New(mock)
+	h := New(mock, nil)
 
 	if h == nil {
 		t.Error("New() should not return nil")

@@ -23,6 +23,19 @@ struct DurianResponse: Decodable {
     let tags: [String]?
 }
 
+struct ContactResponse: Decodable, Identifiable, Hashable {
+    let id: String
+    let email: String
+    let name: String?
+    let last_used: String?
+    let usage_count: Int
+    let source: String
+    let created_at: String
+}
+
+/// Dummy type for POST endpoints that return no JSON body
+private struct EmptyResponse: Decodable {}
+
 struct MessageBodyResponse: Decodable {
     let body: String
     let html: String?
@@ -496,6 +509,47 @@ class NotmuchBackend: ObservableObject {
         }
 
         return (data, filename)
+    }
+
+    // MARK: - Contacts API
+
+    /// Search contacts by email or name prefix
+    func searchContacts(query: String, limit: Int = 10) async -> [ContactResponse] {
+        var components = URLComponents()
+        components.path = "/contacts/search"
+        components.queryItems = [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let endpoint = components.string else { return [] }
+        let results: [ContactResponse]? = await request(endpoint: endpoint)
+        return results ?? []
+    }
+
+    /// Find contact by exact name (case-insensitive)
+    func findContactByExactName(_ name: String) async -> ContactResponse? {
+        var components = URLComponents()
+        components.path = "/contacts/search"
+        components.queryItems = [URLQueryItem(name: "name", value: name)]
+        guard let endpoint = components.string else { return nil }
+        let results: [ContactResponse]? = await request(endpoint: endpoint)
+        return results?.first
+    }
+
+    /// List contacts ordered by usage
+    func listContacts(limit: Int = 100) async -> [ContactResponse] {
+        let results: [ContactResponse]? = await request(endpoint: "/contacts?limit=\(limit)")
+        return results ?? []
+    }
+
+    /// Increment usage count for emails (fire-and-forget)
+    func incrementContactUsage(for emails: [String]) async {
+        struct UsageRequest: Encodable { let emails: [String] }
+        let _: EmptyResponse? = await request(
+            endpoint: "/contacts/usage",
+            method: "POST",
+            body: UsageRequest(emails: emails)
+        )
     }
 
     // MARK: - Unchanged methods (markAsRead, togglePin, etc.)

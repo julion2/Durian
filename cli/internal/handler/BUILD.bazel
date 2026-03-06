@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "handler",
     srcs = [
+        "contacts.go",
         "events.go",
         "handler.go",
         "http.go",
@@ -16,6 +17,7 @@ go_library(
     visibility = ["//cli:__subpackages__"],
     deps = [
         "//cli/internal/config",
+        "//cli/internal/contacts",
         "//cli/internal/imap",
         "//cli/internal/mail",
         "//cli/internal/notmuch",

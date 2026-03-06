@@ -44,7 +44,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	query := strings.Join(args, " ")
 
 	nmClient := notmuch.NewClient("")
-	h := handler.New(nmClient)
+	h := handler.New(nmClient, nil)
 
 	resp := h.Search(query, searchLimit, 0)
 
