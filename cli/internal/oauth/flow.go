@@ -209,6 +209,8 @@ func openBrowser(url string) error {
 // Returns the token ready to be stored
 // clientSecret is required for Google, optional for Microsoft
 func Authenticate(provider *Provider, clientID, clientSecret, email string) (*Token, error) {
+	clientID, clientSecret = provider.ResolveCredentials(clientID, clientSecret)
+
 	// Generate PKCE
 	pkce, err := GeneratePKCE()
 	if err != nil {

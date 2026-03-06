@@ -13,6 +13,23 @@ type Provider struct {
 	TokenEndpoint     string
 	Scopes            []string
 	SASlMethod        string // XOAUTH2 or OAUTHBEARER
+
+	// Default credentials embedded in the binary.
+	// Users can override these in config.toml.
+	DefaultClientID     string
+	DefaultClientSecret string
+}
+
+// ResolveCredentials returns the effective client ID and secret.
+// Config values take priority; defaults are used as fallback.
+func (p *Provider) ResolveCredentials(clientID, clientSecret string) (string, string) {
+	if clientID == "" {
+		clientID = p.DefaultClientID
+	}
+	if clientSecret == "" {
+		clientSecret = p.DefaultClientSecret
+	}
+	return clientID, clientSecret
 }
 
 // Microsoft OAuth provider for Office 365
@@ -30,7 +47,8 @@ func Microsoft(tenant string) *Provider {
 			"https://outlook.office.com/SMTP.Send",
 			"https://outlook.office.com/IMAP.AccessAsUser.All",
 		},
-		SASlMethod: "XOAUTH2",
+		SASlMethod:      "XOAUTH2",
+		DefaultClientID: "6b83a4b6-8936-4823-a0aa-2d819b92600a",
 	}
 }
 
@@ -43,7 +61,9 @@ func Google() *Provider {
 		Scopes: []string{
 			"https://mail.google.com/",
 		},
-		SASlMethod: "OAUTHBEARER",
+		SASlMethod:          "OAUTHBEARER",
+		DefaultClientID:     "1006158396880-a77l3uc4r9m27q67bbtc71iktqerm5a0.apps.googleusercontent.com",
+		DefaultClientSecret: "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",
 	}
 }
 

@@ -65,7 +65,7 @@ max_messages = 5000
 
 [accounts.oauth]
 provider = "microsoft"
-client_id = "your-azure-client-id"
+# client_id = "custom-azure-client-id"  # Optional, built-in default is used if omitted
 
 # Google OAuth
 [[accounts]]
@@ -88,5 +88,6 @@ max_messages = 5000
 
 [accounts.oauth]
 provider = "google"
-client_id = "your-google-client-id"
-client_secret = "your-google-client-secret"
+# client_id and client_secret are optional, built-in defaults are used if omitted
+# client_id = "custom-google-client-id"
+# client_secret = "custom-google-client-secret"

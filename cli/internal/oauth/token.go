@@ -57,6 +57,8 @@ func (t *Token) ExpiresIn() time.Duration {
 // ExchangeCode exchanges an authorization code for tokens
 // clientSecret is optional for Microsoft (PKCE only) but required for Google
 func ExchangeCode(provider *Provider, clientID, clientSecret, redirectURI, code, codeVerifier string) (*Token, error) {
+	clientID, clientSecret = provider.ResolveCredentials(clientID, clientSecret)
+
 	data := url.Values{
 		"client_id":     {clientID},
 		"grant_type":    {"authorization_code"},
@@ -101,6 +103,8 @@ func ExchangeCode(provider *Provider, clientID, clientSecret, redirectURI, code,
 // RefreshAccessToken uses the refresh token to get a new access token
 // clientSecret is optional for Microsoft but required for Google
 func RefreshAccessToken(provider *Provider, clientID, clientSecret string, token *Token) (*Token, error) {
+	clientID, clientSecret = provider.ResolveCredentials(clientID, clientSecret)
+
 	if token.RefreshToken == "" {
 		return nil, errors.New("no refresh token available")
 	}
@@ -174,6 +178,8 @@ func GetValidToken(email, clientID, clientSecret, tenant string) (*Token, error)
 	if err != nil {
 		return nil, err
 	}
+
+	clientID, clientSecret = provider.ResolveCredentials(clientID, clientSecret)
 
 	newToken, err := RefreshAccessToken(provider, clientID, clientSecret, token)
 	if err != nil {

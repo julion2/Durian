@@ -112,19 +112,10 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 // runOAuthLogin handles OAuth authentication
 func runOAuthLogin(account *config.AccountConfig) error {
-	if account.OAuth.ClientID == "" {
-		return fmt.Errorf("no client_id configured for %s\nAdd client_id to [accounts.oauth] in your config.toml", account.Email)
-	}
-
 	// Get provider
 	provider, err := oauth.GetProvider(account.OAuth.Provider, account.OAuth.Tenant)
 	if err != nil {
 		return err
-	}
-
-	// Check if Google requires client_secret
-	if account.OAuth.Provider == "google" && account.OAuth.ClientSecret == "" {
-		return fmt.Errorf("Google OAuth requires client_secret\nAdd client_secret to [accounts.oauth] in your config.toml")
 	}
 
 	fmt.Printf("Starting OAuth authentication for %s (%s)...\n\n", account.Email, account.OAuth.Provider)
@@ -299,10 +290,6 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 	// Only OAuth accounts can be refreshed
 	if account.OAuth.Provider == "" {
 		return fmt.Errorf("%s uses password authentication (no refresh needed)", account.Email)
-	}
-
-	if account.OAuth.ClientID == "" {
-		return fmt.Errorf("no OAuth configuration for %s", account.Email)
 	}
 
 	// Load existing token
