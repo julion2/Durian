@@ -7,14 +7,15 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **CLI:** `bazel build //cli/cmd/durian` → install: `cli/install.sh` (copies to /usr/local/bin)
 - **GUI:** `bazel build //gui:Durian` → dev run: `gui/run.sh` (debug build → `/Applications/DurianNightly.app`) → install: `gui/install.sh` (release build → `/Applications/Durian.app`)
 - **Tests:** `bazel test //cli/...` (CLI) / `bazel test //gui/...` (GUI) / `bazel test //...` (all)
-- **Logs:** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
+- **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
+- **Logs (CLI/Go):** `~/.config/durian/serve.log` (truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
 
 ## Project Structure
 
 - Config dir: `~/.config/durian/` (`config.toml`, `keymaps.toml`, `profiles.toml`; see `docs/config-example.toml`)
 - `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, notmuch search, HTTP API server
   - `cli/cmd/durian/` — CLI commands (sync, send, serve, search, tag, contacts, draft, auth)
-  - `cli/internal/` — Internal packages (config, imap, smtp, handler, notmuch, oauth, mail, encoding, contacts, draft, keychain, protocol, debug)
+  - `cli/internal/` — Internal packages (config, imap, smtp, handler, notmuch, oauth, mail, encoding, contacts, draft, keychain, protocol)
 - `gui/` — Swift macOS app (SwiftUI)
   - `gui/durian/Managers/` — Singleton `ObservableObject` managers (`@MainActor`, `.shared`)
   - `gui/durian/Views/` — SwiftUI view components
@@ -30,6 +31,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - Imports: stdlib → external → internal
 - Errors: wrap with `fmt.Errorf("context: %w", err)`
 - Naming: camelCase/PascalCase
+- Logging: stdlib `log/slog` with structured key-value pairs. Use `slog.Debug/Info/Warn/Error("Message", "key", value)`. Add `"module", "NAME"` for context (e.g. `"module", "SYNC"`). Never use `log.Printf` or `fmt.Printf` for logging.
 
 ### Swift
 - Imports: Foundation/SwiftUI first

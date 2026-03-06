@@ -55,10 +55,18 @@ bazel test //...                  # all tests
 
 ## Logs
 
+### GUI (Swift → os_log)
 ```bash
 log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'  # nightly
 log stream --level debug --predicate 'subsystem == "org.js-lab.durian"'           # release
 log stream --level info  --predicate 'subsystem == "org.js-lab.durian.nightly"'  # info+ only
+```
+
+### CLI (Go → slog)
+```bash
+tail -f ~/.config/durian/serve.log        # server logs (Info+ by default)
+durian serve --debug                      # server logs with Debug+
+durian sync --debug                       # debug output on stderr
 ```
 
 ## Keyboard Shortcuts
