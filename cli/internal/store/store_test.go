@@ -1,0 +1,62 @@
+package store
+
+import "testing"
+
+func newTestDB(t *testing.T) *DB {
+	t.Helper()
+	db, err := Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.Init(); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestOpenAndInit(t *testing.T) {
+	db := newTestDB(t)
+
+	// Verify schema_version exists and is 1
+	var version int
+	err := db.db.QueryRow("SELECT version FROM schema_version WHERE rowid = 1").Scan(&version)
+	if err != nil {
+		t.Fatalf("read version: %v", err)
+	}
+	if version != 1 {
+		t.Errorf("version = %d, want 1", version)
+	}
+}
+
+func TestInitIdempotent(t *testing.T) {
+	db := newTestDB(t)
+
+	// Calling Init() again should not fail
+	if err := db.Init(); err != nil {
+		t.Fatalf("second init: %v", err)
+	}
+}
+
+func TestDefaultDBPath(t *testing.T) {
+	path := DefaultDBPath("user@example.com")
+	if path == "" {
+		t.Fatal("empty path")
+	}
+	if !contains(path, "user@example.com.db") {
+		t.Errorf("path %q does not contain account name", path)
+	}
+}
+
+func contains(s, sub string) bool {
+	return len(s) >= len(sub) && searchSubstring(s, sub)
+}
+
+func searchSubstring(s, sub string) bool {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}

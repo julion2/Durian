@@ -1,0 +1,30 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "store",
+    srcs = [
+        "attachments.go",
+        "messages.go",
+        "outbox.go",
+        "search.go",
+        "store.go",
+        "tags.go",
+        "threads.go",
+        "types.go",
+    ],
+    importpath = "github.com/durian-dev/durian/cli/internal/store",
+    visibility = ["//cli:__subpackages__"],
+    deps = ["@org_modernc_sqlite//:sqlite"],
+)
+
+go_test(
+    name = "store_test",
+    srcs = [
+        "messages_test.go",
+        "search_test.go",
+        "store_test.go",
+        "tags_test.go",
+        "threads_test.go",
+    ],
+    embed = [":store"],
+)
