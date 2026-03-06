@@ -48,7 +48,7 @@ func Microsoft(tenant string) *Provider {
 			"https://outlook.office.com/IMAP.AccessAsUser.All",
 		},
 		SASlMethod:      "XOAUTH2",
-		DefaultClientID: "6b83a4b6-8936-4823-a0aa-2d819b92600a",
+		DefaultClientID: "d1969673-bd8a-4bf6-ad8f-f541879730a8",
 	}
 }
 
