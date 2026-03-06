@@ -113,7 +113,7 @@ func TestSearchSuccess(t *testing.T) {
 	}
 
 	h := New(mock)
-	resp := h.Search("*", 10)
+	resp := h.Search("*", 10, 0)
 
 	if !resp.OK {
 		t.Errorf("Search() should return OK, got error: %s", resp.Error)
@@ -147,7 +147,7 @@ func TestSearchEmpty(t *testing.T) {
 	mock.SearchResults = []notmuch.SearchResult{}
 
 	h := New(mock)
-	resp := h.Search("nonexistent", 10)
+	resp := h.Search("nonexistent", 10, 0)
 
 	if !resp.OK {
 		t.Errorf("Search() should return OK even with empty results, got error: %s", resp.Error)
@@ -162,7 +162,7 @@ func TestSearchBackendError(t *testing.T) {
 	mock.SearchErr = errors.New("notmuch not found")
 
 	h := New(mock)
-	resp := h.Search("*", 10)
+	resp := h.Search("*", 10, 0)
 
 	if resp.OK {
 		t.Error("Search() should return error when backend fails")
@@ -179,7 +179,7 @@ func TestSearchDefaultLimit(t *testing.T) {
 	mock := notmuch.NewMockClient()
 	h := New(mock)
 
-	h.Search("*", 0)
+	h.Search("*", 0, 0)
 
 	if len(mock.SearchCalls) != 1 {
 		t.Fatal("Search should be called once")

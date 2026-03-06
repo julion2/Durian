@@ -66,6 +66,7 @@ type Client interface {
 	GetFiles(query string, limit int) ([]string, error)
 	Tag(query string, tags []string) error
 	ShowThread(threadID string) ([]ThreadMessage, error)
+	ShowByQuery(query string, limit int) ([][]ThreadMessage, error)
 	ShowMessages(query string) ([]ThreadMessage, error)
 	ShowRawPart(messageID string, partID int, w io.Writer) error
 
@@ -189,6 +190,42 @@ func (c *ExecClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 	var messages []ThreadMessage
 	flattenThread(raw, &messages)
 	return messages, nil
+}
+
+// ShowByQuery runs notmuch show with an arbitrary query and returns messages
+// grouped by thread. Each inner slice contains the flattened messages of one thread,
+// in the same order as notmuch search would return them.
+func (c *ExecClient) ShowByQuery(query string, limit int) ([][]ThreadMessage, error) {
+	args := []string{"show", "--format=json", "--include-html", "--entire-thread=true"}
+	if limit > 0 {
+		args = append(args, "--limit="+strconv.Itoa(limit))
+	}
+	if c.databasePath != "" {
+		args = append([]string{"--config=" + c.databasePath}, args...)
+	}
+	args = append(args, query)
+
+	cmd := exec.Command("notmuch", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("notmuch show failed: %w", err)
+	}
+
+	// Top-level is an array of thread groups
+	var topLevel []json.RawMessage
+	if err := json.Unmarshal(out, &topLevel); err != nil {
+		return nil, fmt.Errorf("failed to parse show results: %w", err)
+	}
+
+	result := make([][]ThreadMessage, 0, len(topLevel))
+	for _, threadRaw := range topLevel {
+		var msgs []ThreadMessage
+		flattenThread(threadRaw, &msgs)
+		if len(msgs) > 0 {
+			result = append(result, msgs)
+		}
+	}
+	return result, nil
 }
 
 // ShowMessages returns individual messages matching a query (no thread expansion).

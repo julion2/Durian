@@ -7,8 +7,10 @@ import (
 	"github.com/durian-dev/durian/cli/internal/protocol"
 )
 
-// Search handles the "search" command
-func (h *Handler) Search(query string, limit int) protocol.Response {
+// Search handles the "search" command.
+// enrichLimit controls thread enrichment: 0 = off, >0 = enrich up to N threads
+// (search uses limit for the result list, show uses enrichLimit for bodies).
+func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Response {
 	if limit == 0 {
 		limit = 50
 	}
@@ -22,7 +24,7 @@ func (h *Handler) Search(query string, limit int) protocol.Response {
 	for i, r := range results {
 		mails[i] = mail.Mail{
 			ThreadID:  r.Thread,
-			File:      "", // Skip file lookup - use showByThread instead
+			File:      "",
 			Subject:   r.Subject,
 			From:      r.Authors,
 			Date:      r.DateRelative,
@@ -31,5 +33,24 @@ func (h *Handler) Search(query string, limit int) protocol.Response {
 		}
 	}
 
-	return protocol.SuccessWithResults(mails)
+	if enrichLimit <= 0 {
+		return protocol.SuccessWithResults(mails)
+	}
+
+	// Enrich with thread content via a single notmuch show call.
+	// enrichLimit caps the show to only the first N threads (viewport).
+	// Graceful degradation: if show fails, return results without threads.
+	threadGroups, err := h.notmuch.ShowByQuery(query, enrichLimit)
+	if err != nil {
+		return protocol.SuccessWithResults(mails)
+	}
+
+	threads := make(map[string]*mail.ThreadContent, len(threadGroups))
+	for i, r := range results {
+		if i < len(threadGroups) {
+			threads[r.Thread] = convertThread(r.Thread, threadGroups[i])
+		}
+	}
+
+	return protocol.SuccessWithResultsAndThreads(mails, threads)
 }

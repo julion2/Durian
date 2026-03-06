@@ -54,46 +54,7 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 		return protocol.Fail(protocol.ErrNotFound, errors.New("no messages found for thread"))
 	}
 
-	// Convert notmuch messages to our format
-	messages := make([]internmail.MessageInfo, 0, len(threadMsgs))
-	var subject string
-
-	for _, msg := range threadMsgs {
-		info := internmail.MessageInfo{
-			ID:         msg.ID,
-			From:       msg.Headers["From"],
-			To:         msg.Headers["To"],
-			CC:         msg.Headers["Cc"],
-			Date:       msg.Headers["Date"],
-			Timestamp:  msg.Timestamp,
-			MessageID:  msg.Headers["Message-ID"],
-			InReplyTo:  msg.Headers["In-Reply-To"],
-			References: msg.Headers["References"],
-			Tags:       msg.Tags,
-		}
-
-		// Get subject from first message
-		if subject == "" {
-			subject = msg.Headers["Subject"]
-		}
-
-		// Extract body content (text/plain and text/html)
-		info.Body, info.HTML, info.Attachments = notmuch.ExtractBodyContent(msg.Body)
-
-		messages = append(messages, info)
-	}
-
-	// Sort by timestamp (newest first for email-style display)
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Timestamp > messages[j].Timestamp
-	})
-
-	thread := &internmail.ThreadContent{
-		ThreadID: threadID,
-		Subject:  subject,
-		Messages: messages,
-	}
-
+	thread := convertThread(threadID, threadMsgs)
 	return protocol.SuccessWithThread(thread)
 }
 
@@ -113,6 +74,44 @@ func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 		Body: body,
 		HTML: html,
 	})
+}
+
+// convertThread converts notmuch thread messages into our ThreadContent format.
+func convertThread(threadID string, threadMsgs []notmuch.ThreadMessage) *internmail.ThreadContent {
+	messages := make([]internmail.MessageInfo, 0, len(threadMsgs))
+	var subject string
+
+	for _, msg := range threadMsgs {
+		info := internmail.MessageInfo{
+			ID:         msg.ID,
+			From:       msg.Headers["From"],
+			To:         msg.Headers["To"],
+			CC:         msg.Headers["Cc"],
+			Date:       msg.Headers["Date"],
+			Timestamp:  msg.Timestamp,
+			MessageID:  msg.Headers["Message-ID"],
+			InReplyTo:  msg.Headers["In-Reply-To"],
+			References: msg.Headers["References"],
+			Tags:       msg.Tags,
+		}
+
+		if subject == "" {
+			subject = msg.Headers["Subject"]
+		}
+
+		info.Body, info.HTML, info.Attachments = notmuch.ExtractBodyContent(msg.Body)
+		messages = append(messages, info)
+	}
+
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp > messages[j].Timestamp
+	})
+
+	return &internmail.ThreadContent{
+		ThreadID: threadID,
+		Subject:  subject,
+		Messages: messages,
+	}
 }
 
 // DownloadAttachment streams a raw attachment part, setting Content-Type and

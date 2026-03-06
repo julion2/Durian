@@ -18,6 +18,7 @@ struct DurianResponse: Decodable {
     let results: [NotmuchMailResult]?
     let mail: NotmuchMailContent?
     let thread: ThreadContent?
+    let threads: [String: ThreadContent]?
     let message_body: MessageBodyResponse?
     let tags: [String]?
 }
@@ -253,13 +254,21 @@ class NotmuchBackend: ObservableObject {
             request.httpBody = bodyData
         }
 
+        let signposter = Log.signposter(for: "HTTP")
+        let state = signposter.beginInterval("Request", "\(method, privacy: .public) \(endpoint, privacy: .public)")
+        var status = "Error"
+        defer { signposter.endInterval("Request", state, "\(status)") }
+
         do {
             let (data, _) = try await URLSession.shared.data(for: request)
             let response = try decoder.decode(T.self, from: data)
+            status = "OK"
             return response
         } catch is CancellationError {
+            status = "Cancelled"
             return nil
         } catch let error as URLError where error.code == .cancelled {
+            status = "Cancelled"
             return nil
         } catch {
             Log.error("BACKEND", "Request to \(endpoint) failed: \(error)")
@@ -309,37 +318,8 @@ class NotmuchBackend: ObservableObject {
         }
 
         if let index = emails.firstIndex(where: { $0.id == id }) {
-            emails[index].threadMessages = thread.messages
-            if let newestMessage = thread.messages.first {
-                emails[index].from = newestMessage.from
-                emails[index].body = newestMessage.body
-                emails[index].htmlBody = newestMessage.html
-                emails[index].to = newestMessage.to
-                emails[index].cc = newestMessage.cc
-                emails[index].messageId = newestMessage.message_id
-                emails[index].inReplyTo = newestMessage.in_reply_to
-                emails[index].references = newestMessage.references
-            }
-            // Map attachment metadata from thread messages
-            let allAttachments = thread.messages.flatMap { msg in
-                (msg.attachments ?? []).map { att in
-                    IncomingAttachmentMetadata(
-                        section: msg.id,
-                        filename: att.filename,
-                        mimeType: att.contentType,
-                        sizeBytes: Int64(att.size),
-                        disposition: att.disposition == "inline" ? .inline : .attachment,
-                        contentId: att.contentId
-                    )
-                }
-            }
-            emails[index].incomingAttachments = allAttachments
-            emails[index].hasAttachment = !allAttachments.isEmpty
-
-            let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
-            emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
+            applyThread(thread, to: &emails[index])
             Log.info("BACKEND", "Loaded thread \(id) with \(thread.messages.count) messages")
-            cacheThread(id: id, messages: thread.messages)
         }
     }
     
@@ -351,7 +331,8 @@ class NotmuchBackend: ObservableObject {
         components.path = "/search"
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "limit", value: String(limit))
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "enrich", value: "30")
         ]
 
         guard let endpoint = components.string else {
@@ -370,6 +351,7 @@ class NotmuchBackend: ObservableObject {
         }
 
         shouldCancelPrefetch = false
+        let enrichedThreads = response?.threads
         emails = results.map { mail in
             MailMessage(
                 threadId: mail.thread_id,
@@ -380,12 +362,22 @@ class NotmuchBackend: ObservableObject {
                 tags: mail.tags
             )
         }
-        
+
+        // Apply enriched thread data from search response
+        if let enrichedThreads, !enrichedThreads.isEmpty {
+            for (index, email) in emails.enumerated() {
+                if let thread = enrichedThreads[email.id] {
+                    applyThread(thread, to: &emails[index])
+                }
+            }
+            Log.debug("BACKEND", "Enriched \(enrichedThreads.count) threads from search")
+        }
+
         restoreCachedThreads()
         Log.debug("BACKEND", "Search returned \(emails.count) emails")
         isLoadingEmails = false
         loadingProgress = ""
-        
+
         Task {
             try? await Task.sleep(for: .milliseconds(100))
             startPrefetch(count: 5)
@@ -473,12 +465,19 @@ class NotmuchBackend: ObservableObject {
         request.httpMethod = "GET"
         request.timeoutInterval = 60
 
+        let signposter = Log.signposter(for: "HTTP")
+        let endpoint = "/messages/\(encodedId)/attachments/\(partId)"
+        let state = signposter.beginInterval("Request", "GET \(endpoint, privacy: .public)")
+        var status = "Error"
+        defer { signposter.endInterval("Request", state, "\(status)") }
+
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AttachmentError.networkError
         }
         guard httpResponse.statusCode == 200 else {
+            status = "Error \(httpResponse.statusCode)"
             if httpResponse.statusCode == 404 {
                 throw AttachmentError.notFound
             }
@@ -487,6 +486,8 @@ class NotmuchBackend: ObservableObject {
         guard !data.isEmpty else {
             throw AttachmentError.corruptedData
         }
+
+        status = "OK"
 
         // Extract filename from Content-Disposition header
         let filename: String
@@ -559,6 +560,41 @@ class NotmuchBackend: ObservableObject {
         await search(currentQuery)
     }
 
+    // MARK: - Thread Application Helper
+
+    /// Applies a ThreadContent to a MailMessage, populating body, metadata, and attachments.
+    private func applyThread(_ thread: ThreadContent, to email: inout MailMessage) {
+        email.threadMessages = thread.messages
+        if let newestMessage = thread.messages.first {
+            email.from = newestMessage.from
+            email.body = newestMessage.body
+            email.htmlBody = newestMessage.html
+            email.to = newestMessage.to
+            email.cc = newestMessage.cc
+            email.messageId = newestMessage.message_id
+            email.inReplyTo = newestMessage.in_reply_to
+            email.references = newestMessage.references
+        }
+        let allAttachments = thread.messages.flatMap { msg in
+            (msg.attachments ?? []).map { att in
+                IncomingAttachmentMetadata(
+                    section: msg.id,
+                    filename: att.filename,
+                    mimeType: att.contentType,
+                    sizeBytes: Int64(att.size),
+                    disposition: att.disposition == "inline" ? .inline : .attachment,
+                    contentId: att.contentId
+                )
+            }
+        }
+        email.incomingAttachments = allAttachments
+        email.hasAttachment = !allAttachments.isEmpty
+
+        let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+        email.bodyState = .loaded(body: combinedBody, attributedBody: nil)
+        cacheThread(id: email.id, messages: thread.messages)
+    }
+
     // MARK: - Unchanged Caching and Prefetching Logic
     
     private func cacheThread(id: String, messages: [ThreadMessage]) {
@@ -578,6 +614,8 @@ class NotmuchBackend: ObservableObject {
     private func restoreCachedThreads() {
         var restoredCount = 0
         for (index, email) in emails.enumerated() {
+            // Skip emails already populated (e.g. from enriched search response)
+            if email.threadMessages != nil { continue }
             if let cached = threadCache[email.id] {
                 emails[index].threadMessages = cached.messages
                 if let lastMessage = cached.messages.last {

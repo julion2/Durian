@@ -23,6 +23,10 @@ type MockClient struct {
 	Tags    []string
 	TagsErr error
 
+	// ShowByQuery results
+	ThreadGroups    [][]ThreadMessage
+	ThreadGroupsErr error
+
 	// Raw part data
 	ShowRawPartData []byte
 	ShowRawPartErr  error
@@ -106,6 +110,13 @@ func (m *MockClient) ShowThread(threadID string) ([]ThreadMessage, error) {
 		return nil, m.ThreadErr
 	}
 	return m.ThreadMessages, nil
+}
+
+func (m *MockClient) ShowByQuery(_ string, _ int) ([][]ThreadMessage, error) {
+	if m.ThreadGroupsErr != nil {
+		return nil, m.ThreadGroupsErr
+	}
+	return m.ThreadGroups, nil
 }
 
 func (m *MockClient) ShowMessages(_ string) ([]ThreadMessage, error) {

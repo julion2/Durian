@@ -41,7 +41,12 @@ func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response := h.Search(query, limit)
+	var enrichLimit int
+	if enrichStr := r.URL.Query().Get("enrich"); enrichStr != "" {
+		enrichLimit, _ = strconv.Atoi(enrichStr)
+	}
+
+	response := h.Search(query, limit, enrichLimit)
 	writeJSON(w, response)
 }
 

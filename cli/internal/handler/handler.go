@@ -24,7 +24,7 @@ func New(nm notmuch.Client) *Handler {
 func (h *Handler) Handle(cmd protocol.Command) protocol.Response {
 	switch cmd.Cmd {
 	case "search":
-		return h.Search(cmd.Query, cmd.Limit)
+		return h.Search(cmd.Query, cmd.Limit, 0)
 	case "show":
 		if cmd.Thread != "" {
 			return h.ShowThread(cmd.Thread)

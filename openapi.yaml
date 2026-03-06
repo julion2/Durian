@@ -19,6 +19,12 @@ paths:
           schema:
             type: integer
             default: 200
+        - name: enrich
+          in: query
+          description: Max number of threads to enrich with full content (0 = off)
+          schema:
+            type: integer
+            default: 0
       responses:
         '200':
           description: A list of emails
@@ -128,6 +134,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/NotmuchMailResult'
+        threads:
+          type: object
+          description: Thread content keyed by thread ID (enriched search)
+          additionalProperties:
+            $ref: '#/components/schemas/ThreadContent'
     ThreadResponse:
       type: object
       properties:

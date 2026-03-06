@@ -46,7 +46,7 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	nmClient := notmuch.NewClient("")
 	h := handler.New(nmClient)
 
-	resp := h.Search(query, searchLimit)
+	resp := h.Search(query, searchLimit, 0)
 
 	if !resp.OK {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
