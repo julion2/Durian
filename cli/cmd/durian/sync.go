@@ -13,7 +13,6 @@ import (
 var (
 	syncDryRun       bool
 	syncQuiet        bool
-	syncNoNotmuch    bool
 	syncNoFlags      bool
 	syncDownloadOnly bool
 	syncUploadOnly   bool
@@ -22,7 +21,7 @@ var (
 var syncCmd = &cobra.Command{
 	Use:   "sync [account] [mailbox]",
 	Short: "Sync email via IMAP",
-	Long: `Sync email from IMAP server to local Maildir.
+	Long: `Sync email from IMAP server to local SQLite store.
 
 By default, sync is bidirectional: messages are downloaded from the server,
 and flag changes (read/unread, starred, etc.) are synchronized both ways.
@@ -50,17 +49,13 @@ Examples:
   durian sync --no-flags
 
   # Dry run - show what would be synced
-  durian sync --dry-run
-
-  # Skip notmuch indexing
-  durian sync --no-notmuch`,
+  durian sync --dry-run`,
 	RunE: runSync,
 }
 
 func init() {
 	syncCmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "show what would be synced without syncing")
 	syncCmd.Flags().BoolVarP(&syncQuiet, "quiet", "q", false, "suppress progress output")
-	syncCmd.Flags().BoolVar(&syncNoNotmuch, "no-notmuch", false, "don't run notmuch new after sync")
 	syncCmd.Flags().BoolVar(&syncNoFlags, "no-flags", false, "skip flag synchronization")
 	syncCmd.Flags().BoolVar(&syncDownloadOnly, "download-only", false, "only download from server (no flag upload)")
 	syncCmd.Flags().BoolVar(&syncUploadOnly, "upload-only", false, "only upload local changes to server")
@@ -83,22 +78,20 @@ func runSync(cmd *cobra.Command, args []string) error {
 		mode = imap.SyncUploadOnly
 	}
 
-	// Open email store for dual-write (non-fatal if it fails)
+	// Open email store (required)
 	emailDB, err := openEmailDB()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: store unavailable, skipping dual-write: %v\n", err)
-	} else {
-		defer emailDB.Close()
+		return fmt.Errorf("failed to open email store: %w", err)
 	}
+	defer emailDB.Close()
 
 	// Build sync options
 	options := &imap.SyncOptions{
-		DryRun:    syncDryRun,
-		Quiet:     syncQuiet,
-		NoNotmuch: syncNoNotmuch,
-		NoFlags:   syncNoFlags,
-		Mode:      mode,
-		Store:     emailDB,
+		DryRun:  syncDryRun,
+		Quiet:   syncQuiet,
+		NoFlags: syncNoFlags,
+		Mode:    mode,
+		Store:   emailDB,
 	}
 
 	// Determine which accounts to sync

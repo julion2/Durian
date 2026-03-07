@@ -4,7 +4,6 @@ package config
 type Config struct {
 	Settings   SettingsConfig    `toml:"settings"`
 	Sync       SyncConfig        `toml:"sync"`
-	Notmuch    NotmuchConfig     `toml:"notmuch"`
 	Contacts   ContactsConfig    `toml:"contacts"`
 	Signatures map[string]string `toml:"signatures"`
 	Accounts   []AccountConfig   `toml:"accounts"`
@@ -22,11 +21,6 @@ type SyncConfig struct {
 	AutoFetchEnabled  bool    `toml:"auto_fetch_enabled"`
 	AutoFetchInterval float64 `toml:"auto_fetch_interval"` // seconds
 	FullSyncInterval  float64 `toml:"full_sync_interval"`  // seconds
-}
-
-// NotmuchConfig contains notmuch-specific settings
-type NotmuchConfig struct {
-	DatabasePath string `toml:"database_path"`
 }
 
 // ContactsConfig contains contacts database settings

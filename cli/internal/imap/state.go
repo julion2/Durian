@@ -26,12 +26,12 @@ type MailboxState struct {
 	// Key is UID, value is the FlagState at last sync
 	MessageFlags map[uint32]FlagState `json:"message_flags,omitempty"`
 
-	// UIDToMessageID maps IMAP UIDs to notmuch Message-IDs
-	// This allows us to look up the notmuch message for flag sync
+	// UIDToMessageID maps IMAP UIDs to Message-IDs
+	// This allows us to look up the message for flag sync
 	UIDToMessageID map[uint32]string `json:"uid_to_message_id,omitempty"`
 
 	// MessageIDToUID is the reverse mapping for quick lookup
-	// Used to find UID when we only have Message-ID from notmuch
+	// Used to find UID when we only have a Message-ID
 	MessageIDToUID map[string]uint32 `json:"message_id_to_uid,omitempty"`
 
 	// Transient set for O(1) UID lookups (not serialized)
@@ -190,7 +190,7 @@ func (ms *MailboxState) SetMessageFlags(uid uint32, flags FlagState) {
 	ms.MessageFlags[uid] = flags
 }
 
-// GetMessageID returns the notmuch Message-ID for a UID
+// GetMessageID returns the Message-ID for a UID
 func (ms *MailboxState) GetMessageID(uid uint32) (string, bool) {
 	if ms.UIDToMessageID == nil {
 		return "", false
@@ -199,7 +199,7 @@ func (ms *MailboxState) GetMessageID(uid uint32) (string, bool) {
 	return id, ok
 }
 
-// SetMessageID stores the notmuch Message-ID for a UID (both directions)
+// SetMessageID stores the Message-ID for a UID (both directions)
 func (ms *MailboxState) SetMessageID(uid uint32, messageID string) {
 	if ms.UIDToMessageID == nil {
 		ms.UIDToMessageID = make(map[uint32]string)

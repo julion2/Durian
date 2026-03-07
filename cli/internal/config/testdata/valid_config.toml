@@ -9,9 +9,6 @@ auto_fetch_enabled = true
 auto_fetch_interval = 120
 full_sync_interval = 7200
 
-[notmuch]
-database_path = "~/.mail"
-
 [signatures]
 personal = "Cheers,\nTest User"
 work = "Best regards,\nTest User\nTest Company"

@@ -26,7 +26,7 @@ func (h *Handler) Tag(query string, tags string) protocol.Response {
 	return protocol.FailWithMessage(protocol.ErrBackendError, "only thread: queries are supported for tag modifications")
 }
 
-// splitTagOps separates a notmuch-style tag list ("+tag", "-tag") into add and remove slices.
+// splitTagOps separates a tag operations list ("+tag", "-tag") into add and remove slices.
 func splitTagOps(tagList []string) (add, remove []string) {
 	for _, t := range tagList {
 		if strings.HasPrefix(t, "+") {

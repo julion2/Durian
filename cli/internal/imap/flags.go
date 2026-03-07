@@ -76,12 +76,12 @@ func FlagStateFromIMAP(flags []string) FlagState {
 	return state
 }
 
-// FlagStateFromNotmuchTags creates a FlagState from notmuch tags
-// Note: notmuch uses "unread" tag (inverse of Seen)
-// Note: "deleted" notmuch tag is NOT mapped to \Deleted IMAP flag.
-// \Deleted means "permanently expunge" in IMAP, while notmuch "deleted"
+// FlagStateFromTags creates a FlagState from local tags.
+// Note: uses "unread" tag (inverse of Seen)
+// Note: "deleted" tag is NOT mapped to \Deleted IMAP flag.
+// \Deleted means "permanently expunge" in IMAP, while "deleted"
 // means "moved to trash". Uploading \Deleted would cause servers to purge messages.
-func FlagStateFromNotmuchTags(tags []string) FlagState {
+func FlagStateFromTags(tags []string) FlagState {
 	state := FlagState{
 		Seen: true, // Default to seen (no unread tag)
 	}
@@ -100,9 +100,9 @@ func FlagStateFromNotmuchTags(tags []string) FlagState {
 	return state
 }
 
-// ToNotmuchTags converts FlagState to notmuch tags
-// Returns tags to add and tags to remove
-func (f FlagState) ToNotmuchTags() (add []string, remove []string) {
+// ToTagOps converts FlagState to tag add/remove operations.
+// Returns tags to add and tags to remove.
+func (f FlagState) ToTagOps() (add []string, remove []string) {
 	if f.Seen {
 		remove = append(remove, "unread")
 	} else {
@@ -121,7 +121,7 @@ func (f FlagState) ToNotmuchTags() (add []string, remove []string) {
 		remove = append(remove, "replied")
 	}
 
-	// Note: \Deleted IMAP flag is NOT synced to notmuch "deleted" tag.
+	// Note: \Deleted IMAP flag is NOT synced to "deleted" tag.
 	// \Deleted means "permanently expunge" in IMAP, durian handles
 	// deletes via copy-to-trash + expunge in uploadFlagChanges instead.
 

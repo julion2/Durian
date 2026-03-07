@@ -97,11 +97,6 @@ func TestLoadValidConfig(t *testing.T) {
 	if cfg.Sync.AutoFetchInterval != 120 {
 		t.Errorf("Sync.AutoFetchInterval = %v, want %v", cfg.Sync.AutoFetchInterval, 120)
 	}
-	// Notmuch
-	if cfg.Notmuch.DatabasePath != "~/.mail" {
-		t.Errorf("Notmuch.DatabasePath = %q, want %q", cfg.Notmuch.DatabasePath, "~/.mail")
-	}
-
 	// Signatures
 	if len(cfg.Signatures) != 2 {
 		t.Errorf("Signatures count = %d, want 2", len(cfg.Signatures))
@@ -493,42 +488,6 @@ func TestGetSignatureNilMap(t *testing.T) {
 	_, err := cfg.GetSignature("any")
 	if err != ErrSignatureNotFound {
 		t.Errorf("GetSignature() error = %v, want %v", err, ErrSignatureNotFound)
-	}
-}
-
-func TestGetDatabasePath(t *testing.T) {
-	home, _ := os.UserHomeDir()
-
-	tests := []struct {
-		name string
-		path string
-		want string
-	}{
-		{
-			name: "empty path",
-			path: "",
-			want: "",
-		},
-		{
-			name: "tilde path",
-			path: "~/.mail",
-			want: filepath.Join(home, ".mail"),
-		},
-		{
-			name: "absolute path",
-			path: "/var/mail",
-			want: "/var/mail",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{Notmuch: NotmuchConfig{DatabasePath: tt.path}}
-			got := cfg.GetDatabasePath()
-			if got != tt.want {
-				t.Errorf("GetDatabasePath() = %q, want %q", got, tt.want)
-			}
-		})
 	}
 }
 

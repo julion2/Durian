@@ -10,9 +10,6 @@ load_remote_images = false
 auto_fetch_enabled = true
 auto_fetch_interval = 120
 
-[notmuch]
-database_path = "~/.mail"
-
 [signatures]
 default = "Best regards"
 work = "Best regards,\nYour Name\nCompany Inc."

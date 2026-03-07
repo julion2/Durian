@@ -218,10 +218,6 @@ func TestSyncOptions_Defaults(t *testing.T) {
 		t.Error("expected Quiet to be false by default")
 	}
 
-	if opts.NoNotmuch {
-		t.Error("expected NoNotmuch to be false by default")
-	}
-
 	if len(opts.Mailboxes) != 0 {
 		t.Error("expected Mailboxes to be empty by default")
 	}

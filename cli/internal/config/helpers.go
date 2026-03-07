@@ -177,15 +177,6 @@ func (c *Config) GetSignature(name string) (string, error) {
 	return sig, nil
 }
 
-// GetDatabasePath returns the expanded notmuch database path
-// Returns empty string if not configured (let notmuch use default)
-func (c *Config) GetDatabasePath() string {
-	if c.Notmuch.DatabasePath == "" {
-		return ""
-	}
-	return ExpandPath(c.Notmuch.DatabasePath)
-}
-
 // HasAccounts returns true if at least one account is configured
 func (c *Config) HasAccounts() bool {
 	return len(c.Accounts) > 0

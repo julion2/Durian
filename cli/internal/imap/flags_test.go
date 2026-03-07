@@ -54,7 +54,7 @@ func TestFlagStateFromIMAP(t *testing.T) {
 	}
 }
 
-func TestFlagStateFromNotmuchTags(t *testing.T) {
+func TestFlagStateFromTags(t *testing.T) {
 	tests := []struct {
 		name     string
 		tags     []string
@@ -94,9 +94,9 @@ func TestFlagStateFromNotmuchTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := FlagStateFromNotmuchTags(tt.tags)
+			got := FlagStateFromTags(tt.tags)
 			if got != tt.expected {
-				t.Errorf("FlagStateFromNotmuchTags() = %+v, want %+v", got, tt.expected)
+				t.Errorf("FlagStateFromTags() = %+v, want %+v", got, tt.expected)
 			}
 		})
 	}
@@ -141,7 +141,7 @@ func TestFlagStateToIMAPFlags(t *testing.T) {
 	}
 }
 
-func TestFlagStateToNotmuchTags(t *testing.T) {
+func TestFlagStateToTagOps(t *testing.T) {
 	tests := []struct {
 		name           string
 		state          FlagState
@@ -182,12 +182,12 @@ func TestFlagStateToNotmuchTags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			add, remove := tt.state.ToNotmuchTags()
+			add, remove := tt.state.ToTagOps()
 			if !slicesEqual(add, tt.expectedAdd) {
-				t.Errorf("ToNotmuchTags() add = %v, want %v", add, tt.expectedAdd)
+				t.Errorf("ToTagOps() add = %v, want %v", add, tt.expectedAdd)
 			}
 			if !slicesEqual(remove, tt.expectedRemove) {
-				t.Errorf("ToNotmuchTags() remove = %v, want %v", remove, tt.expectedRemove)
+				t.Errorf("ToTagOps() remove = %v, want %v", remove, tt.expectedRemove)
 			}
 		})
 	}

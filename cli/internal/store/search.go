@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Search finds threads matching a notmuch-style query string.
+// Search finds threads matching a search query string.
 // Results are grouped by thread and ordered by most recent message date descending.
 func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
@@ -359,7 +359,7 @@ func exprToSQL(node exprNode) (string, []interface{}, error) {
 	}
 }
 
-// parseQuery translates a notmuch-style query into a SQL WHERE clause and parameters.
+// parseQuery translates a search query into a SQL WHERE clause and parameters.
 func parseQuery(query string) (where string, params []interface{}, err error) {
 	tokens := lex(query)
 	node, err := parse(tokens)
@@ -456,7 +456,7 @@ func parseDateEnd(s string) (int64, error) {
 	return 0, fmt.Errorf("unsupported date format: %q", s)
 }
 
-// extractAccountFromPath extracts the account folder name from a notmuch path pattern.
+// extractAccountFromPath extracts the account folder name from a path pattern.
 // e.g. "habric/**" → "habric", "jsLab/INBOX" → "jsLab"
 func extractAccountFromPath(value string) string {
 	value = strings.TrimRight(value, "*")

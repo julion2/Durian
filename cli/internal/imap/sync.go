@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/mail"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	durianmail "github.com/durian-dev/durian/cli/internal/mail"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
@@ -56,11 +54,10 @@ var specialUseFolderTags = map[string]FolderTagMapping{
 type SyncOptions struct {
 	DryRun    bool
 	Quiet     bool
-	NoNotmuch bool
-	NoFlags   bool     // Skip flag synchronization
-	Mode      SyncMode // Sync direction
-	Mailboxes []string // Specific mailboxes to sync (empty = all)
-	Store     *store.DB // SQLite dual-write target (nil = disabled)
+	NoFlags   bool      // Skip flag synchronization
+	Mode      SyncMode  // Sync direction
+	Mailboxes []string  // Specific mailboxes to sync (empty = all)
+	Store     *store.DB // SQLite store (required)
 }
 
 // SyncResult contains the results of a sync operation
@@ -95,8 +92,6 @@ type MailboxResult struct {
 // Syncer handles IMAP synchronization for an account
 type Syncer struct {
 	client          *Client
-	maildir         *MaildirWriter
-	notmuch         notmuch.Client
 	state           *State
 	stateMgr        *StateManager
 	stateLock       *os.File             // File lock held during sync
@@ -106,7 +101,7 @@ type Syncer struct {
 	trashMailbox    string                // Cached trash mailbox name for delete operations
 	serverMailboxes []*goimap.MailboxInfo // Cached mailbox list for exclusion tags
 	ownsClient      bool                  // true = syncer manages connection lifecycle
-	store           *store.DB            // SQLite dual-write (nil = disabled)
+	store           *store.DB            // SQLite store for messages and tags
 	parser          *durianmail.Parser   // Email parser for store writes
 }
 
@@ -123,8 +118,6 @@ func NewSyncer(account *config.AccountConfig, options *SyncOptions) *Syncer {
 
 	return &Syncer{
 		client:     NewClient(account),
-		maildir:    NewMaildirWriter(account.GetIMAPMaildir()),
-		notmuch:    notmuch.NewClient(""),
 		stateMgr:   NewStateManager(),
 		account:    account,
 		options:    options,
@@ -149,8 +142,6 @@ func NewSyncerWithClient(account *config.AccountConfig, client *Client, options 
 
 	return &Syncer{
 		client:     client,
-		maildir:    NewMaildirWriter(account.GetIMAPMaildir()),
-		notmuch:    notmuch.NewClient(""),
 		stateMgr:   NewStateManager(),
 		account:    account,
 		options:    options,
@@ -256,24 +247,6 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 			if err := s.stateMgr.Save(s.account.Email, s.state); err != nil {
 				fmt.Fprintf(s.output, "  Warning: failed to save state: %v\n", err)
 			}
-		}
-	}
-
-	// Run notmuch new (for new messages or after deletions)
-	if !s.options.NoNotmuch && !s.options.DryRun && (result.TotalNew > 0 || result.TotalDeleted > 0) {
-		fmt.Fprintf(s.output, "  Running notmuch new...\n")
-		if err := runNotmuchNew(); err != nil {
-			fmt.Fprintf(s.output, "  Warning: notmuch new failed: %v\n", err)
-		} else {
-			// Apply folder-based tags only after successful indexing
-			// This sets inbox/trash/spam/sent/draft tags based on SPECIAL-USE folders
-			for _, mboxResult := range result.Mailboxes {
-				if mboxResult.NewMsgs > 0 {
-					s.applyFolderTags(mboxResult.Name)
-				}
-			}
-			// Apply content-based tags (e.g., calendar invitations)
-			s.applyContentTags()
 		}
 	}
 
@@ -390,14 +363,6 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	result := MailboxResult{Name: mailboxName}
 	slog.Debug("Syncing mailbox", "module", "SYNC", "mailbox", mailboxName)
 
-	// Ensure maildir exists
-	if !s.options.DryRun {
-		if err := s.maildir.EnsureMailbox(mailboxName); err != nil {
-			result.Error = fmt.Errorf("failed to create maildir: %w", err)
-			return result
-		}
-	}
-
 	// Select mailbox
 	status, err := s.client.SelectMailbox(mailboxName)
 	if err != nil {
@@ -439,23 +404,14 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		} else {
 			fmt.Fprintf(s.output, "    ✗ Removing %d deleted messages...\n", len(deletedUIDs))
 			for _, uid := range deletedUIDs {
-				// Get Message-ID from state to find the file
 				messageID, hasID := mboxState.GetMessageID(uid)
 				if hasID && messageID != "" {
 					slog.Debug("Removing deleted message", "module", "SYNC", "uid", uid, "message_id", messageID)
-					if err := s.notmuch.DeleteMessageFiles(messageID); err != nil {
-						slog.Debug("Failed to delete file", "module", "SYNC", "uid", uid, "err", err)
-					}
-					// Dual-write: delete from store (cascades tags+attachments)
-					s.storeWrite("delete-message", func() error {
-						return s.store.DeleteByMessageIDAndAccount(messageID, s.accountName())
-					})
-					// Remove folder-specific tags when message disappears from this folder
-					if strings.EqualFold(mailboxName, "INBOX") {
-						_ = s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"})
+					if err := s.store.DeleteByMessageIDAndAccount(messageID, s.accountName()); err != nil {
+						slog.Warn("store delete failed", "module", "SYNC", "uid", uid, "err", err)
 					}
 				} else {
-					slog.Debug("No Message-ID for deleted UID, skipping file deletion", "module", "SYNC", "uid", uid)
+					slog.Debug("No Message-ID for deleted UID, skipping deletion", "module", "SYNC", "uid", uid)
 				}
 				mboxState.RemoveSyncedUID(uid)
 				result.DeletedMsgs++
@@ -521,36 +477,28 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					continue
 				}
 
-				// Check if this message already exists in notmuch
-				if s.notmuch.MessageExists(messageID) {
+				// Check if this message already exists in the store
+				exists, err := s.store.MessageExistsForAccount(messageID, s.accountName())
+				if err != nil {
+					slog.Debug("Failed to check message existence", "module", "SYNC", "message_id", messageID, "err", err)
+					toDownload = append(toDownload, uid)
+					continue
+				}
+
+				if exists {
 					// Message exists! Update tags instead of downloading
 					slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
 
-					// Backfill store from local maildir if needed (e.g. after migration)
-					s.storeEnsureFromMaildir(mailboxName, messageID)
-
-					query := fmt.Sprintf("id:%s", messageID)
 					if tagMapping != nil {
-						if err := s.notmuch.ModifyTags(query, tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
+						if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
 							slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
 						}
-						// Dual-write: mirror dedup tag additions only.
-						// Don't mirror RemoveTags (e.g. inbox removal) because notmuch
-						// restores those via applyFolderTags post-indexing but the store
-						// has no equivalent restore step.
-						s.storeWrite("dedup-tags", func() error {
-							return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), tagMapping.AddTags, nil)
-						})
 					} else if !strings.EqualFold(mailboxName, "INBOX") {
 						// Custom folder with no special-use mapping — remove inbox tag
 						// since the message was moved out of INBOX
-						if err := s.notmuch.ModifyTags(query, nil, []string{"inbox"}); err != nil {
+						if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"}); err != nil {
 							slog.Debug("Failed to remove inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
 						}
-						// Note: NOT mirrored to store. The notmuch path restores inbox
-						// via applyFolderTags post-indexing for messages still in INBOX.
-						// The store has no equivalent restore, so the stale-inbox-cleanup
-						// handles removal correctly based on server-side presence.
 					}
 
 					// Mark as synced (we don't need to download)
@@ -631,16 +579,12 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				continue
 			}
 
-			// Pass the already-read body to WriteMessage
-			_, err := s.maildir.WriteMessage(mailboxName, msg, msgBody)
-			if err != nil {
-				fmt.Fprintf(s.output, "    Warning: failed to write message %d: %v\n", msg.Uid, err)
+			// Insert into SQLite store with eager tags
+			if err := s.storeInsertMessage(mailboxName, msg, msgBody); err != nil {
+				fmt.Fprintf(s.output, "    Warning: failed to store message %d: %v\n", msg.Uid, err)
 				result.SkippedMsgs++
 				continue
 			}
-
-			// Dual-write: insert into SQLite store with eager tags
-			s.storeInsertMessage(mailboxName, msg, msgBody)
 
 			// Mark as synced in state (no more .uid marker files needed)
 			mboxState.AddSyncedUID(msg.Uid)
@@ -662,7 +606,6 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 	if result.NewMsgs > 0 {
 		fmt.Fprintf(s.output, "    ✓ %d new messages\n", result.NewMsgs)
-		// Folder tags (inbox/trash/spam/etc.) are applied after notmuch new in the main Sync() loop
 	}
 
 	// Flag synchronization (after message download)
@@ -675,14 +618,6 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	}
 
 	return result
-}
-
-// runNotmuchNew runs notmuch new to index new messages
-func runNotmuchNew() error {
-	cmd := exec.Command("notmuch", "new")
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 // isConnectionError checks if an error indicates a lost connection
@@ -732,44 +667,6 @@ func (s *Syncer) ensureMessageIDMapping(mailboxName string, mboxState *MailboxSt
 	return nil
 }
 
-// buildNotmuchFolderName converts IMAP mailbox name to notmuch folder path
-// Example: Account maildir "~/.mail/habric" + mailbox "INBOX" -> "habric/INBOX"
-func (s *Syncer) buildNotmuchFolderName(mailboxName string) string {
-	maildirBase := s.account.GetIMAPMaildir()
-	// Get the account folder name (last part of maildir path)
-	accountFolder := filepath.Base(maildirBase)
-	// Combine: accountFolder/mailboxName
-	return filepath.Join(accountFolder, mailboxName)
-}
-
-// applyFolderTags applies folder-based tags to all messages in a mailbox
-// Uses SPECIAL-USE attributes to determine which tags to add/remove
-// Called after notmuch new to tag newly indexed messages
-func (s *Syncer) applyFolderTags(mailboxName string) {
-	mapping := s.getFolderTagMapping(mailboxName)
-	if mapping == nil || (len(mapping.AddTags) == 0 && len(mapping.RemoveTags) == 0) {
-		return
-	}
-
-	// Build notmuch folder query
-	folderPath := s.buildNotmuchFolderName(mailboxName)
-	query := fmt.Sprintf("folder:\"%s\"", folderPath)
-
-	if err := s.notmuch.ModifyTags(query, mapping.AddTags, mapping.RemoveTags); err != nil {
-		slog.Debug("Failed to apply folder tags", "module", "SYNC", "mailbox", mailboxName, "err", err)
-	} else {
-		slog.Debug("Applied folder tags", "module", "SYNC", "mailbox", mailboxName, "add", mapping.AddTags, "remove", mapping.RemoveTags)
-	}
-}
-
-// applyContentTags tags messages based on content type (e.g., calendar invitations).
-// This is idempotent: messages already tagged are excluded by the query.
-func (s *Syncer) applyContentTags() {
-	if err := s.notmuch.ModifyTags("mimetype:text/calendar AND NOT tag:cal", []string{"cal"}, nil); err != nil {
-		slog.Debug("Failed to tag calendar messages", "module", "SYNC", "err", err)
-	}
-}
-
 // getFolderTagMapping returns the tag mapping for a mailbox based on SPECIAL-USE attributes
 // Returns tags to add and remove when a mail is found in this folder
 // Used for both new downloads and deduplication (updating tags for existing mails)
@@ -803,10 +700,10 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 	return nil
 }
 
-// syncFlags synchronizes flags between local notmuch and IMAP server
+// syncFlags synchronizes flags between local store and IMAP server.
 // Returns (flagsUploaded, flagsDownloaded)
 //
-// This now works for ALL messages on the server, not just those downloaded by durian.
+// This works for ALL messages on the server, not just those downloaded by durian.
 // It builds a UID<->Message-ID mapping on first run (cached in state).
 func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs []uint32) (int, int) {
 	var uploaded, downloaded, flagErrors int
@@ -831,22 +728,10 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 	// 3. Get all local messages with tags in a single batch query
 	slog.Debug("Starting flag sync", "module", "SYNC", "mailbox", mailboxName, "server_uids", len(allUIDs), "mapped_uids", mboxState.GetMappedUIDCount())
 
-	var localMessages map[string][]string
-	if s.store != nil {
-		// Store-primary: read tags from SQLite (faster, no subprocess)
-		localMessages, err = s.store.GetAllMessagesWithTags(mailboxName, s.accountName())
-		if err != nil {
-			slog.Debug("Failed to get messages from store, falling back to notmuch", "module", "SYNC", "err", err)
-		}
-	}
-	if localMessages == nil {
-		// Fallback: read from notmuch
-		folderName := s.buildNotmuchFolderName(mailboxName)
-		localMessages, err = s.notmuch.GetAllMessagesWithTags(folderName)
-		if err != nil {
-			slog.Debug("Failed to get local messages", "module", "SYNC", "err", err)
-			localMessages = make(map[string][]string)
-		}
+	localMessages, err := s.store.GetAllMessagesWithTags(mailboxName, s.accountName())
+	if err != nil {
+		slog.Debug("Failed to get messages from store", "module", "SYNC", "err", err)
+		localMessages = make(map[string][]string)
 	}
 	slog.Debug("Local messages in folder", "module", "SYNC", "count", len(localMessages))
 
@@ -858,10 +743,8 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			continue // Can't sync without Message-ID
 		}
 
-		// Backfill UID for messages originally synced from Maildir (uid=0)
-		if s.store != nil {
-			_ = s.store.BackfillUID(messageID, s.accountName(), uid, mailboxName)
-		}
+		// Backfill UID for messages originally synced with uid=0
+		_ = s.store.BackfillUID(messageID, s.accountName(), uid, mailboxName)
 
 		// Check if message exists locally and get its tags
 		tags, existsLocally := localMessages[messageID]
@@ -877,7 +760,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		serverState := FlagStateFromIMAP(serverFlagList)
 
 		// Convert local tags to flag state
-		localState := FlagStateFromNotmuchTags(tags)
+		localState := FlagStateFromTags(tags)
 
 		checkedCount++
 
@@ -970,15 +853,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 				}
 			}
 			if hasInbox && !serverMessageIDs[messageID] {
-				if err := s.notmuch.ModifyTags(fmt.Sprintf("id:%s", messageID), nil, []string{"inbox"}); err != nil {
+				if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"}); err != nil {
 					slog.Debug("Failed to remove stale inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
 				} else {
 					cleaned++
 				}
-				// Dual-write: mirror stale inbox cleanup
-				s.storeWrite("stale-inbox-cleanup", func() error {
-					return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"})
-				})
 			}
 		}
 		if cleaned > 0 {
@@ -1067,30 +946,21 @@ func (s *Syncer) uploadFlagChanges(uid uint32, local, server FlagState) error {
 	return s.client.RemoveFlags(uid, toRemove)
 }
 
-// downloadFlagChanges downloads flag changes to notmuch
+// downloadFlagChanges downloads flag changes to store
 func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState) error {
-	// Only update if there are actual changes
 	if current.Equal(target) {
 		return nil
 	}
 
-	addTags, removeTags := target.ToNotmuchTags()
+	addTags, removeTags := target.ToTagOps()
 
 	if s.options.DryRun {
 		slog.Debug("[dry-run] Would update tags", "module", "SYNC", "message_id", messageID, "add", addTags, "remove", removeTags)
 		return nil
 	}
 
-	// Store-primary: write tags to store first
-	if s.store != nil {
-		if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, removeTags); err != nil {
-			slog.Warn("store flag tag write failed", "module", "SYNC", "message_id", messageID, "err", err)
-		}
-	}
-
-	// Mirror to notmuch (compat)
-	if err := s.notmuch.ModifyTags("id:"+messageID, addTags, removeTags); err != nil {
-		slog.Warn("notmuch flag tag mirror failed", "module", "SYNC", "message_id", messageID, "err", err)
+	if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, removeTags); err != nil {
+		return fmt.Errorf("store flag tag write: %w", err)
 	}
 	return nil
 }
@@ -1100,250 +970,96 @@ func (s *Syncer) accountName() string {
 	return filepath.Base(s.account.GetIMAPMaildir())
 }
 
-// storeWrite executes a store write operation.
-// Store failures are logged but not fatal.
-func (s *Syncer) storeWrite(op string, fn func() error) {
-	if s.store == nil {
-		return
-	}
-	if err := fn(); err != nil {
-		slog.Warn("store dual-write failed", "module", "SYNC", "op", op, "err", err)
-	}
-}
-
 // storeInsertMessage parses a raw email and inserts it into the SQLite store.
 // Eagerly applies folder and content tags at insert time.
-func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message, msgBody []byte) {
-	s.storeWrite("insert-message", func() error {
-		parsed, err := mail.ReadMessage(bytes.NewReader(msgBody))
-		if err != nil {
-			return fmt.Errorf("parse message: %w", err)
-		}
-
-		content := s.parser.Parse(parsed)
-		messageID := strings.Trim(content.MessageID, "<>")
-		if messageID == "" {
-			return nil // Can't store without Message-ID
-		}
-
-		var dateUnix int64
-		if t, err := mail.ParseDate(content.Date); err == nil {
-			dateUnix = t.Unix()
-		}
-
-		storeMsg := &store.Message{
-			MessageID:   messageID,
-			Subject:     content.Subject,
-			FromAddr:    content.From,
-			ToAddrs:     content.To,
-			CCAddrs:     content.CC,
-			InReplyTo:   content.InReplyTo,
-			Refs:        content.References,
-			BodyText:    content.Body,
-			BodyHTML:    content.HTML,
-			Date:        dateUnix,
-			CreatedAt:   time.Now().Unix(),
-			Mailbox:     mailboxName,
-			Flags:       strings.Join(imapMsg.Flags, ","),
-			UID:         imapMsg.Uid,
-			Size:        len(msgBody),
-			FetchedBody: true,
-			Account:     s.accountName(),
-		}
-
-		if err := s.store.InsertMessage(storeMsg); err != nil {
-			return fmt.Errorf("insert message: %w", err)
-		}
-
-		// Clear old attachments on upsert, then re-insert
-		_ = s.store.DeleteAttachmentsByMessageDBID(storeMsg.ID)
-		for i, att := range content.Attachments {
-			partID := att.PartID
-			if partID == 0 {
-				partID = i + 1
-			}
-			if err := s.store.InsertAttachment(&store.Attachment{
-				MessageDBID: storeMsg.ID,
-				PartID:      partID,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				Size:        att.Size,
-				Disposition: att.Disposition,
-				ContentID:   att.ContentID,
-			}); err != nil {
-				return fmt.Errorf("insert attachment %d: %w", i, err)
-			}
-		}
-
-		// Eagerly apply folder tags (inbox, sent, trash, etc.)
-		mapping := s.getFolderTagMapping(mailboxName)
-		if mapping != nil {
-			for _, tag := range mapping.AddTags {
-				if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
-					return fmt.Errorf("add folder tag %q: %w", tag, err)
-				}
-			}
-		}
-
-		// Apply flag-based tags (unread, flagged, replied)
-		flagState := FlagStateFromIMAP(imapMsg.Flags)
-		flagAdd, _ := flagState.ToNotmuchTags()
-		for _, tag := range flagAdd {
-			if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
-				return fmt.Errorf("add flag tag %q: %w", tag, err)
-			}
-		}
-
-		// Eagerly detect calendar content
-		if bytes.Contains(msgBody, []byte("text/calendar")) {
-			if err := s.store.AddTag(storeMsg.ID, "cal"); err != nil {
-				return fmt.Errorf("add cal tag: %w", err)
-			}
-		}
-
-		return nil
-	})
-}
-
-// storeEnsureFromMaildir reads a message from the local maildir (via notmuch) and
-// inserts it into the store if it doesn't already exist for this account.
-// Used during dedup to backfill the store after migration without re-downloading from IMAP.
-func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
-	if s.store == nil {
-		return
-	}
-
-	// Read from local maildir (upsert handles existing rows — updates flags/body)
-	filenames := s.notmuch.GetFilenamesByMessageID(messageID)
-	if len(filenames) == 0 {
-		return
-	}
-
-	msgBody, err := os.ReadFile(filenames[0])
+func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message, msgBody []byte) error {
+	parsed, err := mail.ReadMessage(bytes.NewReader(msgBody))
 	if err != nil {
-		slog.Debug("Failed to read maildir file for store backfill", "module", "SYNC", "message_id", messageID, "err", err)
-		return
+		return fmt.Errorf("parse message: %w", err)
 	}
 
-	// Parse maildir flags before storeWrite closure
-	maildirFlags := flagStateFromMaildir(filenames[0])
-
-	s.storeWrite("backfill-from-maildir", func() error {
-		parsed, err := mail.ReadMessage(bytes.NewReader(msgBody))
-		if err != nil {
-			return fmt.Errorf("parse message: %w", err)
-		}
-
-		content := s.parser.Parse(parsed)
-		parsedID := strings.Trim(content.MessageID, "<>")
-		if parsedID == "" {
-			return nil
-		}
-
-		var dateUnix int64
-		if t, err := mail.ParseDate(content.Date); err == nil {
-			dateUnix = t.Unix()
-		}
-
-		// Build IMAP-style flags string from maildir filename
-		var imapFlags []string
-		if maildirFlags.Seen {
-			imapFlags = append(imapFlags, `\Seen`)
-		}
-		if maildirFlags.Flagged {
-			imapFlags = append(imapFlags, `\Flagged`)
-		}
-		if maildirFlags.Answered {
-			imapFlags = append(imapFlags, `\Answered`)
-		}
-
-		storeMsg := &store.Message{
-			MessageID:   parsedID,
-			Subject:     content.Subject,
-			FromAddr:    content.From,
-			ToAddrs:     content.To,
-			CCAddrs:     content.CC,
-			InReplyTo:   content.InReplyTo,
-			Refs:        content.References,
-			BodyText:    content.Body,
-			BodyHTML:    content.HTML,
-			Date:        dateUnix,
-			CreatedAt:   time.Now().Unix(),
-			Mailbox:     mailboxName,
-			Flags:       strings.Join(imapFlags, ","),
-			Size:        len(msgBody),
-			FetchedBody: true,
-			Account:     s.accountName(),
-		}
-
-		if err := s.store.InsertMessage(storeMsg); err != nil {
-			return fmt.Errorf("insert message: %w", err)
-		}
-
-		// Clear old attachments on upsert, then re-insert
-		_ = s.store.DeleteAttachmentsByMessageDBID(storeMsg.ID)
-		for i, att := range content.Attachments {
-			partID := att.PartID
-			if partID == 0 {
-				partID = i + 1
-			}
-			if err := s.store.InsertAttachment(&store.Attachment{
-				MessageDBID: storeMsg.ID,
-				PartID:      partID,
-				Filename:    att.Filename,
-				ContentType: att.ContentType,
-				Size:        att.Size,
-				Disposition: att.Disposition,
-				ContentID:   att.ContentID,
-			}); err != nil {
-				return fmt.Errorf("insert attachment %d: %w", i, err)
-			}
-		}
-
-		// Apply folder tags
-		mapping := s.getFolderTagMapping(mailboxName)
-		if mapping != nil {
-			for _, tag := range mapping.AddTags {
-				_ = s.store.AddTag(storeMsg.ID, tag)
-			}
-		}
-
-		// Apply flag-based tags from maildir filename
-		flagAdd, _ := maildirFlags.ToNotmuchTags()
-		for _, tag := range flagAdd {
-			_ = s.store.AddTag(storeMsg.ID, tag)
-		}
-
-		// Apply calendar tag
-		if bytes.Contains(msgBody, []byte("text/calendar")) {
-			_ = s.store.AddTag(storeMsg.ID, "cal")
-		}
-
-		return nil
-	})
-}
-
-// flagStateFromMaildir extracts IMAP flag state from a maildir filename.
-// Maildir info suffix format: ":2,FLAGS" where FLAGS are single chars:
-// S=Seen, F=Flagged, R=Replied, D=Draft, T=Trashed.
-func flagStateFromMaildir(filename string) FlagState {
-	state := FlagState{}
-	idx := strings.LastIndex(filename, ":2,")
-	if idx < 0 {
-		return state
+	content := s.parser.Parse(parsed)
+	messageID := strings.Trim(content.MessageID, "<>")
+	if messageID == "" {
+		return nil // Can't store without Message-ID
 	}
-	flags := filename[idx+3:]
-	for _, c := range flags {
-		switch c {
-		case 'S':
-			state.Seen = true
-		case 'F':
-			state.Flagged = true
-		case 'R':
-			state.Answered = true
+
+	var dateUnix int64
+	if t, err := mail.ParseDate(content.Date); err == nil {
+		dateUnix = t.Unix()
+	}
+
+	storeMsg := &store.Message{
+		MessageID:   messageID,
+		Subject:     content.Subject,
+		FromAddr:    content.From,
+		ToAddrs:     content.To,
+		CCAddrs:     content.CC,
+		InReplyTo:   content.InReplyTo,
+		Refs:        content.References,
+		BodyText:    content.Body,
+		BodyHTML:    content.HTML,
+		Date:        dateUnix,
+		CreatedAt:   time.Now().Unix(),
+		Mailbox:     mailboxName,
+		Flags:       strings.Join(imapMsg.Flags, ","),
+		UID:         imapMsg.Uid,
+		Size:        len(msgBody),
+		FetchedBody: true,
+		Account:     s.accountName(),
+	}
+
+	if err := s.store.InsertMessage(storeMsg); err != nil {
+		return fmt.Errorf("insert message: %w", err)
+	}
+
+	// Clear old attachments on upsert, then re-insert
+	_ = s.store.DeleteAttachmentsByMessageDBID(storeMsg.ID)
+	for i, att := range content.Attachments {
+		partID := att.PartID
+		if partID == 0 {
+			partID = i + 1
+		}
+		if err := s.store.InsertAttachment(&store.Attachment{
+			MessageDBID: storeMsg.ID,
+			PartID:      partID,
+			Filename:    att.Filename,
+			ContentType: att.ContentType,
+			Size:        att.Size,
+			Disposition: att.Disposition,
+			ContentID:   att.ContentID,
+		}); err != nil {
+			return fmt.Errorf("insert attachment %d: %w", i, err)
 		}
 	}
-	return state
+
+	// Eagerly apply folder tags (inbox, sent, trash, etc.)
+	mapping := s.getFolderTagMapping(mailboxName)
+	if mapping != nil {
+		for _, tag := range mapping.AddTags {
+			if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
+				return fmt.Errorf("add folder tag %q: %w", tag, err)
+			}
+		}
+	}
+
+	// Apply flag-based tags (unread, flagged, replied)
+	flagState := FlagStateFromIMAP(imapMsg.Flags)
+	flagAdd, _ := flagState.ToTagOps()
+	for _, tag := range flagAdd {
+		if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
+			return fmt.Errorf("add flag tag %q: %w", tag, err)
+		}
+	}
+
+	// Eagerly detect calendar content
+	if bytes.Contains(msgBody, []byte("text/calendar")) {
+		if err := s.store.AddTag(storeMsg.ID, "cal"); err != nil {
+			return fmt.Errorf("add cal tag: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // extractMessageIDFromBody extracts Message-ID from raw email body using net/mail
