@@ -57,19 +57,13 @@ func (d *DB) insertMessageTx(tx *sql.Tx, msg *Message) error {
 			from_addr, to_addrs, cc_addrs, date, created_at,
 			body_text, body_html, mailbox, flags, uid, size, fetched_body, account
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(message_id) DO UPDATE SET
+		ON CONFLICT(message_id, account) DO UPDATE SET
 			body_text = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_text ELSE messages.body_text END,
 			body_html = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_html ELSE messages.body_html END,
 			fetched_body = MAX(messages.fetched_body, excluded.fetched_body),
-			flags = excluded.flags,
-			account = CASE
-				WHEN messages.account = '' THEN excluded.account
-				WHEN excluded.account = '' THEN messages.account
-				WHEN instr(messages.account, excluded.account) > 0 THEN messages.account
-				ELSE messages.account || ',' || excluded.account
-			END
+			flags = excluded.flags
 		RETURNING id`,
 		msg.MessageID, threadID, msg.InReplyTo, msg.Refs, msg.Subject,
 		msg.FromAddr, msg.ToAddrs, msg.CCAddrs, msg.Date, msg.CreatedAt,
@@ -106,7 +100,7 @@ func (d *DB) GetByMessageID(messageID string) (*Message, error) {
 		SELECT id, message_id, thread_id, in_reply_to, refs, subject,
 		       from_addr, to_addrs, cc_addrs, date, created_at,
 		       body_text, body_html, mailbox, flags, uid, size, fetched_body, account
-		FROM messages WHERE message_id = ?`, messageID,
+		FROM messages WHERE message_id = ? LIMIT 1`, messageID,
 	).Scan(
 		&msg.ID, &msg.MessageID, &msg.ThreadID, &msg.InReplyTo, &msg.Refs, &msg.Subject,
 		&msg.FromAddr, &msg.ToAddrs, &msg.CCAddrs, &msg.Date, &msg.CreatedAt,
@@ -123,6 +117,7 @@ func (d *DB) GetByMessageID(messageID string) (*Message, error) {
 }
 
 // GetByThread retrieves all messages in a thread, ordered by date ascending.
+// When a message exists in multiple accounts, only the first row is kept.
 func (d *DB) GetByThread(threadID string) ([]*Message, error) {
 	rows, err := d.db.Query(`
 		SELECT id, message_id, thread_id, in_reply_to, refs, subject,
@@ -135,7 +130,23 @@ func (d *DB) GetByThread(threadID string) ([]*Message, error) {
 	}
 	defer rows.Close()
 
-	return scanMessages(rows)
+	all, err := scanMessages(rows)
+	if err != nil {
+		return nil, err
+	}
+
+	// Dedup: same message_id across accounts appears once in thread view.
+	// Arbitrary account is fine — tags are fetched separately and content is identical.
+	seen := make(map[string]bool, len(all))
+	deduped := make([]*Message, 0, len(all))
+	for _, msg := range all {
+		if seen[msg.MessageID] {
+			continue
+		}
+		seen[msg.MessageID] = true
+		deduped = append(deduped, msg)
+	}
+	return deduped, nil
 }
 
 // MessageExists checks if a message with the given Message-ID exists.
@@ -148,10 +159,22 @@ func (d *DB) MessageExists(messageID string) (bool, error) {
 	return count > 0, nil
 }
 
+// MessageExistsForAccount checks if a message exists for a specific account.
+func (d *DB) MessageExistsForAccount(messageID, account string) (bool, error) {
+	var count int
+	err := d.db.QueryRow(
+		"SELECT COUNT(*) FROM messages WHERE message_id = ? AND account = ?",
+		messageID, account).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check message exists for account: %w", err)
+	}
+	return count > 0, nil
+}
+
 // GetAllMessageIDSet returns a set of all Message-IDs in the store.
 // Used for efficient bulk existence checks during backfill.
 func (d *DB) GetAllMessageIDSet() (map[string]bool, error) {
-	rows, err := d.db.Query("SELECT message_id FROM messages")
+	rows, err := d.db.Query("SELECT DISTINCT message_id FROM messages")
 	if err != nil {
 		return nil, fmt.Errorf("get all message ids: %w", err)
 	}
@@ -177,6 +200,21 @@ func (d *DB) DeleteByMessageID(messageID string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("message not found: %s", messageID)
+	}
+	return nil
+}
+
+// DeleteByMessageIDAndAccount deletes a message by its Message-ID and account.
+func (d *DB) DeleteByMessageIDAndAccount(messageID, account string) error {
+	result, err := d.db.Exec(
+		"DELETE FROM messages WHERE message_id = ? AND account = ?",
+		messageID, account)
+	if err != nil {
+		return fmt.Errorf("delete message: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("message not found: %s (account %s)", messageID, account)
 	}
 	return nil
 }

@@ -20,6 +20,7 @@ func TestInsertAndGetMessage(t *testing.T) {
 		BodyHTML:  "<p>This is a test</p>",
 		Mailbox:   "INBOX",
 		FetchedBody: true,
+		Account:  "work",
 	})
 	if err != nil {
 		t.Fatalf("insert: %v", err)
@@ -256,5 +257,96 @@ func TestInsertBatch(t *testing.T) {
 		if got == nil {
 			t.Errorf("message %q not found after batch", m.MessageID)
 		}
+	}
+}
+
+func TestUpsert_CrossAccount(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	// Same message_id, two different accounts → two rows
+	err := db.InsertMessage(&Message{
+		MessageID: "cross@x", Subject: "Cross",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "work",
+	})
+	if err != nil {
+		t.Fatalf("insert work: %v", err)
+	}
+
+	err = db.InsertMessage(&Message{
+		MessageID: "cross@x", Subject: "Cross",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "personal",
+	})
+	if err != nil {
+		t.Fatalf("insert personal: %v", err)
+	}
+
+	// Count rows — should be 2
+	var count int
+	db.db.QueryRow("SELECT COUNT(*) FROM messages WHERE message_id = ?", "cross@x").Scan(&count)
+	if count != 2 {
+		t.Errorf("got %d rows, want 2 (one per account)", count)
+	}
+
+	// GetByMessageID returns one (LIMIT 1)
+	msg, _ := db.GetByMessageID("cross@x")
+	if msg == nil {
+		t.Fatal("GetByMessageID returned nil")
+	}
+}
+
+func TestGetByThread_Dedup(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	// Same message in two accounts → same thread
+	db.InsertMessage(&Message{
+		MessageID: "td-root@x", Subject: "Thread dedup",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "td-root@x", Subject: "Thread dedup",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "personal",
+	})
+
+	root, _ := db.GetByMessageID("td-root@x")
+	msgs, err := db.GetByThread(root.ThreadID)
+	if err != nil {
+		t.Fatalf("get by thread: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("got %d messages, want 1 (dedup across accounts)", len(msgs))
+	}
+}
+
+func TestDeleteByMessageIDAndAccount(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	db.InsertMessage(&Message{
+		MessageID: "del-acct@x", Subject: "Del",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "del-acct@x", Subject: "Del",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "personal",
+	})
+
+	err := db.DeleteByMessageIDAndAccount("del-acct@x", "work")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	// Should still find personal row
+	var count int
+	db.db.QueryRow("SELECT COUNT(*) FROM messages WHERE message_id = ?", "del-acct@x").Scan(&count)
+	if count != 1 {
+		t.Errorf("got %d rows after delete, want 1", count)
 	}
 }

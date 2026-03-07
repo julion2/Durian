@@ -73,11 +73,11 @@ func (d *DB) Init() error {
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			version INTEGER NOT NULL
 		)`,
-		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 2)`,
+		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 3)`,
 
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			message_id TEXT UNIQUE NOT NULL,
+			message_id TEXT NOT NULL,
 			thread_id TEXT NOT NULL,
 			in_reply_to TEXT,
 			refs TEXT,
@@ -94,7 +94,8 @@ func (d *DB) Init() error {
 			uid INTEGER DEFAULT 0,
 			size INTEGER DEFAULT 0,
 			fetched_body INTEGER DEFAULT 0,
-			account TEXT DEFAULT ''
+			account TEXT DEFAULT '',
+			UNIQUE(message_id, account)
 		)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id)`,
@@ -167,9 +168,27 @@ func (d *DB) Init() error {
 		return err
 	}
 
-	// Indexes that depend on columns added by migrations run after migrate().
+	// Indexes and triggers that may have been dropped by migrations.
 	postMigration := []string{
 		`CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_mailbox ON messages(mailbox)`,
+		`CREATE INDEX IF NOT EXISTS idx_messages_from_addr ON messages(from_addr)`,
+		`CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+			INSERT INTO messages_fts(rowid, subject, from_addr, to_addrs, body_text)
+			VALUES (new.id, new.subject, new.from_addr, new.to_addrs, new.body_text);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, subject, from_addr, to_addrs, body_text)
+			VALUES ('delete', old.id, old.subject, old.from_addr, old.to_addrs, old.body_text);
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+			INSERT INTO messages_fts(messages_fts, rowid, subject, from_addr, to_addrs, body_text)
+			VALUES ('delete', old.id, old.subject, old.from_addr, old.to_addrs, old.body_text);
+			INSERT INTO messages_fts(rowid, subject, from_addr, to_addrs, body_text)
+			VALUES (new.id, new.subject, new.from_addr, new.to_addrs, new.body_text);
+		END`,
 	}
 	for _, stmt := range postMigration {
 		if _, err := d.db.Exec(stmt); err != nil {
@@ -203,6 +222,51 @@ func (d *DB) migrate() error {
 		for _, stmt := range migrations {
 			if _, err := d.db.Exec(stmt); err != nil {
 				return fmt.Errorf("migrate v1→v2: %w", err)
+			}
+		}
+		version = 2
+	}
+
+	if version < 3 {
+		// Migrate UNIQUE(message_id) → UNIQUE(message_id, account).
+		// Data is truncated — user must re-sync after upgrade.
+		migrations := []string{
+			`CREATE TABLE messages_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				message_id TEXT NOT NULL,
+				thread_id TEXT NOT NULL,
+				in_reply_to TEXT,
+				refs TEXT,
+				subject TEXT,
+				from_addr TEXT,
+				to_addrs TEXT,
+				cc_addrs TEXT,
+				date INTEGER,
+				created_at INTEGER NOT NULL,
+				body_text TEXT,
+				body_html TEXT,
+				mailbox TEXT,
+				flags TEXT,
+				uid INTEGER DEFAULT 0,
+				size INTEGER DEFAULT 0,
+				fetched_body INTEGER DEFAULT 0,
+				account TEXT DEFAULT '',
+				UNIQUE(message_id, account)
+			)`,
+			"DROP TABLE IF EXISTS messages",
+			"ALTER TABLE messages_new RENAME TO messages",
+			// Rebuild FTS5 (old content table was dropped)
+			"DROP TABLE IF EXISTS messages_fts",
+			`CREATE VIRTUAL TABLE messages_fts USING fts5(
+				subject, from_addr, to_addrs, body_text,
+				content='messages',
+				content_rowid='id'
+			)`,
+			"UPDATE schema_version SET version = 3 WHERE rowid = 1",
+		}
+		for _, stmt := range migrations {
+			if _, err := d.db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate v2→v3: %w", err)
 			}
 		}
 	}

@@ -46,8 +46,7 @@ func (d *DB) GetAttachmentsByMessageID(messageID string) ([]Attachment, error) {
 	return d.queryAttachments(`
 		SELECT a.id, a.message_db_id, a.part_id, a.filename, a.content_type, a.size, a.disposition, a.content_id
 		FROM attachments a
-		JOIN messages m ON m.id = a.message_db_id
-		WHERE m.message_id = ?
+		WHERE a.message_db_id = (SELECT id FROM messages WHERE message_id = ? LIMIT 1)
 		ORDER BY a.part_id`, messageID)
 }
 

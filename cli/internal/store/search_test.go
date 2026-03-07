@@ -237,10 +237,14 @@ func TestSearch_AccountFilter(t *testing.T) {
 		MessageID: "acc2@x", Subject: "From personal", FromAddr: "b@x",
 		Date: now - 100, CreatedAt: now, FetchedBody: true, Account: "personal",
 	})
-	// Cross-account message (dedup): belongs to both
+	// Cross-account message: one row per account
 	db.InsertMessage(&Message{
 		MessageID: "acc3@x", Subject: "Cross account", FromAddr: "c@x",
-		Date: now - 200, CreatedAt: now, FetchedBody: true, Account: "work,personal",
+		Date: now - 200, CreatedAt: now, FetchedBody: true, Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "acc3@x", Subject: "Cross account", FromAddr: "c@x",
+		Date: now - 200, CreatedAt: now, FetchedBody: true, Account: "personal",
 	})
 
 	// path:work/** should match acc1 and acc3

@@ -224,8 +224,8 @@ func fieldToSQL(tok token) (string, []interface{}, error) {
 	case "path":
 		account := extractAccountFromPath(tok.value)
 		if account != "" {
-			clause = "m.account LIKE ?"
-			params = []interface{}{"%" + account + "%"}
+			clause = "m.account = ?"
+			params = []interface{}{account}
 		} else {
 			return "1=1", nil, nil
 		}

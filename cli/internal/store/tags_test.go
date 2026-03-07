@@ -265,3 +265,58 @@ func TestGetAllMessagesWithTags(t *testing.T) {
 		t.Errorf("mwt2 tags = %v, want 2", result["mwt2@x"])
 	}
 }
+
+func TestModifyTagsByMessageIDAndAccount(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	// Same message, two accounts with different tags
+	db.InsertMessage(&Message{
+		MessageID: "acct-tag@x", Subject: "Acct tag test",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "acct-tag@x", Subject: "Acct tag test",
+		FromAddr: "a@x", Date: now, CreatedAt: now, FetchedBody: true,
+		Account: "personal",
+	})
+
+	// Add "sent" to work account only
+	err := db.ModifyTagsByMessageIDAndAccount("acct-tag@x", "work", []string{"sent"}, nil)
+	if err != nil {
+		t.Fatalf("modify work tags: %v", err)
+	}
+
+	// Add "inbox" to personal account only
+	err = db.ModifyTagsByMessageIDAndAccount("acct-tag@x", "personal", []string{"inbox"}, nil)
+	if err != nil {
+		t.Fatalf("modify personal tags: %v", err)
+	}
+
+	// Verify work row has "sent" but not "inbox"
+	var workID int64
+	db.db.QueryRow("SELECT id FROM messages WHERE message_id = ? AND account = ?", "acct-tag@x", "work").Scan(&workID)
+	workTags, _ := db.GetMessageTags(workID)
+	if len(workTags) != 1 || workTags[0] != "sent" {
+		t.Errorf("work tags = %v, want [sent]", workTags)
+	}
+
+	// Verify personal row has "inbox" but not "sent"
+	var persID int64
+	db.db.QueryRow("SELECT id FROM messages WHERE message_id = ? AND account = ?", "acct-tag@x", "personal").Scan(&persID)
+	persTags, _ := db.GetMessageTags(persID)
+	if len(persTags) != 1 || persTags[0] != "inbox" {
+		t.Errorf("personal tags = %v, want [inbox]", persTags)
+	}
+}
+
+func TestModifyTagsByMessageIDAndAccount_NotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	// Should be a no-op
+	err := db.ModifyTagsByMessageIDAndAccount("nonexistent@x", "work", []string{"inbox"}, nil)
+	if err != nil {
+		t.Fatalf("expected no-op, got error: %v", err)
+	}
+}

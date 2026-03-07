@@ -152,6 +152,42 @@ func (d *DB) ModifyTagsByMessageID(messageID string, addTags, removeTags []strin
 	return tx.Commit()
 }
 
+// ModifyTagsByMessageIDAndAccount adds and removes tags for a message scoped
+// to a specific account. No-op if the (message_id, account) pair is not in the store.
+func (d *DB) ModifyTagsByMessageIDAndAccount(messageID, account string, addTags, removeTags []string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var dbID int64
+	err = tx.QueryRow(
+		"SELECT id FROM messages WHERE message_id = ? AND account = ?",
+		messageID, account).Scan(&dbID)
+	if err != nil {
+		return nil // message/account pair not in store — no-op
+	}
+
+	for _, tag := range addTags {
+		if _, err := tx.Exec(
+			"INSERT OR IGNORE INTO tags (message_id, tag) VALUES (?, ?)",
+			dbID, tag); err != nil {
+			return fmt.Errorf("add tag %q: %w", tag, err)
+		}
+	}
+
+	for _, tag := range removeTags {
+		if _, err := tx.Exec(
+			"DELETE FROM tags WHERE message_id = ? AND tag = ?",
+			dbID, tag); err != nil {
+			return fmt.Errorf("remove tag %q: %w", tag, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // GetTagsByMessageID returns all tags for a message identified by its
 // RFC822 Message-ID header. Returns nil if the message is not in the store.
 func (d *DB) GetTagsByMessageID(messageID string) ([]string, error) {
@@ -177,14 +213,23 @@ func (d *DB) GetTagsByMessageID(messageID string) ([]string, error) {
 }
 
 // GetAllMessagesWithTags returns a map of message_id → tags for all messages
-// in a given mailbox. Used for IMAP flag synchronization.
-func (d *DB) GetAllMessagesWithTags(mailbox string) (map[string][]string, error) {
-	rows, err := d.db.Query(`
+// in a given mailbox. When account is non-empty, results are scoped to that account.
+// Used for IMAP flag synchronization.
+func (d *DB) GetAllMessagesWithTags(mailbox string, account ...string) (map[string][]string, error) {
+	q := `
 		SELECT m.message_id, t.tag
 		FROM messages m
 		JOIN tags t ON t.message_id = m.id
-		WHERE m.mailbox = ?
-		ORDER BY m.message_id`, mailbox)
+		WHERE m.mailbox = ?`
+	params := []interface{}{mailbox}
+
+	if len(account) > 0 && account[0] != "" {
+		q += " AND m.account = ?"
+		params = append(params, account[0])
+	}
+	q += " ORDER BY m.message_id"
+
+	rows, err := d.db.Query(q, params...)
 	if err != nil {
 		return nil, fmt.Errorf("get messages with tags: %w", err)
 	}

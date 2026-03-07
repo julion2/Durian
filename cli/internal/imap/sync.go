@@ -448,7 +448,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					}
 					// Dual-write: delete from store (cascades tags+attachments)
 					s.storeWrite("delete-message", func() error {
-						return s.store.DeleteByMessageID(messageID)
+						return s.store.DeleteByMessageIDAndAccount(messageID, s.accountName())
 					})
 					// Remove folder-specific tags when message disappears from this folder
 					if strings.EqualFold(mailboxName, "INBOX") {
@@ -526,6 +526,9 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					// Message exists! Update tags instead of downloading
 					slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
 
+					// Backfill store from local maildir if needed (e.g. after migration)
+					s.storeEnsureFromMaildir(mailboxName, messageID)
+
 					query := fmt.Sprintf("id:%s", messageID)
 					if tagMapping != nil {
 						if err := s.notmuch.ModifyTags(query, tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
@@ -536,7 +539,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 						// restores those via applyFolderTags post-indexing but the store
 						// has no equivalent restore step.
 						s.storeWrite("dedup-tags", func() error {
-							return s.store.ModifyTagsByMessageID(messageID, tagMapping.AddTags, nil)
+							return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), tagMapping.AddTags, nil)
 						})
 					} else if !strings.EqualFold(mailboxName, "INBOX") {
 						// Custom folder with no special-use mapping — remove inbox tag
@@ -960,7 +963,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 				}
 				// Dual-write: mirror stale inbox cleanup
 				s.storeWrite("stale-inbox-cleanup", func() error {
-					return s.store.ModifyTagsByMessageID(messageID, nil, []string{"inbox"})
+					return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"})
 				})
 			}
 		}
@@ -1069,9 +1072,14 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	}
 	// Dual-write: mirror flag changes as tags
 	s.storeWrite("download-flags", func() error {
-		return s.store.ModifyTagsByMessageID(messageID, addTags, removeTags)
+		return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, removeTags)
 	})
 	return nil
+}
+
+// accountName returns the account folder name (e.g. "habric") derived from the maildir path.
+func (s *Syncer) accountName() string {
+	return filepath.Base(s.account.GetIMAPMaildir())
 }
 
 // storeWrite executes a store write operation with dual-write semantics.
@@ -1122,7 +1130,7 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 			UID:         imapMsg.Uid,
 			Size:        len(msgBody),
 			FetchedBody: true,
-			Account:     filepath.Base(s.account.GetIMAPMaildir()),
+			Account:     s.accountName(),
 		}
 
 		if err := s.store.InsertMessage(storeMsg); err != nil {
@@ -1172,6 +1180,106 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 			if err := s.store.AddTag(storeMsg.ID, "cal"); err != nil {
 				return fmt.Errorf("add cal tag: %w", err)
 			}
+		}
+
+		return nil
+	})
+}
+
+// storeEnsureFromMaildir reads a message from the local maildir (via notmuch) and
+// inserts it into the store if it doesn't already exist for this account.
+// Used during dedup to backfill the store after migration without re-downloading from IMAP.
+func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
+	if s.store == nil {
+		return
+	}
+
+	// Check if already in store for this account
+	exists, _ := s.store.MessageExistsForAccount(messageID, s.accountName())
+	if exists {
+		return
+	}
+
+	// Read from local maildir
+	filenames := s.notmuch.GetFilenamesByMessageID(messageID)
+	if len(filenames) == 0 {
+		return
+	}
+
+	msgBody, err := os.ReadFile(filenames[0])
+	if err != nil {
+		slog.Debug("Failed to read maildir file for store backfill", "module", "SYNC", "message_id", messageID, "err", err)
+		return
+	}
+
+	s.storeWrite("backfill-from-maildir", func() error {
+		parsed, err := mail.ReadMessage(bytes.NewReader(msgBody))
+		if err != nil {
+			return fmt.Errorf("parse message: %w", err)
+		}
+
+		content := s.parser.Parse(parsed)
+		parsedID := strings.Trim(content.MessageID, "<>")
+		if parsedID == "" {
+			return nil
+		}
+
+		var dateUnix int64
+		if t, err := mail.ParseDate(content.Date); err == nil {
+			dateUnix = t.Unix()
+		}
+
+		storeMsg := &store.Message{
+			MessageID:   parsedID,
+			Subject:     content.Subject,
+			FromAddr:    content.From,
+			ToAddrs:     content.To,
+			CCAddrs:     content.CC,
+			InReplyTo:   content.InReplyTo,
+			Refs:        content.References,
+			BodyText:    content.Body,
+			BodyHTML:    content.HTML,
+			Date:        dateUnix,
+			CreatedAt:   time.Now().Unix(),
+			Mailbox:     mailboxName,
+			Size:        len(msgBody),
+			FetchedBody: true,
+			Account:     s.accountName(),
+		}
+
+		if err := s.store.InsertMessage(storeMsg); err != nil {
+			return fmt.Errorf("insert message: %w", err)
+		}
+
+		for i, att := range content.Attachments {
+			partID := att.PartID
+			if partID == 0 {
+				partID = i + 1
+			}
+			if err := s.store.InsertAttachment(&store.Attachment{
+				MessageDBID: storeMsg.ID,
+				PartID:      partID,
+				Filename:    att.Filename,
+				ContentType: att.ContentType,
+				Size:        att.Size,
+				Disposition: att.Disposition,
+				ContentID:   att.ContentID,
+			}); err != nil {
+				return fmt.Errorf("insert attachment %d: %w", i, err)
+			}
+		}
+
+		// Apply folder tags
+		mapping := s.getFolderTagMapping(mailboxName)
+		if mapping != nil {
+			for _, tag := range mapping.AddTags {
+				_ = s.store.AddTag(storeMsg.ID, tag)
+			}
+		}
+
+		// Apply calendar tag
+		if bytes.Contains(msgBody, []byte("text/calendar")) {
+			_ = s.store.AddTag(storeMsg.ID, "cal")
 		}
 
 		return nil

@@ -21,8 +21,8 @@ type Message struct {
 	Size      int
 	// FetchedBody indicates whether the full body has been fetched (vs headers-only).
 	FetchedBody bool
-	// Account is the maildir folder name(s) for this message (e.g. "habric" or "habric,jsLab").
-	// Comma-separated when a message belongs to multiple accounts (cross-account dedup).
+	// Account is the maildir folder name for this message (e.g. "habric").
+	// Each account has its own row — UNIQUE(message_id, account).
 	Account string
 }
 
