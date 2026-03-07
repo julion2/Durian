@@ -95,153 +95,316 @@ func (d *DB) getThreadTags(threadID string) ([]string, error) {
 	return tags, rows.Err()
 }
 
-// token represents a parsed piece of the query string.
-type token struct {
-	kind  string // "field", "not_field", "bare", "star"
-	field string // e.g. "from", "tag", "subject", "date"
+// --- AST node types ---
+
+// exprNode is the interface for all expression tree nodes.
+type exprNode interface {
+	exprNode()
+}
+
+type fieldExpr struct {
+	field string
 	value string
 }
 
-// tokenize breaks a query string into structured tokens.
-func tokenize(query string) []token {
+type bareExpr struct {
+	value string
+}
+
+type starExpr struct{}
+
+type binaryExpr struct {
+	op    string // "AND" or "OR"
+	left  exprNode
+	right exprNode
+}
+
+type notExpr struct {
+	child exprNode
+}
+
+func (*fieldExpr) exprNode()  {}
+func (*bareExpr) exprNode()   {}
+func (*starExpr) exprNode()   {}
+func (*binaryExpr) exprNode() {}
+func (*notExpr) exprNode()    {}
+
+// --- Lexer ---
+
+type lexTokenKind int
+
+const (
+	tokField lexTokenKind = iota
+	tokBare
+	tokStar
+	tokLParen
+	tokRParen
+	tokAnd
+	tokOr
+	tokNot
+)
+
+const tokEOF lexTokenKind = -1
+
+type lexToken struct {
+	kind  lexTokenKind
+	field string // only for tokField
+	value string // for tokField and tokBare
+}
+
+// lex breaks a query string into lexer tokens.
+func lex(query string) []lexToken {
 	query = strings.TrimSpace(query)
 	if query == "" || query == "*" {
-		return []token{{kind: "star"}}
+		return []lexToken{{kind: tokStar}}
 	}
 
-	// Strip parentheses — the tokenizer uses implicit AND between all clauses
-	query = strings.NewReplacer("(", "", ")", "").Replace(query)
-
-	var tokens []token
+	query = strings.NewReplacer("(", " ( ", ")", " ) ").Replace(query)
 	parts := strings.Fields(query)
-	for i := 0; i < len(parts); i++ {
-		p := parts[i]
 
-		// Skip boolean operators (implicit AND between all clauses)
-		if strings.EqualFold(p, "AND") || strings.EqualFold(p, "OR") {
-			continue
-		}
-
-		// Handle NOT prefix
-		negate := false
-		if strings.EqualFold(p, "NOT") && i+1 < len(parts) {
-			negate = true
-			i++
-			p = parts[i]
-		}
-
-		if idx := strings.Index(p, ":"); idx > 0 {
-			field := strings.ToLower(p[:idx])
-			value := p[idx+1:]
-			kind := "field"
-			if negate {
-				kind = "not_field"
+	var tokens []lexToken
+	for _, p := range parts {
+		switch {
+		case p == "(":
+			tokens = append(tokens, lexToken{kind: tokLParen})
+		case p == ")":
+			tokens = append(tokens, lexToken{kind: tokRParen})
+		case strings.EqualFold(p, "AND"):
+			tokens = append(tokens, lexToken{kind: tokAnd})
+		case strings.EqualFold(p, "OR"):
+			tokens = append(tokens, lexToken{kind: tokOr})
+		case strings.EqualFold(p, "NOT"):
+			tokens = append(tokens, lexToken{kind: tokNot})
+		case p == "*":
+			tokens = append(tokens, lexToken{kind: tokStar})
+		default:
+			if idx := strings.Index(p, ":"); idx > 0 {
+				tokens = append(tokens, lexToken{
+					kind:  tokField,
+					field: strings.ToLower(p[:idx]),
+					value: p[idx+1:],
+				})
+			} else {
+				tokens = append(tokens, lexToken{kind: tokBare, value: p})
 			}
-			tokens = append(tokens, token{kind: kind, field: field, value: value})
-		} else {
-			tokens = append(tokens, token{kind: "bare", value: p})
 		}
 	}
 	return tokens
 }
 
-// parseQuery translates a notmuch-style query into a SQL WHERE clause and parameters.
-func parseQuery(query string) (where string, params []interface{}, err error) {
-	tokens := tokenize(query)
+// --- Parser (recursive descent) ---
+//
+// Grammar:
+//
+//	expr     → or_expr
+//	or_expr  → and_expr ("OR" and_expr)*
+//	and_expr → unary ("AND"? unary)*
+//	unary    → "NOT" unary | primary
+//	primary  → "(" expr ")" | field:value | bare_word | "*"
 
-	var clauses []string
-	var pathClauses []string
-	var pathParams []interface{}
-
-	for _, tok := range tokens {
-		switch tok.kind {
-		case "star":
-			// No filter
-			return "", nil, nil
-
-		case "field", "not_field":
-			clause, p, err := fieldToSQL(tok)
-			if err != nil {
-				return "", nil, err
-			}
-			// Collect path: clauses separately — multiple accounts should be OR-ed
-			if tok.field == "path" && tok.kind == "field" && clause != "1=1" {
-				pathClauses = append(pathClauses, clause)
-				pathParams = append(pathParams, p...)
-			} else {
-				clauses = append(clauses, clause)
-				params = append(params, p...)
-			}
-
-		case "bare":
-			clauses = append(clauses, "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")
-			params = append(params, tok.value)
-		}
-	}
-
-	// Multiple path: filters are OR-ed (match any of the accounts)
-	if len(pathClauses) == 1 {
-		clauses = append(clauses, pathClauses[0])
-		params = append(params, pathParams...)
-	} else if len(pathClauses) > 1 {
-		clauses = append(clauses, "("+strings.Join(pathClauses, " OR ")+")")
-		params = append(params, pathParams...)
-	}
-
-	return strings.Join(clauses, " AND "), params, nil
+type parser struct {
+	tokens []lexToken
+	pos    int
 }
 
-// fieldToSQL converts a single field:value token into a SQL clause.
-func fieldToSQL(tok token) (string, []interface{}, error) {
-	negate := tok.kind == "not_field"
-	var clause string
-	var params []interface{}
+func (p *parser) peek() lexToken {
+	if p.pos >= len(p.tokens) {
+		return lexToken{kind: tokEOF}
+	}
+	return p.tokens[p.pos]
+}
 
-	switch tok.field {
-	case "from":
-		clause = "m.from_addr LIKE ?"
-		params = []interface{}{"%" + tok.value + "%"}
+func (p *parser) next() lexToken {
+	tok := p.peek()
+	if p.pos < len(p.tokens) {
+		p.pos++
+	}
+	return tok
+}
 
-	case "to":
-		clause = "m.to_addrs LIKE ?"
-		params = []interface{}{"%" + tok.value + "%"}
+func parse(tokens []lexToken) (exprNode, error) {
+	if len(tokens) == 0 {
+		return &starExpr{}, nil
+	}
+	p := &parser{tokens: tokens}
+	node, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.pos < len(p.tokens) {
+		return nil, fmt.Errorf("unexpected token at position %d", p.pos)
+	}
+	return node, nil
+}
 
-	case "subject":
-		clause = "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
-		params = []interface{}{"subject:" + tok.value}
+func (p *parser) parseExpr() (exprNode, error) {
+	return p.parseOr()
+}
 
-	case "tag":
-		if negate {
-			return "NOT EXISTS (SELECT 1 FROM tags WHERE tags.message_id = m.id AND tags.tag = ?)",
-				[]interface{}{tok.value}, nil
+func (p *parser) parseOr() (exprNode, error) {
+	left, err := p.parseAnd()
+	if err != nil {
+		return nil, err
+	}
+	for p.peek().kind == tokOr {
+		p.next()
+		right, err := p.parseAnd()
+		if err != nil {
+			return nil, err
 		}
-		return "EXISTS (SELECT 1 FROM tags WHERE tags.message_id = m.id AND tags.tag = ?)",
-			[]interface{}{tok.value}, nil
+		left = &binaryExpr{op: "OR", left: left, right: right}
+	}
+	return left, nil
+}
 
-	case "date":
-		return parseDateRange(tok.value)
-
-	case "path":
-		account := extractAccountFromPath(tok.value)
-		if account != "" {
-			clause = "m.account = ?"
-			params = []interface{}{account}
+func (p *parser) parseAnd() (exprNode, error) {
+	left, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	for {
+		tok := p.peek()
+		if tok.kind == tokAnd {
+			p.next()
+		} else if tok.kind == tokField || tok.kind == tokBare || tok.kind == tokStar ||
+			tok.kind == tokNot || tok.kind == tokLParen {
+			// implicit AND between adjacent terms
 		} else {
-			return "1=1", nil, nil
+			break
 		}
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		left = &binaryExpr{op: "AND", left: left, right: right}
+	}
+	return left, nil
+}
 
-	case "folder", "thread", "id", "mimetype":
-		// Notmuch-specific fields — skip (no equivalent in store)
+func (p *parser) parseUnary() (exprNode, error) {
+	if p.peek().kind == tokNot {
+		p.next()
+		child, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		return &notExpr{child: child}, nil
+	}
+	return p.parsePrimary()
+}
+
+func (p *parser) parsePrimary() (exprNode, error) {
+	tok := p.peek()
+	switch tok.kind {
+	case tokLParen:
+		p.next()
+		node, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().kind != tokRParen {
+			return nil, fmt.Errorf("expected closing parenthesis")
+		}
+		p.next()
+		return node, nil
+	case tokField:
+		p.next()
+		return &fieldExpr{field: tok.field, value: tok.value}, nil
+	case tokBare:
+		p.next()
+		return &bareExpr{value: tok.value}, nil
+	case tokStar:
+		p.next()
+		return &starExpr{}, nil
+	default:
+		return nil, fmt.Errorf("unexpected token at position %d", p.pos)
+	}
+}
+
+// --- SQL generation ---
+
+// exprToSQL walks the expression tree and produces a SQL WHERE clause with parameters.
+func exprToSQL(node exprNode) (string, []interface{}, error) {
+	switch n := node.(type) {
+	case *binaryExpr:
+		leftSQL, leftParams, err := exprToSQL(n.left)
+		if err != nil {
+			return "", nil, err
+		}
+		rightSQL, rightParams, err := exprToSQL(n.right)
+		if err != nil {
+			return "", nil, err
+		}
+		return "(" + leftSQL + " " + n.op + " " + rightSQL + ")", append(leftParams, rightParams...), nil
+
+	case *notExpr:
+		childSQL, childParams, err := exprToSQL(n.child)
+		if err != nil {
+			return "", nil, err
+		}
+		return "NOT (" + childSQL + ")", childParams, nil
+
+	case *fieldExpr:
+		return fieldToSQL(n)
+
+	case *bareExpr:
+		return "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)",
+			[]interface{}{n.value}, nil
+
+	case *starExpr:
 		return "1=1", nil, nil
 
 	default:
-		return "", nil, fmt.Errorf("unknown query field: %q", tok.field)
+		return "", nil, fmt.Errorf("unknown expression node type: %T", node)
 	}
+}
 
-	if negate {
-		clause = "NOT (" + clause + ")"
+// parseQuery translates a notmuch-style query into a SQL WHERE clause and parameters.
+func parseQuery(query string) (where string, params []interface{}, err error) {
+	tokens := lex(query)
+	node, err := parse(tokens)
+	if err != nil {
+		return "", nil, err
 	}
-	return clause, params, nil
+	if _, ok := node.(*starExpr); ok {
+		return "", nil, nil
+	}
+	return exprToSQL(node)
+}
+
+// fieldToSQL converts a field expression into a SQL clause.
+func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
+	switch f.field {
+	case "from":
+		return "m.from_addr LIKE ?", []interface{}{"%" + f.value + "%"}, nil
+
+	case "to":
+		return "m.to_addrs LIKE ?", []interface{}{"%" + f.value + "%"}, nil
+
+	case "subject":
+		return "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)",
+			[]interface{}{"subject:" + f.value}, nil
+
+	case "tag":
+		return "EXISTS (SELECT 1 FROM tags WHERE tags.message_id = m.id AND tags.tag = ?)",
+			[]interface{}{f.value}, nil
+
+	case "date":
+		return parseDateRange(f.value)
+
+	case "path":
+		account := extractAccountFromPath(f.value)
+		if account != "" {
+			return "m.account = ?", []interface{}{account}, nil
+		}
+		return "1=1", nil, nil
+
+	case "folder", "thread", "id", "mimetype":
+		return "1=1", nil, nil
+
+	default:
+		return "", nil, fmt.Errorf("unknown query field: %q", f.field)
+	}
 }
 
 // parseDateRange parses date:FROM..TO into a SQL BETWEEN clause.

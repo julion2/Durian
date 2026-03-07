@@ -148,7 +148,7 @@ func TestSearch_Limit(t *testing.T) {
 	}
 }
 
-func TestTokenize(t *testing.T) {
+func TestLex(t *testing.T) {
 	tests := []struct {
 		query string
 		count int
@@ -157,28 +157,69 @@ func TestTokenize(t *testing.T) {
 		{"", 1},
 		{"from:alice", 1},
 		{"from:alice tag:inbox", 2},
-		{"NOT tag:spam", 1},
+		{"NOT tag:spam", 2},
 		{"hello world", 2},
 		{"from:alice subject:meeting hello", 3},
+		{"from:alice OR from:bob", 3},
+		{"(from:alice OR from:bob) AND tag:inbox", 7},
 	}
 	for _, tt := range tests {
-		tokens := tokenize(tt.query)
+		tokens := lex(tt.query)
 		if len(tokens) != tt.count {
-			t.Errorf("tokenize(%q) = %d tokens, want %d", tt.query, len(tokens), tt.count)
+			t.Errorf("lex(%q) = %d tokens, want %d", tt.query, len(tokens), tt.count)
 		}
 	}
 }
 
-func TestTokenize_NotField(t *testing.T) {
-	tokens := tokenize("NOT tag:spam")
-	if len(tokens) != 1 {
-		t.Fatalf("expected 1 token, got %d", len(tokens))
+func TestLex_Not(t *testing.T) {
+	tokens := lex("NOT tag:spam")
+	if len(tokens) != 2 {
+		t.Fatalf("expected 2 tokens, got %d", len(tokens))
 	}
-	if tokens[0].kind != "not_field" {
-		t.Errorf("kind = %q, want not_field", tokens[0].kind)
+	if tokens[0].kind != tokNot {
+		t.Errorf("token[0].kind = %d, want tokNot", tokens[0].kind)
 	}
-	if tokens[0].field != "tag" || tokens[0].value != "spam" {
-		t.Errorf("token = %+v, want tag:spam", tokens[0])
+	if tokens[1].kind != tokField || tokens[1].field != "tag" || tokens[1].value != "spam" {
+		t.Errorf("token[1] = %+v, want field tag:spam", tokens[1])
+	}
+}
+
+func TestSearch_OR(t *testing.T) {
+	db := seedSearchDB(t)
+	// alice sent s1, s3, s5; charlie sent s4
+	// Threads: {s1}, {s2,s3}, {s4}, {s5} → alice in 3 threads, charlie in 1 → 4 total
+	results, err := db.Search("from:alice OR from:charlie", 50)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 4 {
+		t.Errorf("got %d results for from:alice OR from:charlie, want 4", len(results))
+	}
+}
+
+func TestSearch_AND_explicit(t *testing.T) {
+	db := seedSearchDB(t)
+	// Only s1 has both from:alice AND tag:unread
+	results, err := db.Search("from:alice AND tag:unread", 50)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("got %d results for from:alice AND tag:unread, want 1", len(results))
+	}
+}
+
+func TestSearch_Parentheses(t *testing.T) {
+	db := seedSearchDB(t)
+	// (from:alice OR from:bob) AND tag:inbox
+	// All messages have inbox. alice: s1,s3,s5; bob: s2
+	// Matching threads: {s1}, {s2,s3}, {s5} → 3 threads
+	results, err := db.Search("(from:alice OR from:bob) AND tag:inbox", 50)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 3 {
+		t.Errorf("got %d results for (from:alice OR from:bob) AND tag:inbox, want 3", len(results))
 	}
 }
 
