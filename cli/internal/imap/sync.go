@@ -1137,7 +1137,8 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 			return fmt.Errorf("insert message: %w", err)
 		}
 
-		// Insert attachments
+		// Clear old attachments on upsert, then re-insert
+		_ = s.store.DeleteAttachmentsByMessageDBID(storeMsg.ID)
 		for i, att := range content.Attachments {
 			partID := att.PartID
 			if partID == 0 {
@@ -1251,6 +1252,8 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 			return fmt.Errorf("insert message: %w", err)
 		}
 
+		// Clear old attachments on upsert, then re-insert
+		_ = s.store.DeleteAttachmentsByMessageDBID(storeMsg.ID)
 		for i, att := range content.Attachments {
 			partID := att.PartID
 			if partID == 0 {

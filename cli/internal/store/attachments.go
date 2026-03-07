@@ -5,6 +5,15 @@ import (
 	"fmt"
 )
 
+// DeleteAttachmentsByMessageDBID removes all attachments for a message DB row.
+func (d *DB) DeleteAttachmentsByMessageDBID(messageDBID int64) error {
+	_, err := d.db.Exec("DELETE FROM attachments WHERE message_db_id = ?", messageDBID)
+	if err != nil {
+		return fmt.Errorf("delete attachments: %w", err)
+	}
+	return nil
+}
+
 // InsertAttachment inserts attachment metadata for a message.
 func (d *DB) InsertAttachment(att *Attachment) error {
 	tx, err := d.db.Begin()
