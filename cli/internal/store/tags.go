@@ -118,6 +118,64 @@ func (d *DB) ListTags() ([]string, error) {
 	return tags, rows.Err()
 }
 
+// ModifyTagsByMessageID adds and removes tags for a message identified by its
+// RFC822 Message-ID header. No-op if the message is not in the store.
+func (d *DB) ModifyTagsByMessageID(messageID string, addTags, removeTags []string) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var dbID int64
+	err = tx.QueryRow("SELECT id FROM messages WHERE message_id = ?", messageID).Scan(&dbID)
+	if err != nil {
+		return nil // message not in store — no-op
+	}
+
+	for _, tag := range addTags {
+		if _, err := tx.Exec(
+			"INSERT OR IGNORE INTO tags (message_id, tag) VALUES (?, ?)",
+			dbID, tag); err != nil {
+			return fmt.Errorf("add tag %q: %w", tag, err)
+		}
+	}
+
+	for _, tag := range removeTags {
+		if _, err := tx.Exec(
+			"DELETE FROM tags WHERE message_id = ? AND tag = ?",
+			dbID, tag); err != nil {
+			return fmt.Errorf("remove tag %q: %w", tag, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetTagsByMessageID returns all tags for a message identified by its
+// RFC822 Message-ID header. Returns nil if the message is not in the store.
+func (d *DB) GetTagsByMessageID(messageID string) ([]string, error) {
+	rows, err := d.db.Query(`
+		SELECT t.tag FROM tags t
+		JOIN messages m ON m.id = t.message_id
+		WHERE m.message_id = ?
+		ORDER BY t.tag`, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("get tags by message id: %w", err)
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, fmt.Errorf("scan tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
 // GetAllMessagesWithTags returns a map of message_id → tags for all messages
 // in a given mailbox. Used for IMAP flag synchronization.
 func (d *DB) GetAllMessagesWithTags(mailbox string) (map[string][]string, error) {

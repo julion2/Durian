@@ -164,6 +164,70 @@ func TestListTags(t *testing.T) {
 	}
 }
 
+func TestModifyTagsByMessageID(t *testing.T) {
+	db := newTestDB(t)
+	id := insertTestMessage(t, db, "modify-mid@x")
+	db.AddTag(id, "inbox")
+	db.AddTag(id, "unread")
+
+	err := db.ModifyTagsByMessageID("modify-mid@x", []string{"flagged"}, []string{"unread"})
+	if err != nil {
+		t.Fatalf("modify: %v", err)
+	}
+
+	tags, _ := db.GetTagsByMessageID("modify-mid@x")
+	tagSet := make(map[string]bool)
+	for _, tag := range tags {
+		tagSet[tag] = true
+	}
+	if !tagSet["inbox"] || !tagSet["flagged"] {
+		t.Errorf("expected inbox+flagged, got %v", tags)
+	}
+	if tagSet["unread"] {
+		t.Error("unread should have been removed")
+	}
+}
+
+func TestModifyTagsByMessageID_NotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	// Should be a no-op, not an error
+	err := db.ModifyTagsByMessageID("nonexistent@x", []string{"inbox"}, nil)
+	if err != nil {
+		t.Fatalf("expected no-op, got error: %v", err)
+	}
+}
+
+func TestGetTagsByMessageID(t *testing.T) {
+	db := newTestDB(t)
+	id := insertTestMessage(t, db, "get-mid@x")
+	db.AddTag(id, "inbox")
+	db.AddTag(id, "unread")
+
+	tags, err := db.GetTagsByMessageID("get-mid@x")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(tags) != 2 {
+		t.Fatalf("got %d tags, want 2", len(tags))
+	}
+	if tags[0] != "inbox" || tags[1] != "unread" {
+		t.Errorf("tags = %v, want [inbox unread]", tags)
+	}
+}
+
+func TestGetTagsByMessageID_NotFound(t *testing.T) {
+	db := newTestDB(t)
+
+	tags, err := db.GetTagsByMessageID("nonexistent@x")
+	if err != nil {
+		t.Fatalf("expected nil tags, got error: %v", err)
+	}
+	if len(tags) != 0 {
+		t.Errorf("expected empty, got %v", tags)
+	}
+}
+
 func TestGetAllMessagesWithTags(t *testing.T) {
 	db := newTestDB(t)
 	now := time.Now().Unix()

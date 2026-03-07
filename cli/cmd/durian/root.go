@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -18,9 +19,10 @@ var (
 
 // Global flags
 var (
-	cfgFile    string
-	jsonOutput bool
-	debugMode  bool
+	cfgFile      string
+	jsonOutput   bool
+	debugMode    bool
+	storeBackend string // "notmuch" (default) or "sqlite"
 )
 
 // Global config (loaded at startup)
@@ -51,6 +53,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.config/durian/config.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
+	rootCmd.PersistentFlags().StringVar(&storeBackend, "store", "notmuch", "read backend: notmuch or sqlite")
 
 	// Load config before command execution
 	cobra.OnInitialize(initConfig, initLogger)
@@ -105,4 +108,17 @@ func initLogger() {
 		level = slog.LevelDebug
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+}
+
+// openEmailDB opens and initializes the shared SQLite email store.
+func openEmailDB() (*store.DB, error) {
+	db, err := store.Open(store.DefaultDBPath())
+	if err != nil {
+		return nil, fmt.Errorf("open email store: %w", err)
+	}
+	if err := db.Init(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("init email store: %w", err)
+	}
+	return db, nil
 }

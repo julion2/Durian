@@ -83,6 +83,14 @@ func runSync(cmd *cobra.Command, args []string) error {
 		mode = imap.SyncUploadOnly
 	}
 
+	// Open email store for dual-write (non-fatal if it fails)
+	emailDB, err := openEmailDB()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: store unavailable, skipping dual-write: %v\n", err)
+	} else {
+		defer emailDB.Close()
+	}
+
 	// Build sync options
 	options := &imap.SyncOptions{
 		DryRun:    syncDryRun,
@@ -90,6 +98,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		NoNotmuch: syncNoNotmuch,
 		NoFlags:   syncNoFlags,
 		Mode:      mode,
+		Store:     emailDB,
 	}
 
 	// Determine which accounts to sync

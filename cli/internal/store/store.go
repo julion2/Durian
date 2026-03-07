@@ -165,10 +165,10 @@ func (d *DB) Init() error {
 	return d.migrate()
 }
 
-// DefaultDBPath returns the default database path for a given email account.
-func DefaultDBPath(email string) string {
+// DefaultDBPath returns the default database path for the email store.
+func DefaultDBPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "durian", "accounts", email+".db")
+	return filepath.Join(home, ".config", "durian", "email.db")
 }
 
 // migrate checks the current schema version and applies pending migrations.

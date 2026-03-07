@@ -18,6 +18,7 @@ import (
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
+	"github.com/durian-dev/durian/cli/internal/store"
 )
 
 var serveCmd = &cobra.Command{
@@ -57,7 +58,23 @@ func runServe(cmd *cobra.Command, args []string) {
 		slog.Info("Opened contacts database", "module", "SERVE", "path", contactsDBPath)
 	}
 
-	h := handler.New(nmClient, contactsDB)
+	// Open email store for dual-write and optional store reads
+	var emailDB *store.DB
+	if db, err := openEmailDB(); err != nil {
+		slog.Warn("Store unavailable, running without dual-write", "module", "SERVE", "err", err)
+	} else {
+		emailDB = db
+		defer emailDB.Close()
+		slog.Info("Opened email store", "module", "SERVE", "path", store.DefaultDBPath())
+	}
+
+	var h *handler.Handler
+	if storeBackend == "sqlite" && emailDB != nil {
+		h = handler.NewWithStore(nmClient, emailDB, contactsDB)
+		slog.Info("Using SQLite store for reads", "module", "SERVE")
+	} else {
+		h = handler.New(nmClient, contactsDB)
+	}
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
@@ -84,7 +101,12 @@ func runServe(cmd *cobra.Command, args []string) {
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
-			watcher := handler.NewWatcherManager(eventHub, nmClient)
+			var watcher *handler.WatcherManager
+			if emailDB != nil {
+				watcher = handler.NewWatcherManagerWithStore(eventHub, nmClient, emailDB)
+			} else {
+				watcher = handler.NewWatcherManager(eventHub, nmClient)
+			}
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))
 		}

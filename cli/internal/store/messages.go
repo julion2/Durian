@@ -142,6 +142,26 @@ func (d *DB) MessageExists(messageID string) (bool, error) {
 	return count > 0, nil
 }
 
+// GetAllMessageIDSet returns a set of all Message-IDs in the store.
+// Used for efficient bulk existence checks during backfill.
+func (d *DB) GetAllMessageIDSet() (map[string]bool, error) {
+	rows, err := d.db.Query("SELECT message_id FROM messages")
+	if err != nil {
+		return nil, fmt.Errorf("get all message ids: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan message id: %w", err)
+		}
+		result[id] = true
+	}
+	return result, rows.Err()
+}
+
 // DeleteByMessageID deletes a message by its Message-ID header value.
 func (d *DB) DeleteByMessageID(messageID string) error {
 	result, err := d.db.Exec("DELETE FROM messages WHERE message_id = ?", messageID)

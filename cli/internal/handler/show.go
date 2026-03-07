@@ -6,10 +6,12 @@ import (
 	"net/mail"
 	"os"
 	"sort"
+	"time"
 
 	internmail "github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
+	"github.com/durian-dev/durian/cli/internal/store"
 )
 
 // Show handles the "show" command for a file path
@@ -45,6 +47,10 @@ func (h *Handler) ShowByThread(thread string) protocol.Response {
 
 // ShowThread returns all messages in a thread
 func (h *Handler) ShowThread(threadID string) protocol.Response {
+	if h.useStore && h.store != nil {
+		return h.showThreadStore(threadID)
+	}
+
 	threadMsgs, err := h.notmuch.ShowThread(threadID)
 	if err != nil {
 		return protocol.Fail(protocol.ErrBackendError, err)
@@ -58,9 +64,27 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 	return protocol.SuccessWithThread(thread)
 }
 
+// showThreadStore implements ShowThread using the SQLite store.
+func (h *Handler) showThreadStore(threadID string) protocol.Response {
+	msgs, err := h.store.GetByThread(threadID)
+	if err != nil {
+		return protocol.Fail(protocol.ErrBackendError, err)
+	}
+	if len(msgs) == 0 {
+		return protocol.Fail(protocol.ErrNotFound, errors.New("no messages found for thread"))
+	}
+
+	thread := h.convertStoreThread(threadID, msgs)
+	return protocol.SuccessWithThread(thread)
+}
+
 // ShowMessageBody returns the full (unstripped) body of a single message by notmuch ID.
 // Used for reply quoting where the conversation chain must be preserved.
 func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
+	if h.useStore && h.store != nil {
+		return h.showMessageBodyStore(messageID)
+	}
+
 	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
 	if err != nil {
 		return protocol.Fail(protocol.ErrBackendError, err)
@@ -73,6 +97,22 @@ func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 	return protocol.SuccessWithMessageBody(&internmail.MessageBody{
 		Body: body,
 		HTML: html,
+	})
+}
+
+// showMessageBodyStore implements ShowMessageBody using the SQLite store.
+func (h *Handler) showMessageBodyStore(messageID string) protocol.Response {
+	msg, err := h.store.GetByMessageID(messageID)
+	if err != nil {
+		return protocol.Fail(protocol.ErrBackendError, err)
+	}
+	if msg == nil {
+		return protocol.Fail(protocol.ErrNotFound, errors.New("message not found"))
+	}
+
+	return protocol.SuccessWithMessageBody(&internmail.MessageBody{
+		Body: msg.BodyText,
+		HTML: msg.BodyHTML,
 	})
 }
 
@@ -114,8 +154,65 @@ func convertThread(threadID string, threadMsgs []notmuch.ThreadMessage) *internm
 	}
 }
 
+// convertStoreThread converts store messages into ThreadContent format.
+func (h *Handler) convertStoreThread(threadID string, msgs []*store.Message) *internmail.ThreadContent {
+	messages := make([]internmail.MessageInfo, 0, len(msgs))
+	var subject string
+
+	for _, msg := range msgs {
+		info := internmail.MessageInfo{
+			ID:         msg.MessageID,
+			From:       msg.FromAddr,
+			To:         msg.ToAddrs,
+			CC:         msg.CCAddrs,
+			Date:       time.Unix(msg.Date, 0).Format(time.RFC1123Z),
+			Timestamp:  msg.Date,
+			MessageID:  msg.MessageID,
+			InReplyTo:  msg.InReplyTo,
+			References: msg.Refs,
+			Body:       msg.BodyText,
+			HTML:       msg.BodyHTML,
+		}
+
+		if subject == "" {
+			subject = msg.Subject
+		}
+
+		// Fetch tags and attachments for each message
+		if tags, err := h.store.GetMessageTags(msg.ID); err == nil {
+			info.Tags = tags
+		}
+		if atts, err := h.store.GetAttachmentsByMessage(msg.ID); err == nil {
+			for _, a := range atts {
+				info.Attachments = append(info.Attachments, internmail.AttachmentInfo{
+					PartID:      a.PartID,
+					Filename:    a.Filename,
+					ContentType: a.ContentType,
+					Size:        a.Size,
+					Disposition: a.Disposition,
+					ContentID:   a.ContentID,
+				})
+			}
+		}
+
+		messages = append(messages, info)
+	}
+
+	// Sort newest first (same as notmuch path)
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].Timestamp > messages[j].Timestamp
+	})
+
+	return &internmail.ThreadContent{
+		ThreadID: threadID,
+		Subject:  subject,
+		Messages: messages,
+	}
+}
+
 // DownloadAttachment streams a raw attachment part, setting Content-Type and
 // Content-Disposition headers from server-derived metadata.
+// Always uses notmuch — Maildir has the raw content, store does not.
 func (h *Handler) DownloadAttachment(messageID string, partID int, w http.ResponseWriter) error {
 	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
 	if err != nil {

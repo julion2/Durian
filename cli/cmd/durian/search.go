@@ -44,7 +44,18 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	query := strings.Join(args, " ")
 
 	nmClient := notmuch.NewClient("")
-	h := handler.New(nmClient, nil)
+
+	var h *handler.Handler
+	if storeBackend == "sqlite" {
+		emailDB, err := openEmailDB()
+		if err != nil {
+			return fmt.Errorf("store backend unavailable: %w", err)
+		}
+		defer emailDB.Close()
+		h = handler.NewWithStore(nmClient, emailDB, nil)
+	} else {
+		h = handler.New(nmClient, nil)
+	}
 
 	resp := h.Search(query, searchLimit, 0)
 

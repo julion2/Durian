@@ -13,9 +13,10 @@ go_library(
     visibility = ["//cli:__subpackages__"],
     deps = [
         "//cli/internal/config",
-
         "//cli/internal/keychain",
+        "//cli/internal/mail",
         "//cli/internal/notmuch",
+        "//cli/internal/store",
         "//cli/internal/oauth",
         "@com_github_emersion_go_imap//:go-imap",
         "@com_github_emersion_go_imap//client",

@@ -39,12 +39,15 @@ func TestInitIdempotent(t *testing.T) {
 }
 
 func TestDefaultDBPath(t *testing.T) {
-	path := DefaultDBPath("user@example.com")
+	path := DefaultDBPath()
 	if path == "" {
 		t.Fatal("empty path")
 	}
-	if !contains(path, "user@example.com.db") {
-		t.Errorf("path %q does not contain account name", path)
+	if !contains(path, "email.db") {
+		t.Errorf("path %q does not contain email.db", path)
+	}
+	if !contains(path, ".config/durian/") {
+		t.Errorf("path %q does not contain .config/durian/", path)
 	}
 }
 

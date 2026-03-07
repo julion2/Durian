@@ -11,6 +11,7 @@ import (
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/imap"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
+	"github.com/durian-dev/durian/cli/internal/store"
 )
 
 // WatcherManager runs per-account IMAP IDLE watchers that trigger syncs
@@ -18,6 +19,7 @@ import (
 type WatcherManager struct {
 	hub     *EventHub
 	notmuch notmuch.Client
+	store   *store.DB              // optional SQLite store for dual-write syncs
 	log     *slog.Logger
 	locks   map[string]*sync.Mutex // per-account sync locks keyed by email
 	locksMu sync.Mutex             // protects the locks map
@@ -28,6 +30,18 @@ func NewWatcherManager(hub *EventHub, nm notmuch.Client) *WatcherManager {
 	return &WatcherManager{
 		hub:     hub,
 		notmuch: nm,
+		log:     slog.Default().With("module", "WATCHER"),
+		locks:   make(map[string]*sync.Mutex),
+	}
+}
+
+// NewWatcherManagerWithStore creates a WatcherManager that passes the store
+// to sync operations for dual-write.
+func NewWatcherManagerWithStore(hub *EventHub, nm notmuch.Client, db *store.DB) *WatcherManager {
+	return &WatcherManager{
+		hub:     hub,
+		notmuch: nm,
+		store:   db,
 		log:     slog.Default().With("module", "WATCHER"),
 		locks:   make(map[string]*sync.Mutex),
 	}
@@ -106,7 +120,7 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 		// Initial sync on the watcher's connection (catch-up, no SSE notification).
 		// If this kills the connection, SELECT below will fail and the
 		// outer loop reconnects with 30s backoff.
-		initOpts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}}
+		initOpts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}, Store: w.store}
 		initSyncer := imap.NewSyncerWithClient(account, client, initOpts)
 		if _, err := initSyncer.Sync(); err != nil {
 			w.log.Error("Initial sync failed", "account", account.Email, "err", err)
@@ -195,7 +209,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 
 	// Build syncer: reuse caller's IDLE connection, only sync INBOX.
 	// Iterating other mailboxes triggers rate-limiting on M365.
-	opts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}}
+	opts := &imap.SyncOptions{Quiet: true, Mailboxes: []string{"INBOX"}, Store: w.store}
 	syncer := imap.NewSyncerWithClient(account, client, opts)
 
 	// Run sync with timeout so a flaky server can't block the watcher forever.
