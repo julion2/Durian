@@ -245,6 +245,46 @@ func TestStripQuotedContent(t *testing.T) {
 			html: `<p>Reply</p><blockquote type="cite"><p>Apple</p></blockquote><div class="gmail_quote"><p>Gmail</p></div>`,
 			want: `<p>Reply</p>`,
 		},
+		{
+			name: "Outlook Desktop border-top quote separator",
+			html: `<p>Reply text</p><div><div style="border: none; border-top: solid #E1E1E1 1.0pt; padding: 3.0pt 0cm 0cm 0cm"><p><b>Von:</b> Someone</p></div></div>`,
+			want: `<p>Reply text</p><div>`,
+		},
+		{
+			name: "Outlook Desktop border-top different color",
+			html: `<p>Reply</p><div><div style="border: none; border-top: solid #B5C4DF 1.0pt; padding: 3.0pt 0cm 0cm 0cm"><p><b>From:</b> Someone</p></div></div>`,
+			want: `<p>Reply</p><div>`,
+		},
+		{
+			name: "Outlook Desktop border-style solid none none",
+			html: `<p>Reply</p><div style="padding: 3pt 0cm 0cm; border-width: 1pt medium medium; border-style: solid none none; border-color: rgb(225, 225, 225) currentcolor currentcolor"><p><b>Von:</b> Someone</p></div>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "Outlook Mobile reference message class",
+			html: `<p>Reply</p><div class="ms-outlook-mobile-reference-message skipProofing" style="padding: 3pt 0in 0in; border-style: solid none none; border-color: rgb(181, 196, 223) currentcolor"><b>From: </b>Someone</div>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "Outlook hr separator with Von",
+			html: `<p>Reply</p><hr style="display: inline-block; width: 98%"><div dir="ltr"><font face="Calibri" color="#000000"><b>Von:</b> Someone</font></div>`,
+			want: `<p>Reply</p>`,
+		},
+		{
+			name: "Ursprüngliche Nachricht separator",
+			html: `<p>Reply</p><div>--------------- Ursprüngliche Nachricht ---------------<br><b>Von:</b> Someone</div>`,
+			want: `<p>Reply</p><div>`,
+		},
+		{
+			name: "Original Message separator",
+			html: `<p>Reply</p><div>-------- Original Message --------</div><div>From: Someone</div>`,
+			want: `<p>Reply</p><div>`,
+		},
+		{
+			name: "forward with no added text preserves content",
+			html: `<div><br></div><div class="ms-outlook-mobile-reference-message"><p>Forwarded content here</p></div>`,
+			want: `<div><br></div><div class="ms-outlook-mobile-reference-message"><p>Forwarded content here</p></div>`,
+		},
 	}
 
 	for _, tt := range tests {

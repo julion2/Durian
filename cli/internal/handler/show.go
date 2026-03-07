@@ -171,7 +171,7 @@ func (h *Handler) convertStoreThread(threadID string, msgs []*store.Message) *in
 			InReplyTo:  msg.InReplyTo,
 			References: msg.Refs,
 			Body:       msg.BodyText,
-			HTML:       msg.BodyHTML,
+			HTML:       notmuch.StripQuotedContent(msg.BodyHTML),
 		}
 
 		if subject == "" {
