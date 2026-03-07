@@ -8,7 +8,6 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/mail"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/spf13/cobra"
 )
 
@@ -37,15 +36,13 @@ func init() {
 func runShow(cmd *cobra.Command, args []string) error {
 	threadID := args[0]
 
-	nmClient := notmuch.NewClient("")
-
 	emailDB, err := openEmailDB()
 	if err != nil {
 		return fmt.Errorf("email store unavailable: %w", err)
 	}
 	defer emailDB.Close()
 
-	h := handler.New(nmClient, emailDB, nil)
+	h := handler.New(emailDB, nil)
 
 	// Use new ShowThread for full thread support
 	resp := h.ShowThread(threadID)

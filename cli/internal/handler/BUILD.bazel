@@ -22,6 +22,7 @@ go_library(
         "//cli/internal/mail",
         "//cli/internal/notmuch",
         "//cli/internal/protocol",
+        "//cli/internal/sanitize",
         "//cli/internal/store",
         "@com_github_emersion_go_imap//:go-imap",
         "@com_github_gorilla_mux//:mux",
@@ -34,7 +35,6 @@ go_test(
     srcs = ["handler_test.go"],
     embed = [":handler"],
     deps = [
-        "//cli/internal/notmuch",
         "//cli/internal/protocol",
         "//cli/internal/store",
     ],

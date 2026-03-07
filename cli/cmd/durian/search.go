@@ -8,7 +8,6 @@ import (
 	"text/tabwriter"
 
 	"github.com/durian-dev/durian/cli/internal/handler"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/spf13/cobra"
 )
@@ -43,15 +42,13 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	// Join all arguments to allow unquoted queries like: durian search tag:inbox AND date:today
 	query := strings.Join(args, " ")
 
-	nmClient := notmuch.NewClient("")
-
 	emailDB, err := openEmailDB()
 	if err != nil {
 		return fmt.Errorf("email store unavailable: %w", err)
 	}
 	defer emailDB.Close()
 
-	h := handler.New(nmClient, emailDB, nil)
+	h := handler.New(emailDB, nil)
 	resp := h.Search(query, searchLimit, 0)
 
 	if !resp.OK {

@@ -68,7 +68,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	defer emailDB.Close()
 	slog.Info("Opened email store", "module", "SERVE", "path", store.DefaultDBPath())
 
-	h := handler.New(nmClient, emailDB, contactsDB)
+	h := handler.New(emailDB, contactsDB)
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()

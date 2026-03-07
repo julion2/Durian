@@ -3,7 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"os"
@@ -11,8 +11,8 @@ import (
 	"time"
 
 	internmail "github.com/durian-dev/durian/cli/internal/mail"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
+	"github.com/durian-dev/durian/cli/internal/sanitize"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
@@ -81,7 +81,7 @@ func (h *Handler) convertThread(threadID string, msgs []*store.Message) *internm
 			InReplyTo:  msg.InReplyTo,
 			References: msg.Refs,
 			Body:       msg.BodyText,
-			HTML:       notmuch.StripQuotedContent(msg.BodyHTML),
+			HTML:       sanitize.StripQuotedContent(msg.BodyHTML),
 		}
 
 		if subject == "" {
@@ -143,49 +143,22 @@ func (h *Handler) DownloadAttachment(messageID string, partID int, w http.Respon
 	w.Header().Set("Content-Type", storeAtt.ContentType)
 	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(storeAtt.Filename)+`"`)
 
-	// Try IMAP fetch (break-IDLE pattern)
-	if h.fetcher != nil {
-		msg, err := h.store.GetByMessageID(messageID)
-		if err == nil && msg != nil && msg.UID > 0 && msg.Account != "" && msg.Mailbox != "" {
-			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-			defer cancel()
-
-			err := h.fetcher.FetchAttachment(ctx, msg.Account, msg.Mailbox,
-				msg.UID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
-			if err == nil {
-				return nil
-			}
-			slog.Warn("IMAP attachment fetch failed, falling back to notmuch",
-				"module", "HANDLER", "message_id", messageID, "err", err)
-		}
+	// Fetch via IMAP (break-IDLE pattern)
+	if h.fetcher == nil {
+		return errors.New("no attachment fetcher available")
 	}
 
-	// Fallback: resolve notmuch PartID by matching filename
-	return h.downloadAttachmentNotmuch(messageID, storeAtt, w)
-}
-
-// downloadAttachmentNotmuch streams an attachment via notmuch's ShowRawPart.
-// Used as fallback when IMAP fetch is unavailable or fails.
-func (h *Handler) downloadAttachmentNotmuch(messageID string, storeAtt *store.Attachment, w http.ResponseWriter) error {
-	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
+	msg, err := h.store.GetByMessageID(messageID)
 	if err != nil {
-		return err
+		return fmt.Errorf("lookup message: %w", err)
 	}
-	if len(msgs) == 0 {
-		return errors.New("message not found")
-	}
-
-	_, _, nmAtts := notmuch.ExtractBodyContentFull(msgs[0].Body)
-	nmPartID := -1
-	for _, nmAtt := range nmAtts {
-		if nmAtt.Filename == storeAtt.Filename {
-			nmPartID = nmAtt.PartID
-			break
-		}
-	}
-	if nmPartID < 0 {
-		return errors.New("attachment not found in message")
+	if msg == nil || msg.UID == 0 || msg.Account == "" || msg.Mailbox == "" {
+		return errors.New("message missing IMAP metadata for attachment fetch")
 	}
 
-	return h.notmuch.ShowRawPart(messageID, nmPartID, w)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	return h.fetcher.FetchAttachment(ctx, msg.Account, msg.Mailbox,
+		msg.UID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
 }

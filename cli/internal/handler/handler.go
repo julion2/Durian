@@ -6,7 +6,6 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/mail"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
@@ -21,18 +20,15 @@ type AttachmentFetcher interface {
 
 // Handler processes commands and returns responses
 type Handler struct {
-	notmuch  notmuch.Client
 	store    *store.DB // SQLite store (primary read backend)
 	parser   *mail.Parser
 	contacts *contacts.DB
 	fetcher  AttachmentFetcher // optional IMAP attachment fetcher
 }
 
-// New creates a Handler that reads from the SQLite store and dual-writes
-// tags to both store and notmuch (keeping notmuch in sync as fallback).
-func New(nm notmuch.Client, db *store.DB, contactsDB *contacts.DB) *Handler {
+// New creates a Handler that reads from the SQLite store.
+func New(db *store.DB, contactsDB *contacts.DB) *Handler {
 	return &Handler{
-		notmuch:  nm,
 		store:    db,
 		parser:   mail.NewParser(),
 		contacts: contactsDB,
