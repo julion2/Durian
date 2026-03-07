@@ -8,25 +8,41 @@ import (
 )
 
 // Tag handles the "tag" command.
-// When the store is present, tags are written to both notmuch and the store
-// to keep them in sync (notmuch remains the fallback).
+// When useStore is true, the store is the primary write target.
+// notmuch is kept in sync as a secondary (compat) layer until fully removed.
 func (h *Handler) Tag(query string, tags string) protocol.Response {
 	tagList := strings.Fields(tags)
 	if len(tagList) == 0 {
 		return protocol.FailWithMessage(protocol.ErrInvalidJSON, "no tags provided")
 	}
 
-	err := h.notmuch.Tag(query, tagList)
-	if err != nil {
+	add, remove := splitTagOps(tagList)
+
+	// Store-primary path: write to store first, then mirror to notmuch
+	if h.useStore && h.store != nil && strings.HasPrefix(query, "thread:") {
+		threadID := strings.TrimPrefix(query, "thread:")
+		if err := h.store.ModifyTagsByThread(threadID, add, remove); err != nil {
+			return protocol.Fail(protocol.ErrBackendError, err)
+		}
+
+		// Mirror to notmuch (compat — errors are non-fatal)
+		if err := h.notmuch.Tag(query, tagList); err != nil {
+			slog.Warn("notmuch tag mirror failed", "module", "HANDLER", "query", query, "err", err)
+		}
+
+		return protocol.Success()
+	}
+
+	// Legacy path: notmuch primary
+	if err := h.notmuch.Tag(query, tagList); err != nil {
 		return protocol.Fail(protocol.ErrBackendError, err)
 	}
 
-	// Dual-write: mirror tag changes to store for thread: queries
+	// Mirror to store if available
 	if h.store != nil && strings.HasPrefix(query, "thread:") {
 		threadID := strings.TrimPrefix(query, "thread:")
-		add, remove := splitTagOps(tagList)
 		if err := h.store.ModifyTagsByThread(threadID, add, remove); err != nil {
-			slog.Warn("store tag dual-write failed", "module", "HANDLER", "thread", threadID, "err", err)
+			slog.Warn("store tag mirror failed", "module", "HANDLER", "thread", threadID, "err", err)
 		}
 	}
 

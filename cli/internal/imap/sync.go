@@ -828,16 +828,25 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		return 0, 0
 	}
 
-	// 3. Build folder path for notmuch query
-	folderName := s.buildNotmuchFolderName(mailboxName)
-	slog.Debug("Starting flag sync", "module", "SYNC", "folder", folderName, "server_uids", len(allUIDs), "mapped_uids", mboxState.GetMappedUIDCount())
+	// 3. Get all local messages with tags in a single batch query
+	slog.Debug("Starting flag sync", "module", "SYNC", "mailbox", mailboxName, "server_uids", len(allUIDs), "mapped_uids", mboxState.GetMappedUIDCount())
 
-	// 4. Get all local messages with tags in a single batch query
-	// This is much faster than calling GetTags() for each message individually
-	localMessages, err := s.notmuch.GetAllMessagesWithTags(folderName)
-	if err != nil {
-		slog.Debug("Failed to get local messages", "module", "SYNC", "err", err)
-		localMessages = make(map[string][]string) // Continue with empty map
+	var localMessages map[string][]string
+	if s.store != nil {
+		// Store-primary: read tags from SQLite (faster, no subprocess)
+		localMessages, err = s.store.GetAllMessagesWithTags(mailboxName, s.accountName())
+		if err != nil {
+			slog.Debug("Failed to get messages from store, falling back to notmuch", "module", "SYNC", "err", err)
+		}
+	}
+	if localMessages == nil {
+		// Fallback: read from notmuch
+		folderName := s.buildNotmuchFolderName(mailboxName)
+		localMessages, err = s.notmuch.GetAllMessagesWithTags(folderName)
+		if err != nil {
+			slog.Debug("Failed to get local messages", "module", "SYNC", "err", err)
+			localMessages = make(map[string][]string)
+		}
 	}
 	slog.Debug("Local messages in folder", "module", "SYNC", "count", len(localMessages))
 
@@ -1067,13 +1076,17 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 		return nil
 	}
 
-	if err := s.notmuch.ModifyTags("id:"+messageID, addTags, removeTags); err != nil {
-		return err
+	// Store-primary: write tags to store first
+	if s.store != nil {
+		if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, removeTags); err != nil {
+			slog.Warn("store flag tag write failed", "module", "SYNC", "message_id", messageID, "err", err)
+		}
 	}
-	// Dual-write: mirror flag changes as tags
-	s.storeWrite("download-flags", func() error {
-		return s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, removeTags)
-	})
+
+	// Mirror to notmuch (compat)
+	if err := s.notmuch.ModifyTags("id:"+messageID, addTags, removeTags); err != nil {
+		slog.Warn("notmuch flag tag mirror failed", "module", "SYNC", "message_id", messageID, "err", err)
+	}
 	return nil
 }
 
@@ -1082,8 +1095,8 @@ func (s *Syncer) accountName() string {
 	return filepath.Base(s.account.GetIMAPMaildir())
 }
 
-// storeWrite executes a store write operation with dual-write semantics.
-// Store failures are logged but never fatal — notmuch remains the primary system.
+// storeWrite executes a store write operation.
+// Store failures are logged but not fatal.
 func (s *Syncer) storeWrite(op string, fn func() error) {
 	if s.store == nil {
 		return
