@@ -3,10 +3,14 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	goImap "github.com/emersion/go-imap"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/imap"
@@ -14,24 +18,47 @@ import (
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
+// FetchRequest is sent to an account watcher to break IDLE and fetch an
+// attachment section from the IMAP server.
+type FetchRequest struct {
+	Mailbox     string    // mailbox to SELECT (e.g. "INBOX")
+	UID         uint32    // message UID
+	Filename    string    // primary match key for BODYSTRUCTURE walk
+	ContentType string    // secondary match key
+	PartIndex   int       // 1-based attachment index (store part_id) for fallback
+	Writer      io.Writer // destination for streamed bytes
+	Result      chan FetchResult
+}
+
+// FetchResult carries the outcome of a FetchRequest.
+type FetchResult struct{ Err error }
+
+// accountWatcher holds per-account state for the IDLE watcher goroutine.
+type accountWatcher struct {
+	account *config.AccountConfig
+	fetchCh chan FetchRequest // buffered(1)
+}
+
 // WatcherManager runs per-account IMAP IDLE watchers that trigger syncs
 // and broadcast new-mail events via the EventHub.
 type WatcherManager struct {
-	hub     *EventHub
-	notmuch notmuch.Client
-	store   *store.DB              // optional SQLite store for dual-write syncs
-	log     *slog.Logger
-	locks   map[string]*sync.Mutex // per-account sync locks keyed by email
-	locksMu sync.Mutex             // protects the locks map
+	hub      *EventHub
+	notmuch  notmuch.Client
+	store    *store.DB              // optional SQLite store for dual-write syncs
+	log      *slog.Logger
+	locks    map[string]*sync.Mutex // per-account sync locks keyed by email
+	locksMu  sync.Mutex             // protects the locks map
+	watchers map[string]*accountWatcher // keyed by maildir basename (e.g. "habric")
 }
 
 // NewWatcherManager creates a WatcherManager wired to the given EventHub and notmuch client.
 func NewWatcherManager(hub *EventHub, nm notmuch.Client) *WatcherManager {
 	return &WatcherManager{
-		hub:     hub,
-		notmuch: nm,
-		log:     slog.Default().With("module", "WATCHER"),
-		locks:   make(map[string]*sync.Mutex),
+		hub:      hub,
+		notmuch:  nm,
+		log:      slog.Default().With("module", "WATCHER"),
+		locks:    make(map[string]*sync.Mutex),
+		watchers: make(map[string]*accountWatcher),
 	}
 }
 
@@ -39,11 +66,12 @@ func NewWatcherManager(hub *EventHub, nm notmuch.Client) *WatcherManager {
 // to sync operations for dual-write.
 func NewWatcherManagerWithStore(hub *EventHub, nm notmuch.Client, db *store.DB) *WatcherManager {
 	return &WatcherManager{
-		hub:     hub,
-		notmuch: nm,
-		store:   db,
-		log:     slog.Default().With("module", "WATCHER"),
-		locks:   make(map[string]*sync.Mutex),
+		hub:      hub,
+		notmuch:  nm,
+		store:    db,
+		log:      slog.Default().With("module", "WATCHER"),
+		locks:    make(map[string]*sync.Mutex),
+		watchers: make(map[string]*accountWatcher),
 	}
 }
 
@@ -61,13 +89,23 @@ func (w *WatcherManager) accountLock(email string) *sync.Mutex {
 // connects once, runs an initial sync on that connection, then enters
 // the IDLE loop — one connection per account for the entire lifecycle.
 func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountConfig) {
-	var wg sync.WaitGroup
+	// Build watchers map so FetchAttachment can route requests by account
 	for _, acc := range accounts {
+		key := filepath.Base(acc.GetIMAPMaildir())
+		aw := &accountWatcher{
+			account: acc,
+			fetchCh: make(chan FetchRequest, 1),
+		}
+		w.watchers[key] = aw
+	}
+
+	var wg sync.WaitGroup
+	for _, aw := range w.watchers {
 		wg.Add(1)
-		go func(account *config.AccountConfig) {
+		go func(aw *accountWatcher) {
 			defer wg.Done()
-			w.watchAccount(ctx, account)
-		}(acc)
+			w.watchAccount(ctx, aw)
+		}(aw)
 	}
 	wg.Wait()
 }
@@ -76,7 +114,8 @@ func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountCo
 // Uses the Thunderbird model: reuse the IDLE connection for sync, then
 // cycle back to IDLE on the same connection. This avoids opening a second
 // connection which Microsoft 365 rejects with "connection reset by peer".
-func (w *WatcherManager) watchAccount(ctx context.Context, account *config.AccountConfig) {
+func (w *WatcherManager) watchAccount(ctx context.Context, aw *accountWatcher) {
+	account := aw.account
 	backoff := 30 * time.Second
 	var lastErr string
 	var sameErrCount int
@@ -179,6 +218,22 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 			case <-idleDone:
 				// IDLE goroutine exited (error or connection lost) — reconnect
 				connectionAlive = false
+			case req := <-aw.fetchCh:
+				// Break IDLE to handle attachment fetch request
+				close(stopIdle)
+				<-idleDone
+				w.log.Debug("Attachment fetch request", "account", account.Email,
+					"mailbox", req.Mailbox, "uid", req.UID, "filename", req.Filename)
+				fetchErr := w.handleFetchRequest(client, req)
+				req.Result <- FetchResult{Err: fetchErr}
+				// Re-SELECT INBOX and resume IDLE
+				newStatus, err := client.SelectMailbox("INBOX")
+				if err != nil {
+					w.log.Error("Re-SELECT INBOX failed after fetch, reconnecting", "account", account.Email, "err", err)
+					connectionAlive = false
+				} else {
+					uidNext = newStatus.UidNext
+				}
 			case <-time.After(10 * time.Minute):
 				close(stopIdle)
 				<-idleDone
@@ -196,6 +251,142 @@ func (w *WatcherManager) watchAccount(ctx context.Context, account *config.Accou
 
 		client.Close()
 	}
+}
+
+// handleFetchRequest performs the IMAP FETCH for a single attachment.
+// SELECT mailbox → BODYSTRUCTURE → find section → FETCH BODY[section] → stream.
+func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchRequest) error {
+	if _, err := client.SelectMailbox(req.Mailbox); err != nil {
+		return fmt.Errorf("select mailbox %s: %w", req.Mailbox, err)
+	}
+
+	bs, err := client.FetchBodyStructure(req.UID)
+	if err != nil {
+		return fmt.Errorf("fetch BODYSTRUCTURE: %w", err)
+	}
+	if bs == nil {
+		return fmt.Errorf("nil BODYSTRUCTURE for UID %d", req.UID)
+	}
+
+	sectionPath := findAttachmentSection(bs, req.Filename, req.PartIndex)
+	if sectionPath == nil {
+		return fmt.Errorf("attachment %q not found in BODYSTRUCTURE", req.Filename)
+	}
+
+	w.log.Debug("Streaming attachment", "uid", req.UID, "section", sectionPath, "filename", req.Filename)
+	return client.FetchBodySection(req.UID, sectionPath, req.Writer)
+}
+
+// FetchAttachment implements AttachmentFetcher. Routes the request to the
+// appropriate account watcher's fetchCh, breaking its IDLE to perform the fetch.
+func (w *WatcherManager) FetchAttachment(ctx context.Context, account, mailbox string,
+	uid uint32, filename, contentType string, partIndex int, writer io.Writer) error {
+
+	aw, ok := w.watchers[account]
+	if !ok {
+		return fmt.Errorf("no watcher for account %q", account)
+	}
+
+	req := FetchRequest{
+		Mailbox:     mailbox,
+		UID:         uid,
+		Filename:    filename,
+		ContentType: contentType,
+		PartIndex:   partIndex,
+		Writer:      writer,
+		Result:      make(chan FetchResult, 1),
+	}
+
+	select {
+	case aw.fetchCh <- req:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	select {
+	case res := <-req.Result:
+		return res.Err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// findAttachmentSection walks the IMAP BODYSTRUCTURE tree and returns the
+// section path (e.g. []int{3} or []int{2,1}) for the target attachment.
+//
+// Uses dual matching:
+//  1. Primary: match by filename (checks DispositionParams["filename"] and Params["name"])
+//  2. Fallback: match by 1-based attachment index (partIndex), counting only
+//     attachment-like parts in DFS order (same heuristic as the Go parser).
+func findAttachmentSection(bs *goImap.BodyStructure, filename string, partIndex int) []int {
+	// Primary: filename match
+	if path := walkForFilename(bs, filename, nil); path != nil {
+		return path
+	}
+	// Fallback: index match (1-based)
+	counter := 0
+	if path := walkForIndex(bs, partIndex, &counter, nil); path != nil {
+		return path
+	}
+	return nil
+}
+
+// walkForFilename does a DFS looking for a leaf whose filename matches target.
+func walkForFilename(bs *goImap.BodyStructure, target string, prefix []int) []int {
+	if len(bs.Parts) > 0 {
+		for i, child := range bs.Parts {
+			path := walkForFilename(child, target, append(append([]int{}, prefix...), i+1))
+			if path != nil {
+				return path
+			}
+		}
+		return nil
+	}
+	// Leaf node — check filename
+	name := bs.DispositionParams["filename"]
+	if name == "" {
+		name = bs.Params["name"]
+	}
+	if strings.EqualFold(name, target) {
+		return prefix
+	}
+	return nil
+}
+
+// walkForIndex does a DFS counting attachment-like leaves. Returns the section
+// path when the counter reaches partIndex.
+func walkForIndex(bs *goImap.BodyStructure, partIndex int, counter *int, prefix []int) []int {
+	if len(bs.Parts) > 0 {
+		for i, child := range bs.Parts {
+			path := walkForIndex(child, partIndex, counter, append(append([]int{}, prefix...), i+1))
+			if path != nil {
+				return path
+			}
+		}
+		return nil
+	}
+	// Leaf — check if attachment-like (same heuristic as sync parser)
+	if !isAttachmentLike(bs) {
+		return nil
+	}
+	*counter++
+	if *counter == partIndex {
+		return prefix
+	}
+	return nil
+}
+
+// isAttachmentLike returns true if the BODYSTRUCTURE leaf looks like an
+// attachment: has disposition "attachment", or has a filename and isn't text/*.
+func isAttachmentLike(bs *goImap.BodyStructure) bool {
+	if strings.EqualFold(bs.Disposition, "attachment") {
+		return true
+	}
+	name := bs.DispositionParams["filename"]
+	if name == "" {
+		name = bs.Params["name"]
+	}
+	return name != "" && !strings.EqualFold(bs.MIMEType, "text")
 }
 
 // syncAndNotify syncs the account and broadcasts a NewMailEvent if new

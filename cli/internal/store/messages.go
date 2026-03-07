@@ -63,7 +63,9 @@ func (d *DB) insertMessageTx(tx *sql.Tx, msg *Message) error {
 			body_html = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_html ELSE messages.body_html END,
 			fetched_body = MAX(messages.fetched_body, excluded.fetched_body),
-			flags = excluded.flags
+			flags = excluded.flags,
+			uid = CASE WHEN excluded.uid > 0 THEN excluded.uid ELSE messages.uid END,
+			mailbox = CASE WHEN excluded.mailbox != '' THEN excluded.mailbox ELSE messages.mailbox END
 		RETURNING id`,
 		msg.MessageID, threadID, msg.InReplyTo, msg.Refs, msg.Subject,
 		msg.FromAddr, msg.ToAddrs, msg.CCAddrs, msg.Date, msg.CreatedAt,
@@ -88,6 +90,19 @@ func (d *DB) UpdateBody(messageID, bodyText, bodyHTML string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("message not found: %s", messageID)
+	}
+	return nil
+}
+
+// BackfillUID sets the UID and mailbox for a message that has uid=0.
+// Used to populate UIDs for messages originally synced from Maildir.
+func (d *DB) BackfillUID(messageID, account string, uid uint32, mailbox string) error {
+	_, err := d.db.Exec(`
+		UPDATE messages SET uid = ?, mailbox = ?
+		WHERE message_id = ? AND account = ? AND uid = 0`,
+		uid, mailbox, messageID, account)
+	if err != nil {
+		return fmt.Errorf("backfill uid: %w", err)
 	}
 	return nil
 }

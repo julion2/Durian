@@ -858,6 +858,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 			continue // Can't sync without Message-ID
 		}
 
+		// Backfill UID for messages originally synced from Maildir (uid=0)
+		if s.store != nil {
+			_ = s.store.BackfillUID(messageID, s.accountName(), uid, mailboxName)
+		}
+
 		// Check if message exists locally and get its tags
 		tags, existsLocally := localMessages[messageID]
 		if !existsLocally {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strings"
@@ -769,6 +770,98 @@ func (c *Client) GetSyncMailboxes() ([]string, error) {
 
 	slog.Debug("Sync mailboxes", "module", "IMAP", "count", len(result))
 	return result, nil
+}
+
+// FetchBodyStructure fetches the BODYSTRUCTURE for a single message by UID.
+// Returns the parsed MIME tree used to locate attachment sections.
+func (c *Client) FetchBodyStructure(uid uint32) (*imap.BodyStructure, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	items := []imap.FetchItem{
+		imap.FetchUid,
+		imap.FetchBodyStructure,
+	}
+
+	messages := make(chan *imap.Message, 1)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidFetch(seqSet, items, messages)
+	}()
+
+	var result *imap.Message
+	for msg := range messages {
+		result = msg
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("failed to fetch BODYSTRUCTURE for UID %d: %w", uid, err)
+	}
+	if result == nil {
+		return nil, fmt.Errorf("no message found for UID %d", uid)
+	}
+
+	return result.BodyStructure, nil
+}
+
+// FetchBodySection fetches a specific MIME section by UID and streams it to w.
+// sectionPath uses IMAP section numbering (e.g. []int{2,1} for section "2.1").
+// Uses BODY.PEEK to avoid setting \Seen.
+func (c *Client) FetchBodySection(uid uint32, sectionPath []int, w io.Writer) error {
+	if c.conn == nil {
+		return fmt.Errorf("not connected")
+	}
+
+	section := &imap.BodySectionName{
+		BodyPartName: imap.BodyPartName{
+			Path: sectionPath,
+		},
+		Peek: true,
+	}
+
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+
+	items := []imap.FetchItem{section.FetchItem()}
+
+	messages := make(chan *imap.Message, 1)
+	done := make(chan error, 1)
+
+	go func() {
+		done <- c.conn.UidFetch(seqSet, items, messages)
+	}()
+
+	var msg *imap.Message
+	for m := range messages {
+		msg = m
+	}
+
+	if err := <-done; err != nil {
+		return fmt.Errorf("failed to fetch BODY[%v] for UID %d: %w", sectionPath, uid, err)
+	}
+	if msg == nil {
+		return fmt.Errorf("no message found for UID %d", uid)
+	}
+
+	// go-imap may return the literal under a slightly different key than
+	// the exact BodySectionName we requested (e.g. server omits PEEK).
+	// Iterate msg.Body to find the response.
+	for _, body := range msg.Body {
+		if body == nil {
+			continue
+		}
+		if _, err := io.Copy(w, body); err != nil {
+			return fmt.Errorf("failed to stream section: %w", err)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("section %v not found in response for UID %d", sectionPath, uid)
 }
 
 // Close closes the IMAP connection

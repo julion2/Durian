@@ -107,6 +107,7 @@ func runServe(cmd *cobra.Command, args []string) {
 			} else {
 				watcher = handler.NewWatcherManager(eventHub, nmClient)
 			}
+			h.SetFetcher(watcher)
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))
 		}

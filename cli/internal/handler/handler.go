@@ -1,12 +1,23 @@
 package handler
 
 import (
+	"context"
+	"io"
+
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
+
+// AttachmentFetcher fetches attachment bytes directly from the IMAP server.
+// Implemented by WatcherManager to break IDLE and stream BODY[section].
+type AttachmentFetcher interface {
+	FetchAttachment(ctx context.Context, account, mailbox string,
+		uid uint32, filename, contentType string, partIndex int,
+		w io.Writer) error
+}
 
 // Handler processes commands and returns responses
 type Handler struct {
@@ -15,6 +26,7 @@ type Handler struct {
 	useStore bool      // true = read from store instead of notmuch
 	parser   *mail.Parser
 	contacts *contacts.DB
+	fetcher  AttachmentFetcher // optional IMAP attachment fetcher
 }
 
 // New creates a new Handler with the given notmuch client and optional contacts DB.
@@ -36,6 +48,11 @@ func NewWithStore(nm notmuch.Client, db *store.DB, contactsDB *contacts.DB) *Han
 		parser:   mail.NewParser(),
 		contacts: contactsDB,
 	}
+}
+
+// SetFetcher sets the IMAP attachment fetcher (typically the WatcherManager).
+func (h *Handler) SetFetcher(f AttachmentFetcher) {
+	h.fetcher = f
 }
 
 // Handle dispatches a command to the appropriate handler method

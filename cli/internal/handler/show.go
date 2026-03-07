@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"os"
@@ -244,8 +246,8 @@ func (h *Handler) DownloadAttachment(messageID string, partID int, w http.Respon
 }
 
 // downloadAttachmentStore implements DownloadAttachment for the store backend.
-// Store PartIDs are sequential (1, 2, 3…) and don't match notmuch's MIME tree
-// numbering, so we resolve the correct notmuch PartID by matching filenames.
+// Tries IMAP fetch first (break-IDLE pattern), falls back to notmuch if IMAP
+// is unavailable or fails.
 func (h *Handler) downloadAttachmentStore(messageID string, partID int, w http.ResponseWriter) error {
 	// Get attachment metadata from store
 	storeAtts, err := h.store.GetAttachmentsByMessageID(messageID)
@@ -263,7 +265,34 @@ func (h *Handler) downloadAttachmentStore(messageID string, partID int, w http.R
 		return errors.New("attachment not found")
 	}
 
-	// Resolve notmuch PartID by matching filename
+	// Set HTTP headers before streaming body
+	w.Header().Set("Content-Type", storeAtt.ContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(storeAtt.Filename)+`"`)
+
+	// Try IMAP fetch (break-IDLE pattern)
+	if h.fetcher != nil {
+		msg, err := h.store.GetByMessageID(messageID)
+		if err == nil && msg != nil && msg.UID > 0 && msg.Account != "" && msg.Mailbox != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			err := h.fetcher.FetchAttachment(ctx, msg.Account, msg.Mailbox,
+				msg.UID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
+			if err == nil {
+				return nil
+			}
+			slog.Warn("IMAP attachment fetch failed, falling back to notmuch",
+				"module", "HANDLER", "message_id", messageID, "err", err)
+		}
+	}
+
+	// Fallback: resolve notmuch PartID by matching filename
+	return h.downloadAttachmentNotmuch(messageID, storeAtt, w)
+}
+
+// downloadAttachmentNotmuch streams an attachment via notmuch's ShowRawPart.
+// Used as fallback when IMAP fetch is unavailable or fails.
+func (h *Handler) downloadAttachmentNotmuch(messageID string, storeAtt *store.Attachment, w http.ResponseWriter) error {
 	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
 	if err != nil {
 		return err
@@ -283,9 +312,6 @@ func (h *Handler) downloadAttachmentStore(messageID string, partID int, w http.R
 	if nmPartID < 0 {
 		return errors.New("attachment not found in message")
 	}
-
-	w.Header().Set("Content-Type", storeAtt.ContentType)
-	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(storeAtt.Filename)+`"`)
 
 	return h.notmuch.ShowRawPart(messageID, nmPartID, w)
 }
