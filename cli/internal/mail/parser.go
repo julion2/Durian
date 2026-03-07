@@ -101,10 +101,13 @@ func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string,
 			if strings.Contains(contentDisp, "inline") {
 				disposition = "inline"
 			}
+			attBody, _ := io.ReadAll(part)
 			attachments = append(attachments, AttachmentInfo{
 				Filename:    name,
 				ContentType: mediaType,
+				Size:        len(attBody),
 				Disposition: disposition,
+				ContentID:   part.Header.Get("Content-Id"),
 			})
 			continue
 		}
