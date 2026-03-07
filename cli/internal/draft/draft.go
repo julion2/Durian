@@ -9,21 +9,18 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	imapClient "github.com/durian-dev/durian/cli/internal/imap"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 )
 
 // Service handles draft operations
 type Service struct {
 	account *config.AccountConfig
-	notmuch notmuch.Client
 }
 
 // NewService creates a new draft service for the given account
-func NewService(account *config.AccountConfig, nmClient notmuch.Client) *Service {
+func NewService(account *config.AccountConfig) *Service {
 	return &Service{
 		account: account,
-		notmuch: nmClient,
 	}
 }
 
@@ -75,18 +72,6 @@ func (s *Service) Save(msg *smtp.Message, replaceMessageID string) (*SaveResult,
 	uid, err := client.Append(draftsMailbox, flags, time.Now(), messageData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to append draft: %w", err)
-	}
-
-	// Run notmuch new to index the new message
-	if err := s.notmuch.RunNew(); err != nil {
-		fmt.Printf("Warning: notmuch new failed: %v\n", err)
-	}
-
-	// Tag the draft with +draft in notmuch
-	if messageID != "" {
-		if err := s.notmuch.ModifyTags("id:"+messageID, []string{"draft"}, nil); err != nil {
-			fmt.Printf("Warning: failed to tag draft: %v\n", err)
-		}
 	}
 
 	return &SaveResult{

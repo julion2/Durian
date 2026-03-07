@@ -47,7 +47,7 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 	return protocol.SuccessWithThread(thread)
 }
 
-// ShowMessageBody returns the full (unstripped) body of a single message by notmuch ID.
+// ShowMessageBody returns the full (unstripped) body of a single message by Message-ID.
 // Used for reply quoting where the conversation chain must be preserved.
 func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 	msg, err := h.store.GetByMessageID(messageID)

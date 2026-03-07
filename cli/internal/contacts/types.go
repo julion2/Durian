@@ -15,7 +15,7 @@ type Contact struct {
 
 // ContactSource defines how a contact was added
 const (
-	SourceImported = "imported" // Imported from notmuch
+	SourceImported = "imported" // Imported from email store
 	SourceManual   = "manual"   // Manually added
 	SourceSent     = "sent"     // Added when email was sent
 )

@@ -8,7 +8,6 @@ go_library(
     deps = [
         "//cli/internal/config",
         "//cli/internal/imap",
-        "//cli/internal/notmuch",
         "//cli/internal/smtp",
         "@com_github_emersion_go_imap//:go-imap",
     ],

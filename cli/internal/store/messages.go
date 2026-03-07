@@ -234,6 +234,43 @@ func (d *DB) DeleteByMessageIDAndAccount(messageID, account string) error {
 	return nil
 }
 
+// GetSenderCounts returns unique From addresses with their message counts.
+func (d *DB) GetSenderCounts() (map[string]int, error) {
+	rows, err := d.db.Query(`SELECT from_addr, COUNT(*) FROM messages WHERE from_addr != '' GROUP BY from_addr`)
+	if err != nil {
+		return nil, fmt.Errorf("query senders: %w", err)
+	}
+	defer rows.Close()
+	result := make(map[string]int)
+	for rows.Next() {
+		var addr string
+		var count int
+		if err := rows.Scan(&addr, &count); err != nil {
+			return nil, fmt.Errorf("scan sender: %w", err)
+		}
+		result[addr] = count
+	}
+	return result, rows.Err()
+}
+
+// GetRecipientAddresses returns all non-empty To and CC address field values.
+func (d *DB) GetRecipientAddresses() ([]string, error) {
+	rows, err := d.db.Query(`SELECT to_addrs FROM messages WHERE to_addrs != '' UNION ALL SELECT cc_addrs FROM messages WHERE cc_addrs != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("query recipients: %w", err)
+	}
+	defer rows.Close()
+	var result []string
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err != nil {
+			return nil, fmt.Errorf("scan recipient: %w", err)
+		}
+		result = append(result, addr)
+	}
+	return result, rows.Err()
+}
+
 // scanMessages scans rows into a slice of Message pointers.
 func scanMessages(rows *sql.Rows) ([]*Message, error) {
 	var msgs []*Message

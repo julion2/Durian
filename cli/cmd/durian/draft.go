@@ -8,7 +8,6 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/draft"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +36,7 @@ var draftSaveCmd = &cobra.Command{
 	Short: "Save a draft to IMAP Drafts folder",
 	Long: `Save an email draft to the IMAP Drafts folder.
 
-The draft will be stored on the IMAP server and indexed by notmuch.
+The draft will be stored on the IMAP server.
 
 Examples:
   # Save a new draft
@@ -178,8 +177,7 @@ func runDraftSave(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save draft
-	nmClient := notmuch.NewClient("")
-	service := draft.NewService(account, nmClient)
+	service := draft.NewService(account)
 	result, err := service.Save(msg, draftReplace)
 	if err != nil {
 		return outputDraftError(fmt.Sprintf("failed to save draft: %v", err))
@@ -214,8 +212,7 @@ func runDraftDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delete draft
-	nmClient := notmuch.NewClient("")
-	service := draft.NewService(account, nmClient)
+	service := draft.NewService(account)
 	if err := service.Delete(messageID); err != nil {
 		return outputDraftError(fmt.Sprintf("failed to delete draft: %v", err))
 	}

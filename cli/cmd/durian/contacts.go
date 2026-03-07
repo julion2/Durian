@@ -26,11 +26,11 @@ var contactsInitCmd = &cobra.Command{
 
 var contactsImportCmd = &cobra.Command{
 	Use:   "import",
-	Short: "Import contacts from notmuch",
-	Long: `Import email addresses from the notmuch database.
-	
+	Short: "Import contacts from email store",
+	Long: `Import email addresses from the local email store.
+
 Extracts unique email addresses from From, To, and Cc headers
-of all emails in your notmuch database.`,
+of all emails in the SQLite store.`,
 	RunE: runContactsImport,
 }
 
@@ -136,11 +136,17 @@ func runContactsImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("initialize schema: %w", err)
 	}
 
-	// Import from notmuch (uses default notmuch config)
-	fmt.Println("Extracting addresses from notmuch...")
-	contactList, err := contacts.ImportFromNotmuch()
+	// Open email store for address extraction
+	emailDB, err := openEmailDB()
 	if err != nil {
-		return fmt.Errorf("import from notmuch: %w", err)
+		return fmt.Errorf("open email store: %w", err)
+	}
+	defer emailDB.Close()
+
+	fmt.Println("Extracting addresses from email store...")
+	contactList, err := contacts.ImportFromStore(emailDB)
+	if err != nil {
+		return fmt.Errorf("import from store: %w", err)
 	}
 
 	slog.Debug("Found unique addresses", "count", len(contactList))
@@ -198,7 +204,7 @@ func runContactsList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(contactList) == 0 {
-		fmt.Println("No contacts found. Run 'durian contacts import' to import from notmuch.")
+		fmt.Println("No contacts found. Run 'durian contacts import' to import from your email store.")
 		return nil
 	}
 

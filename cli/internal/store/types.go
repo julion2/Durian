@@ -39,7 +39,7 @@ type Attachment struct {
 }
 
 // SearchResult represents a thread-level search result.
-// Field names match notmuch.SearchResult for handler compatibility.
+// Field names match the handler's SearchResult for API compatibility.
 type SearchResult struct {
 	Thread       string   `json:"thread"`
 	Subject      string   `json:"subject"`
