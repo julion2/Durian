@@ -1122,6 +1122,7 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 			UID:         imapMsg.Uid,
 			Size:        len(msgBody),
 			FetchedBody: true,
+			Account:     filepath.Base(s.account.GetIMAPMaildir()),
 		}
 
 		if err := s.store.InsertMessage(storeMsg); err != nil {

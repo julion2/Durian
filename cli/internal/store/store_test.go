@@ -18,14 +18,14 @@ func newTestDB(t *testing.T) *DB {
 func TestOpenAndInit(t *testing.T) {
 	db := newTestDB(t)
 
-	// Verify schema_version exists and is 1
+	// Verify schema_version exists and is current
 	var version int
 	err := db.db.QueryRow("SELECT version FROM schema_version WHERE rowid = 1").Scan(&version)
 	if err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 1 {
-		t.Errorf("version = %d, want 1", version)
+	if version != 2 {
+		t.Errorf("version = %d, want 2", version)
 	}
 }
 

@@ -203,7 +203,16 @@ func fieldToSQL(tok token) (string, []interface{}, error) {
 	case "date":
 		return parseDateRange(tok.value)
 
-	case "path", "folder", "thread", "id", "mimetype":
+	case "path":
+		account := extractAccountFromPath(tok.value)
+		if account != "" {
+			clause = "m.account LIKE ?"
+			params = []interface{}{"%" + account + "%"}
+		} else {
+			return "1=1", nil, nil
+		}
+
+	case "folder", "thread", "id", "mimetype":
 		// Notmuch-specific fields — skip (no equivalent in store)
 		return "1=1", nil, nil
 
@@ -264,6 +273,17 @@ func parseDateEnd(s string) (int64, error) {
 		}
 	}
 	return 0, fmt.Errorf("unsupported date format: %q", s)
+}
+
+// extractAccountFromPath extracts the account folder name from a notmuch path pattern.
+// e.g. "habric/**" → "habric", "jsLab/INBOX" → "jsLab"
+func extractAccountFromPath(value string) string {
+	value = strings.TrimRight(value, "*")
+	value = strings.TrimRight(value, "/")
+	if idx := strings.Index(value, "/"); idx > 0 {
+		return value[:idx]
+	}
+	return value
 }
 
 // formatDateRelative formats a Unix timestamp as a human-readable relative date.

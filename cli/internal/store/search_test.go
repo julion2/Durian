@@ -225,6 +225,63 @@ func TestSearch_DateRange(t *testing.T) {
 	}
 }
 
+func TestSearch_AccountFilter(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	db.InsertMessage(&Message{
+		MessageID: "acc1@x", Subject: "From work", FromAddr: "a@x",
+		Date: now, CreatedAt: now, FetchedBody: true, Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "acc2@x", Subject: "From personal", FromAddr: "b@x",
+		Date: now - 100, CreatedAt: now, FetchedBody: true, Account: "personal",
+	})
+	// Cross-account message (dedup): belongs to both
+	db.InsertMessage(&Message{
+		MessageID: "acc3@x", Subject: "Cross account", FromAddr: "c@x",
+		Date: now - 200, CreatedAt: now, FetchedBody: true, Account: "work,personal",
+	})
+
+	// path:work/** should match acc1 and acc3
+	results, err := db.Search("path:work/**", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("got %d results for path:work/**, want 2", len(results))
+	}
+
+	// path:personal/** should match acc2 and acc3
+	results, err = db.Search("path:personal/**", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("got %d results for path:personal/**, want 2", len(results))
+	}
+}
+
+func TestExtractAccountFromPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"work/**", "work"},
+		{"personal/**", "personal"},
+		{"backup/*", "backup"},
+		{"work/INBOX", "work"},
+		{"work", "work"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := extractAccountFromPath(tt.input)
+		if got != tt.want {
+			t.Errorf("extractAccountFromPath(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestSearch_UnknownField(t *testing.T) {
 	db := newTestDB(t)
 	_, err := db.Search("unknown:value", 10)

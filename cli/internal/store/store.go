@@ -73,7 +73,7 @@ func (d *DB) Init() error {
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			version INTEGER NOT NULL
 		)`,
-		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 1)`,
+		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 2)`,
 
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -93,7 +93,8 @@ func (d *DB) Init() error {
 			flags TEXT,
 			uid INTEGER DEFAULT 0,
 			size INTEGER DEFAULT 0,
-			fetched_body INTEGER DEFAULT 0
+			fetched_body INTEGER DEFAULT 0,
+			account TEXT DEFAULT ''
 		)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id)`,
@@ -162,7 +163,21 @@ func (d *DB) Init() error {
 		}
 	}
 
-	return d.migrate()
+	if err := d.migrate(); err != nil {
+		return err
+	}
+
+	// Indexes that depend on columns added by migrations run after migrate().
+	postMigration := []string{
+		`CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account)`,
+	}
+	for _, stmt := range postMigration {
+		if _, err := d.db.Exec(stmt); err != nil {
+			return fmt.Errorf("post-migration index: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // DefaultDBPath returns the default database path for the email store.
@@ -179,9 +194,18 @@ func (d *DB) migrate() error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 
-	// Future migrations go here:
-	// if version < 2 { migrateV1toV2(tx) }
-	_ = version
+	if version < 2 {
+		migrations := []string{
+			"ALTER TABLE messages ADD COLUMN account TEXT DEFAULT ''",
+			"CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account)",
+			"UPDATE schema_version SET version = 2 WHERE rowid = 1",
+		}
+		for _, stmt := range migrations {
+			if _, err := d.db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate v1→v2: %w", err)
+			}
+		}
+	}
 
 	return nil
 }

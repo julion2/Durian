@@ -55,19 +55,25 @@ func (d *DB) insertMessageTx(tx *sql.Tx, msg *Message) error {
 		INSERT INTO messages (
 			message_id, thread_id, in_reply_to, refs, subject,
 			from_addr, to_addrs, cc_addrs, date, created_at,
-			body_text, body_html, mailbox, flags, uid, size, fetched_body
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			body_text, body_html, mailbox, flags, uid, size, fetched_body, account
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(message_id) DO UPDATE SET
 			body_text = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_text ELSE messages.body_text END,
 			body_html = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_html ELSE messages.body_html END,
 			fetched_body = MAX(messages.fetched_body, excluded.fetched_body),
-			flags = excluded.flags
+			flags = excluded.flags,
+			account = CASE
+				WHEN messages.account = '' THEN excluded.account
+				WHEN excluded.account = '' THEN messages.account
+				WHEN instr(messages.account, excluded.account) > 0 THEN messages.account
+				ELSE messages.account || ',' || excluded.account
+			END
 		RETURNING id`,
 		msg.MessageID, threadID, msg.InReplyTo, msg.Refs, msg.Subject,
 		msg.FromAddr, msg.ToAddrs, msg.CCAddrs, msg.Date, msg.CreatedAt,
-		msg.BodyText, msg.BodyHTML, msg.Mailbox, msg.Flags, msg.UID, msg.Size, fetchedBody,
+		msg.BodyText, msg.BodyHTML, msg.Mailbox, msg.Flags, msg.UID, msg.Size, fetchedBody, msg.Account,
 	).Scan(&msg.ID)
 	if err != nil {
 		return fmt.Errorf("upsert message: %w", err)
@@ -99,12 +105,12 @@ func (d *DB) GetByMessageID(messageID string) (*Message, error) {
 	err := d.db.QueryRow(`
 		SELECT id, message_id, thread_id, in_reply_to, refs, subject,
 		       from_addr, to_addrs, cc_addrs, date, created_at,
-		       body_text, body_html, mailbox, flags, uid, size, fetched_body
+		       body_text, body_html, mailbox, flags, uid, size, fetched_body, account
 		FROM messages WHERE message_id = ?`, messageID,
 	).Scan(
 		&msg.ID, &msg.MessageID, &msg.ThreadID, &msg.InReplyTo, &msg.Refs, &msg.Subject,
 		&msg.FromAddr, &msg.ToAddrs, &msg.CCAddrs, &msg.Date, &msg.CreatedAt,
-		&msg.BodyText, &msg.BodyHTML, &msg.Mailbox, &msg.Flags, &msg.UID, &msg.Size, &fetchedBody,
+		&msg.BodyText, &msg.BodyHTML, &msg.Mailbox, &msg.Flags, &msg.UID, &msg.Size, &fetchedBody, &msg.Account,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -121,7 +127,7 @@ func (d *DB) GetByThread(threadID string) ([]*Message, error) {
 	rows, err := d.db.Query(`
 		SELECT id, message_id, thread_id, in_reply_to, refs, subject,
 		       from_addr, to_addrs, cc_addrs, date, created_at,
-		       body_text, body_html, mailbox, flags, uid, size, fetched_body
+		       body_text, body_html, mailbox, flags, uid, size, fetched_body, account
 		FROM messages WHERE thread_id = ?
 		ORDER BY date ASC`, threadID)
 	if err != nil {
@@ -184,7 +190,7 @@ func scanMessages(rows *sql.Rows) ([]*Message, error) {
 		err := rows.Scan(
 			&msg.ID, &msg.MessageID, &msg.ThreadID, &msg.InReplyTo, &msg.Refs, &msg.Subject,
 			&msg.FromAddr, &msg.ToAddrs, &msg.CCAddrs, &msg.Date, &msg.CreatedAt,
-			&msg.BodyText, &msg.BodyHTML, &msg.Mailbox, &msg.Flags, &msg.UID, &msg.Size, &fetchedBody,
+			&msg.BodyText, &msg.BodyHTML, &msg.Mailbox, &msg.Flags, &msg.UID, &msg.Size, &fetchedBody, &msg.Account,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
