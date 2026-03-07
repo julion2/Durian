@@ -5,7 +5,6 @@ go_library(
     srcs = [
         "client.go",
         "flags.go",
-        "maildir.go",
         "state.go",
         "sync.go",
     ],
@@ -19,7 +18,6 @@ go_library(
         "//cli/internal/oauth",
         "@com_github_emersion_go_imap//:go-imap",
         "@com_github_emersion_go_imap//client",
-        "@com_github_emersion_go_maildir//:go-maildir",
         "@com_github_emersion_go_sasl//:go-sasl",
     ],
 )
@@ -29,13 +27,11 @@ go_test(
     size = "small",
     srcs = [
         "flags_test.go",
-        "maildir_test.go",
         "state_test.go",
         "sync_test.go",
     ],
     embed = [":imap"],
     deps = [
         "@com_github_emersion_go_imap//:go-imap",
-        "@com_github_emersion_go_maildir//:go-maildir",
     ],
 )

@@ -95,7 +95,7 @@ func (d *DB) UpdateBody(messageID, bodyText, bodyHTML string) error {
 }
 
 // BackfillUID sets the UID and mailbox for a message that has uid=0.
-// Used to populate UIDs for messages originally synced from Maildir.
+// Used to populate UIDs for messages that were synced without UID info.
 func (d *DB) BackfillUID(messageID, account string, uid uint32, mailbox string) error {
 	_, err := d.db.Exec(`
 		UPDATE messages SET uid = ?, mailbox = ?
