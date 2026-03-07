@@ -19,10 +19,9 @@ var (
 
 // Global flags
 var (
-	cfgFile      string
-	jsonOutput   bool
-	debugMode    bool
-	storeBackend string // "notmuch" (default) or "sqlite"
+	cfgFile    string
+	jsonOutput bool
+	debugMode  bool
 )
 
 // Global config (loaded at startup)
@@ -31,8 +30,8 @@ var cfg *config.Config
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "durian",
-	Short: "Durian Mail CLI - A notmuch-based email client",
-	Long:  `Durian is a fast, terminal-based email client that uses notmuch for indexing and searching.`,
+	Short: "Durian Mail CLI",
+	Long:  `Durian is a fast, terminal-based email client.`,
 	// Show help when called without subcommands
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
@@ -53,7 +52,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default: ~/.config/durian/config.toml)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
-	rootCmd.PersistentFlags().StringVar(&storeBackend, "store", "notmuch", "read backend: notmuch or sqlite")
 
 	// Load config before command execution
 	cobra.OnInitialize(initConfig, initLogger)

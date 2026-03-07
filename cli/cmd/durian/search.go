@@ -7,8 +7,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/handler"
+	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/spf13/cobra"
 )
@@ -45,18 +45,13 @@ func runSearch(cmd *cobra.Command, args []string) error {
 
 	nmClient := notmuch.NewClient("")
 
-	var h *handler.Handler
-	if storeBackend == "sqlite" {
-		emailDB, err := openEmailDB()
-		if err != nil {
-			return fmt.Errorf("store backend unavailable: %w", err)
-		}
-		defer emailDB.Close()
-		h = handler.NewWithStore(nmClient, emailDB, nil)
-	} else {
-		h = handler.New(nmClient, nil)
+	emailDB, err := openEmailDB()
+	if err != nil {
+		return fmt.Errorf("email store unavailable: %w", err)
 	}
+	defer emailDB.Close()
 
+	h := handler.New(nmClient, emailDB, nil)
 	resp := h.Search(query, searchLimit, 0)
 
 	if !resp.OK {

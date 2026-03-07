@@ -58,23 +58,17 @@ func runServe(cmd *cobra.Command, args []string) {
 		slog.Info("Opened contacts database", "module", "SERVE", "path", contactsDBPath)
 	}
 
-	// Open email store for dual-write and optional store reads
-	var emailDB *store.DB
-	if db, err := openEmailDB(); err != nil {
-		slog.Warn("Store unavailable, running without dual-write", "module", "SERVE", "err", err)
-	} else {
-		emailDB = db
-		defer emailDB.Close()
-		slog.Info("Opened email store", "module", "SERVE", "path", store.DefaultDBPath())
+	// Open email store (required for reads)
+	emailDB, err := openEmailDB()
+	if err != nil {
+		slog.Error("Email store required but unavailable", "module", "SERVE", "err", err)
+		fmt.Fprintln(os.Stderr, "Error: email store unavailable:", err)
+		os.Exit(1)
 	}
+	defer emailDB.Close()
+	slog.Info("Opened email store", "module", "SERVE", "path", store.DefaultDBPath())
 
-	var h *handler.Handler
-	if storeBackend == "sqlite" && emailDB != nil {
-		h = handler.NewWithStore(nmClient, emailDB, contactsDB)
-		slog.Info("Using SQLite store for reads", "module", "SERVE")
-	} else {
-		h = handler.New(nmClient, contactsDB)
-	}
+	h := handler.New(nmClient, emailDB, contactsDB)
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
@@ -101,12 +95,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
-			var watcher *handler.WatcherManager
-			if emailDB != nil {
-				watcher = handler.NewWatcherManagerWithStore(eventHub, nmClient, emailDB)
-			} else {
-				watcher = handler.NewWatcherManager(eventHub, nmClient)
-			}
+			watcher := handler.NewWatcherManager(eventHub, nmClient, emailDB)
 			h.SetFetcher(watcher)
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))

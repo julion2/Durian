@@ -15,52 +15,6 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 		limit = 50
 	}
 
-	if h.useStore && h.store != nil {
-		return h.searchStore(query, limit, enrichLimit)
-	}
-
-	results, err := h.notmuch.Search(query, limit)
-	if err != nil {
-		return protocol.Fail(protocol.ErrBackendError, err)
-	}
-
-	mails := make([]mail.Mail, len(results))
-	for i, r := range results {
-		mails[i] = mail.Mail{
-			ThreadID:  r.Thread,
-			File:      "",
-			Subject:   r.Subject,
-			From:      r.Authors,
-			Date:      r.DateRelative,
-			Timestamp: r.Timestamp,
-			Tags:      strings.Join(r.Tags, ","),
-		}
-	}
-
-	if enrichLimit <= 0 {
-		return protocol.SuccessWithResults(mails)
-	}
-
-	// Enrich with thread content via a single notmuch show call.
-	// enrichLimit caps the show to only the first N threads (viewport).
-	// Graceful degradation: if show fails, return results without threads.
-	threadGroups, err := h.notmuch.ShowByQuery(query, enrichLimit)
-	if err != nil {
-		return protocol.SuccessWithResults(mails)
-	}
-
-	threads := make(map[string]*mail.ThreadContent, len(threadGroups))
-	for i, r := range results {
-		if i < len(threadGroups) {
-			threads[r.Thread] = convertThread(r.Thread, threadGroups[i])
-		}
-	}
-
-	return protocol.SuccessWithResultsAndThreads(mails, threads)
-}
-
-// searchStore implements Search using the SQLite store backend.
-func (h *Handler) searchStore(query string, limit int, enrichLimit int) protocol.Response {
 	results, err := h.store.Search(query, limit)
 	if err != nil {
 		return protocol.Fail(protocol.ErrBackendError, err)
@@ -92,7 +46,7 @@ func (h *Handler) searchStore(query string, limit int, enrichLimit int) protocol
 		if err != nil || len(msgs) == 0 {
 			continue
 		}
-		threads[r.Thread] = h.convertStoreThread(r.Thread, msgs)
+		threads[r.Thread] = h.convertThread(r.Thread, msgs)
 	}
 
 	return protocol.SuccessWithResultsAndThreads(mails, threads)

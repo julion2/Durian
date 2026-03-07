@@ -53,20 +53,9 @@ type WatcherManager struct {
 	watchers map[string]*accountWatcher // keyed by maildir basename (e.g. "habric")
 }
 
-// NewWatcherManager creates a WatcherManager wired to the given EventHub and notmuch client.
-func NewWatcherManager(hub *EventHub, nm notmuch.Client) *WatcherManager {
-	return &WatcherManager{
-		hub:      hub,
-		notmuch:  nm,
-		log:      slog.Default().With("module", "WATCHER"),
-		locks:    make(map[string]*sync.Mutex),
-		watchers: make(map[string]*accountWatcher),
-	}
-}
-
-// NewWatcherManagerWithStore creates a WatcherManager that passes the store
-// to sync operations for dual-write.
-func NewWatcherManagerWithStore(hub *EventHub, nm notmuch.Client, db *store.DB) *WatcherManager {
+// NewWatcherManager creates a WatcherManager wired to the given EventHub,
+// notmuch client, and SQLite store.
+func NewWatcherManager(hub *EventHub, nm notmuch.Client, db *store.DB) *WatcherManager {
 	return &WatcherManager{
 		hub:      hub,
 		notmuch:  nm,

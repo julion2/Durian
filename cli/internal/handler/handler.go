@@ -22,29 +22,18 @@ type AttachmentFetcher interface {
 // Handler processes commands and returns responses
 type Handler struct {
 	notmuch  notmuch.Client
-	store    *store.DB // optional SQLite store
-	useStore bool      // true = read from store instead of notmuch
+	store    *store.DB // SQLite store (primary read backend)
 	parser   *mail.Parser
 	contacts *contacts.DB
 	fetcher  AttachmentFetcher // optional IMAP attachment fetcher
 }
 
-// New creates a new Handler with the given notmuch client and optional contacts DB.
-func New(nm notmuch.Client, contactsDB *contacts.DB) *Handler {
-	return &Handler{
-		notmuch:  nm,
-		parser:   mail.NewParser(),
-		contacts: contactsDB,
-	}
-}
-
-// NewWithStore creates a Handler that reads from the SQLite store and dual-writes
+// New creates a Handler that reads from the SQLite store and dual-writes
 // tags to both store and notmuch (keeping notmuch in sync as fallback).
-func NewWithStore(nm notmuch.Client, db *store.DB, contactsDB *contacts.DB) *Handler {
+func New(nm notmuch.Client, db *store.DB, contactsDB *contacts.DB) *Handler {
 	return &Handler{
 		notmuch:  nm,
 		store:    db,
-		useStore: true,
 		parser:   mail.NewParser(),
 		contacts: contactsDB,
 	}
