@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/quotedprintable"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -268,13 +270,41 @@ func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchReques
 		return fmt.Errorf("nil BODYSTRUCTURE for UID %d", req.UID)
 	}
 
-	sectionPath := findAttachmentSection(bs, req.Filename, req.PartIndex)
+	sectionPath, encoding := findAttachmentSection(bs, req.Filename, req.PartIndex)
 	if sectionPath == nil {
 		return fmt.Errorf("attachment %q not found in BODYSTRUCTURE", req.Filename)
 	}
 
-	w.log.Debug("Streaming attachment", "uid", req.UID, "section", sectionPath, "filename", req.Filename)
-	return client.FetchBodySection(req.UID, sectionPath, req.Writer)
+	w.log.Debug("Streaming attachment", "uid", req.UID, "section", sectionPath,
+		"filename", req.Filename, "encoding", encoding)
+
+	// IMAP FETCH BODY[section] returns raw transfer-encoded bytes.
+	// Decode based on Content-Transfer-Encoding from BODYSTRUCTURE.
+	dest := req.Writer
+	switch strings.ToLower(encoding) {
+	case "base64":
+		pr, pw := io.Pipe()
+		defer pr.Close()
+		go func() {
+			err := client.FetchBodySection(req.UID, sectionPath, pw)
+			pw.CloseWithError(err)
+		}()
+		decoder := base64.NewDecoder(base64.StdEncoding, pr)
+		_, err := io.Copy(dest, decoder)
+		return err
+	case "quoted-printable":
+		pr, pw := io.Pipe()
+		defer pr.Close()
+		go func() {
+			err := client.FetchBodySection(req.UID, sectionPath, pw)
+			pw.CloseWithError(err)
+		}()
+		_, err := io.Copy(dest, quotedprintable.NewReader(pr))
+		return err
+	default:
+		// 7bit, 8bit, binary — no decoding needed
+		return client.FetchBodySection(req.UID, sectionPath, dest)
+	}
 }
 
 // FetchAttachment implements AttachmentFetcher. Routes the request to the
@@ -312,35 +342,36 @@ func (w *WatcherManager) FetchAttachment(ctx context.Context, account, mailbox s
 }
 
 // findAttachmentSection walks the IMAP BODYSTRUCTURE tree and returns the
-// section path (e.g. []int{3} or []int{2,1}) for the target attachment.
+// section path (e.g. []int{3} or []int{2,1}) and Content-Transfer-Encoding
+// for the target attachment.
 //
 // Uses dual matching:
 //  1. Primary: match by filename (checks DispositionParams["filename"] and Params["name"])
 //  2. Fallback: match by 1-based attachment index (partIndex), counting only
 //     attachment-like parts in DFS order (same heuristic as the Go parser).
-func findAttachmentSection(bs *goImap.BodyStructure, filename string, partIndex int) []int {
+func findAttachmentSection(bs *goImap.BodyStructure, filename string, partIndex int) ([]int, string) {
 	// Primary: filename match
-	if path := walkForFilename(bs, filename, nil); path != nil {
-		return path
+	if path, enc := walkForFilename(bs, filename, nil); path != nil {
+		return path, enc
 	}
 	// Fallback: index match (1-based)
 	counter := 0
-	if path := walkForIndex(bs, partIndex, &counter, nil); path != nil {
-		return path
+	if path, enc := walkForIndex(bs, partIndex, &counter, nil); path != nil {
+		return path, enc
 	}
-	return nil
+	return nil, ""
 }
 
 // walkForFilename does a DFS looking for a leaf whose filename matches target.
-func walkForFilename(bs *goImap.BodyStructure, target string, prefix []int) []int {
+func walkForFilename(bs *goImap.BodyStructure, target string, prefix []int) ([]int, string) {
 	if len(bs.Parts) > 0 {
 		for i, child := range bs.Parts {
-			path := walkForFilename(child, target, append(append([]int{}, prefix...), i+1))
+			path, enc := walkForFilename(child, target, append(append([]int{}, prefix...), i+1))
 			if path != nil {
-				return path
+				return path, enc
 			}
 		}
-		return nil
+		return nil, ""
 	}
 	// Leaf node — check filename
 	name := bs.DispositionParams["filename"]
@@ -348,32 +379,32 @@ func walkForFilename(bs *goImap.BodyStructure, target string, prefix []int) []in
 		name = bs.Params["name"]
 	}
 	if strings.EqualFold(name, target) {
-		return prefix
+		return prefix, bs.Encoding
 	}
-	return nil
+	return nil, ""
 }
 
 // walkForIndex does a DFS counting attachment-like leaves. Returns the section
-// path when the counter reaches partIndex.
-func walkForIndex(bs *goImap.BodyStructure, partIndex int, counter *int, prefix []int) []int {
+// path and encoding when the counter reaches partIndex.
+func walkForIndex(bs *goImap.BodyStructure, partIndex int, counter *int, prefix []int) ([]int, string) {
 	if len(bs.Parts) > 0 {
 		for i, child := range bs.Parts {
-			path := walkForIndex(child, partIndex, counter, append(append([]int{}, prefix...), i+1))
+			path, enc := walkForIndex(child, partIndex, counter, append(append([]int{}, prefix...), i+1))
 			if path != nil {
-				return path
+				return path, enc
 			}
 		}
-		return nil
+		return nil, ""
 	}
 	// Leaf — check if attachment-like (same heuristic as sync parser)
 	if !isAttachmentLike(bs) {
-		return nil
+		return nil, ""
 	}
 	*counter++
 	if *counter == partIndex {
-		return prefix
+		return prefix, bs.Encoding
 	}
-	return nil
+	return nil, ""
 }
 
 // isAttachmentLike returns true if the BODYSTRUCTURE leaf looks like an
