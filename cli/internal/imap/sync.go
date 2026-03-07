@@ -1195,13 +1195,7 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 		return
 	}
 
-	// Check if already in store for this account
-	exists, _ := s.store.MessageExistsForAccount(messageID, s.accountName())
-	if exists {
-		return
-	}
-
-	// Read from local maildir
+	// Read from local maildir (upsert handles existing rows — updates flags/body)
 	filenames := s.notmuch.GetFilenamesByMessageID(messageID)
 	if len(filenames) == 0 {
 		return
@@ -1212,6 +1206,9 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 		slog.Debug("Failed to read maildir file for store backfill", "module", "SYNC", "message_id", messageID, "err", err)
 		return
 	}
+
+	// Parse maildir flags before storeWrite closure
+	maildirFlags := flagStateFromMaildir(filenames[0])
 
 	s.storeWrite("backfill-from-maildir", func() error {
 		parsed, err := mail.ReadMessage(bytes.NewReader(msgBody))
@@ -1230,6 +1227,18 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 			dateUnix = t.Unix()
 		}
 
+		// Build IMAP-style flags string from maildir filename
+		var imapFlags []string
+		if maildirFlags.Seen {
+			imapFlags = append(imapFlags, `\Seen`)
+		}
+		if maildirFlags.Flagged {
+			imapFlags = append(imapFlags, `\Flagged`)
+		}
+		if maildirFlags.Answered {
+			imapFlags = append(imapFlags, `\Answered`)
+		}
+
 		storeMsg := &store.Message{
 			MessageID:   parsedID,
 			Subject:     content.Subject,
@@ -1243,6 +1252,7 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 			Date:        dateUnix,
 			CreatedAt:   time.Now().Unix(),
 			Mailbox:     mailboxName,
+			Flags:       strings.Join(imapFlags, ","),
 			Size:        len(msgBody),
 			FetchedBody: true,
 			Account:     s.accountName(),
@@ -1280,6 +1290,12 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 			}
 		}
 
+		// Apply flag-based tags from maildir filename
+		flagAdd, _ := maildirFlags.ToNotmuchTags()
+		for _, tag := range flagAdd {
+			_ = s.store.AddTag(storeMsg.ID, tag)
+		}
+
 		// Apply calendar tag
 		if bytes.Contains(msgBody, []byte("text/calendar")) {
 			_ = s.store.AddTag(storeMsg.ID, "cal")
@@ -1287,6 +1303,29 @@ func (s *Syncer) storeEnsureFromMaildir(mailboxName, messageID string) {
 
 		return nil
 	})
+}
+
+// flagStateFromMaildir extracts IMAP flag state from a maildir filename.
+// Maildir info suffix format: ":2,FLAGS" where FLAGS are single chars:
+// S=Seen, F=Flagged, R=Replied, D=Draft, T=Trashed.
+func flagStateFromMaildir(filename string) FlagState {
+	state := FlagState{}
+	idx := strings.LastIndex(filename, ":2,")
+	if idx < 0 {
+		return state
+	}
+	flags := filename[idx+3:]
+	for _, c := range flags {
+		switch c {
+		case 'S':
+			state.Seen = true
+		case 'F':
+			state.Flagged = true
+		case 'R':
+			state.Answered = true
+		}
+	}
+	return state
 }
 
 // extractMessageIDFromBody extracts Message-ID from raw email body using net/mail
