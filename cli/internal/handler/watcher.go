@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/mail"
 	"mime/quotedprintable"
 	"path/filepath"
 	"strings"
@@ -480,13 +481,17 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 			w.log.Debug("Message not yet in store", "account", account.Email, "message_id", messageID)
 			continue
 		}
+		from := msg.FromAddr
+		if addr, err := mail.ParseAddress(msg.FromAddr); err == nil && addr.Name != "" {
+			from = addr.Name
+		}
 		messages = append(messages, NewMailInfo{
 			ThreadID: msg.ThreadID,
 			Subject:  msg.Subject,
-			From:     msg.FromAddr,
+			From:     from,
 			Snippet:  cleanSnippet(msg.BodyText, 150),
 		})
-		w.log.Info("New mail", "account", account.Email, "thread", msg.ThreadID, "from", msg.FromAddr, "subject", msg.Subject)
+		w.log.Info("New mail", "account", account.Email, "thread", msg.ThreadID, "from", from, "subject", msg.Subject)
 	}
 
 	w.log.Info("Broadcasting new messages", "account", account.Email, "count", len(messages))
