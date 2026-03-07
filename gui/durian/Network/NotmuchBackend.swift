@@ -101,6 +101,9 @@ class NotmuchBackend: ObservableObject {
     private var prefetchTask: Task<Void, Never>?
     private var shouldCancelPrefetch = false
 
+    // Generation counter to discard stale search results on rapid folder/profile switches
+    private var searchGeneration: Int = 0
+
     // Thread cache
     private var threadCache: [String: CachedThread] = [:]
     private let maxCacheSize = 200
@@ -333,6 +336,9 @@ class NotmuchBackend: ObservableObject {
     }
     
     private func search(_ query: String, limit: Int = 200) async {
+        searchGeneration += 1
+        let myGeneration = searchGeneration
+
         isLoadingEmails = true
         loadingProgress = "Searching..."
 
@@ -352,15 +358,23 @@ class NotmuchBackend: ObservableObject {
 
         let response: DurianResponse? = await request(endpoint: endpoint)
 
-        guard let results = response?.results else {
+        // A newer search has started — discard this stale result silently
+        guard myGeneration == searchGeneration else {
+            Log.debug("BACKEND", "Stale search result discarded (gen \(myGeneration) vs \(searchGeneration))")
+            return
+        }
+
+        guard let response else {
             isLoadingEmails = false
             loadingProgress = "Search failed"
             BannerManager.shared.showWarning(title: "Search Failed", message: "Could not complete the search.")
             return
         }
 
+        let results = response.results ?? []
+
         shouldCancelPrefetch = false
-        let enrichedThreads = response?.threads
+        let enrichedThreads = response.threads
         emails = results.map { mail in
             MailMessage(
                 threadId: mail.thread_id,

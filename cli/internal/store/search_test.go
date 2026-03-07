@@ -282,6 +282,33 @@ func TestExtractAccountFromPath(t *testing.T) {
 	}
 }
 
+func TestSearch_MultiAccountOR(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	db.InsertMessage(&Message{
+		MessageID: "m1@x", Subject: "Work mail", FromAddr: "a@x",
+		Date: now, CreatedAt: now, FetchedBody: true, Account: "work",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "m2@x", Subject: "Personal mail", FromAddr: "b@x",
+		Date: now - 100, CreatedAt: now, FetchedBody: true, Account: "personal",
+	})
+	db.InsertMessage(&Message{
+		MessageID: "m3@x", Subject: "Other mail", FromAddr: "c@x",
+		Date: now - 200, CreatedAt: now, FetchedBody: true, Account: "other",
+	})
+
+	// Multi-account query: path:work/** OR path:personal/** should match work + personal
+	results, err := db.Search("(path:work/** OR path:personal/**)", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("got %d results for multi-account OR, want 2", len(results))
+	}
+}
+
 func TestSearch_UnknownField(t *testing.T) {
 	db := newTestDB(t)
 	_, err := db.Search("unknown:value", 10)

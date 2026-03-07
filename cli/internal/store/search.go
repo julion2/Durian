@@ -150,6 +150,9 @@ func parseQuery(query string) (where string, params []interface{}, err error) {
 	tokens := tokenize(query)
 
 	var clauses []string
+	var pathClauses []string
+	var pathParams []interface{}
+
 	for _, tok := range tokens {
 		switch tok.kind {
 		case "star":
@@ -161,13 +164,28 @@ func parseQuery(query string) (where string, params []interface{}, err error) {
 			if err != nil {
 				return "", nil, err
 			}
-			clauses = append(clauses, clause)
-			params = append(params, p...)
+			// Collect path: clauses separately — multiple accounts should be OR-ed
+			if tok.field == "path" && tok.kind == "field" && clause != "1=1" {
+				pathClauses = append(pathClauses, clause)
+				pathParams = append(pathParams, p...)
+			} else {
+				clauses = append(clauses, clause)
+				params = append(params, p...)
+			}
 
 		case "bare":
 			clauses = append(clauses, "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)")
 			params = append(params, tok.value)
 		}
+	}
+
+	// Multiple path: filters are OR-ed (match any of the accounts)
+	if len(pathClauses) == 1 {
+		clauses = append(clauses, pathClauses[0])
+		params = append(params, pathParams...)
+	} else if len(pathClauses) > 1 {
+		clauses = append(clauses, "("+strings.Join(pathClauses, " OR ")+")")
+		params = append(params, pathParams...)
 	}
 
 	return strings.Join(clauses, " AND "), params, nil
