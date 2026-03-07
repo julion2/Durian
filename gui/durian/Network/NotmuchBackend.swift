@@ -151,7 +151,7 @@ class NotmuchBackend: ObservableObject {
 
         durianProcess = Process()
         durianProcess?.executableURL = URL(fileURLWithPath: durianPath)
-        durianProcess?.arguments = ["serve"]
+        durianProcess?.arguments = ["serve", "--store=sqlite"]
 
         // Ensure child process can find notmuch and other tools
         var env = ProcessInfo.processInfo.environment

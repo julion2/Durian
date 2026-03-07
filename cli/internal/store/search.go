@@ -109,10 +109,18 @@ func tokenize(query string) []token {
 		return []token{{kind: "star"}}
 	}
 
+	// Strip parentheses — the tokenizer uses implicit AND between all clauses
+	query = strings.NewReplacer("(", "", ")", "").Replace(query)
+
 	var tokens []token
 	parts := strings.Fields(query)
 	for i := 0; i < len(parts); i++ {
 		p := parts[i]
+
+		// Skip boolean operators (implicit AND between all clauses)
+		if strings.EqualFold(p, "AND") || strings.EqualFold(p, "OR") {
+			continue
+		}
 
 		// Handle NOT prefix
 		negate := false
@@ -194,6 +202,10 @@ func fieldToSQL(tok token) (string, []interface{}, error) {
 
 	case "date":
 		return parseDateRange(tok.value)
+
+	case "path", "folder", "thread", "id", "mimetype":
+		// Notmuch-specific fields — skip (no equivalent in store)
+		return "1=1", nil, nil
 
 	default:
 		return "", nil, fmt.Errorf("unknown query field: %q", tok.field)
