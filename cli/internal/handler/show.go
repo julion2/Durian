@@ -212,8 +212,11 @@ func (h *Handler) convertStoreThread(threadID string, msgs []*store.Message) *in
 
 // DownloadAttachment streams a raw attachment part, setting Content-Type and
 // Content-Disposition headers from server-derived metadata.
-// Always uses notmuch — Maildir has the raw content, store does not.
 func (h *Handler) DownloadAttachment(messageID string, partID int, w http.ResponseWriter) error {
+	if h.useStore && h.store != nil {
+		return h.downloadAttachmentStore(messageID, partID, w)
+	}
+
 	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
 	if err != nil {
 		return err
@@ -238,4 +241,51 @@ func (h *Handler) DownloadAttachment(messageID string, partID int, w http.Respon
 	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(att.Filename)+`"`)
 
 	return h.notmuch.ShowRawPart(messageID, partID, w)
+}
+
+// downloadAttachmentStore implements DownloadAttachment for the store backend.
+// Store PartIDs are sequential (1, 2, 3…) and don't match notmuch's MIME tree
+// numbering, so we resolve the correct notmuch PartID by matching filenames.
+func (h *Handler) downloadAttachmentStore(messageID string, partID int, w http.ResponseWriter) error {
+	// Get attachment metadata from store
+	storeAtts, err := h.store.GetAttachmentsByMessageID(messageID)
+	if err != nil {
+		return err
+	}
+	var storeAtt *store.Attachment
+	for i := range storeAtts {
+		if storeAtts[i].PartID == partID {
+			storeAtt = &storeAtts[i]
+			break
+		}
+	}
+	if storeAtt == nil {
+		return errors.New("attachment not found")
+	}
+
+	// Resolve notmuch PartID by matching filename
+	msgs, err := h.notmuch.ShowMessages("id:" + messageID)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		return errors.New("message not found")
+	}
+
+	_, _, nmAtts := notmuch.ExtractBodyContentFull(msgs[0].Body)
+	nmPartID := -1
+	for _, nmAtt := range nmAtts {
+		if nmAtt.Filename == storeAtt.Filename {
+			nmPartID = nmAtt.PartID
+			break
+		}
+	}
+	if nmPartID < 0 {
+		return errors.New("attachment not found in message")
+	}
+
+	w.Header().Set("Content-Type", storeAtt.ContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+sanitizeFilename(storeAtt.Filename)+`"`)
+
+	return h.notmuch.ShowRawPart(messageID, nmPartID, w)
 }

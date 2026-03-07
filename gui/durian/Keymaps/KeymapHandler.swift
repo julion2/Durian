@@ -25,6 +25,9 @@ class KeymapHandler: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var keyEventMonitor: Any?
     private var isAppInForeground = false
+
+    /// When true, space key is passed through for attachment QuickLook preview.
+    var attachmentSelected = false
     
     // Legacy action handlers (for keymaps.toml defined shortcuts with modifiers)
     private var legacyActionHandlers: [String: () async -> Void] = [:]
@@ -150,6 +153,11 @@ class KeymapHandler: ObservableObject {
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
         // Skip if a text input field is focused (search, compose, etc.)
         if isTextInputFocused() {
+            return false
+        }
+
+        // Pass through space/escape for attachment QuickLook preview and deselection
+        if attachmentSelected && (event.keyCode == 49 || event.keyCode == 53) {
             return false
         }
         

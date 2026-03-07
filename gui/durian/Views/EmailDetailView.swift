@@ -558,17 +558,33 @@ struct ThreadMessageCardView: View {
                 }
             }
         }
-        .onAppear { spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.keyCode == 49, selectedAttachmentId != nil else { return event }
-            // Toggle: close if already showing, otherwise open preview
-            if let panel = QLPreviewPanel.shared(), panel.isVisible {
-                panel.close()
-            } else if let attachment = displayAttachments.first(where: { $0.partId == selectedAttachmentId }) {
-                previewAttachment(attachment)
-            }
-            return nil
-        } as AnyObject? }
-        .onDisappear { if let monitor = spaceMonitor { NSEvent.removeMonitor(monitor); spaceMonitor = nil } }
+        .onAppear {
+            KeymapHandler.shared.attachmentSelected = selectedAttachmentId != nil
+            spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard selectedAttachmentId != nil else { return event }
+                // Escape: deselect attachment
+                if event.keyCode == 53 {
+                    selectedAttachmentId = nil
+                    return nil
+                }
+                // Space: toggle QuickLook preview
+                guard event.keyCode == 49 else { return event }
+                if let panel = QLPreviewPanel.shared(), panel.isVisible {
+                    panel.close()
+                } else if let attachment = displayAttachments.first(where: { $0.partId == selectedAttachmentId }) {
+                    previewAttachment(attachment)
+                }
+                return nil
+            } as AnyObject?
+        }
+        .onDisappear {
+            if let monitor = spaceMonitor { NSEvent.removeMonitor(monitor); spaceMonitor = nil }
+            if let panel = QLPreviewPanel.shared(), panel.isVisible { panel.close() }
+            KeymapHandler.shared.attachmentSelected = false
+        }
+        .onChange(of: selectedAttachmentId) { _, newValue in
+            KeymapHandler.shared.attachmentSelected = newValue != nil
+        }
     }
 
     @ViewBuilder
@@ -671,6 +687,7 @@ struct ThreadMessageCardView: View {
             do {
                 try data.write(to: saveURL)
                 downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
+                BannerManager.shared.showSuccess(title: "Saved", message: "\(attachment.filename) saved to Downloads")
                 Log.info("ATTACHMENT", "Saved \(attachment.filename) to Downloads")
             } catch {
                 downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
@@ -694,17 +711,22 @@ struct ThreadMessageCardView: View {
         }
 
         Task {
+            var savedCount = 0
             for attachment in displayAttachments {
                 guard let data = await fetchAttachmentData(attachment) else { continue }
                 let saveURL = folderURL.appendingPathComponent(attachment.filename)
                 do {
                     try data.write(to: saveURL)
                     downloadStates[attachment.partId] = .downloaded(cachePath: saveURL.path)
+                    savedCount += 1
                     Log.info("ATTACHMENT", "Saved \(attachment.filename) to \(folderURL.lastPathComponent)/")
                 } catch {
                     downloadStates[attachment.partId] = .failed(error: error.localizedDescription)
                     scheduleErrorClear(attachment.partId)
                 }
+            }
+            if savedCount > 0 {
+                BannerManager.shared.showSuccess(title: "Saved", message: "\(savedCount) attachment\(savedCount == 1 ? "" : "s") saved to \(folderURL.lastPathComponent)/")
             }
         }
     }

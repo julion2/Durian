@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -629,5 +631,76 @@ func TestSplitTagOps(t *testing.T) {
 	}
 	if len(remove) != 2 || remove[0] != "unread" || remove[1] != "inbox" {
 		t.Errorf("remove = %v, want [unread inbox]", remove)
+	}
+}
+
+func TestStoreDownloadAttachment(t *testing.T) {
+	// Set up notmuch mock with attachment at PartID=5 (MIME tree numbering)
+	bodyJSON := `[{"id": 1, "content-type": "multipart/mixed", "content": [
+		{"id": 2, "content-type": "text/plain", "content": "See attached"},
+		{"id": 5, "content-type": "application/pdf", "content-disposition": "attachment", "content-length": 100, "filename": "report.pdf"}
+	]}]`
+	var body []json.RawMessage
+	if err := json.Unmarshal([]byte(bodyJSON), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+
+	mock := notmuch.NewMockClient()
+	mock.ThreadMessages = []notmuch.ThreadMessage{
+		{ID: "msg1@test", Body: body},
+	}
+	mock.ShowRawPartData = []byte("fake-pdf-bytes")
+
+	// Set up store with attachment at sequential PartID=1
+	db := newTestStore(t)
+	msg := &store.Message{
+		MessageID: "msg1@test", Subject: "Test",
+		FromAddr: "a@test", ToAddrs: "b@test",
+		Date: time.Now().Unix(), CreatedAt: time.Now().Unix(),
+		Mailbox: "INBOX", FetchedBody: true,
+	}
+	if err := db.InsertMessage(msg); err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+	if err := db.InsertAttachment(&store.Attachment{
+		MessageDBID: msg.ID, PartID: 1,
+		Filename: "report.pdf", ContentType: "application/pdf",
+		Size: 100, Disposition: "attachment",
+	}); err != nil {
+		t.Fatalf("insert attachment: %v", err)
+	}
+
+	h := NewWithStore(mock, db, nil)
+	w := httptest.NewRecorder()
+
+	err := h.DownloadAttachment("msg1@test", 1, w)
+	if err != nil {
+		t.Fatalf("DownloadAttachment failed: %v", err)
+	}
+
+	// Verify response headers
+	if ct := w.Header().Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("Content-Type = %q, want application/pdf", ct)
+	}
+	if cd := w.Header().Get("Content-Disposition"); cd != `attachment; filename="report.pdf"` {
+		t.Errorf("Content-Disposition = %q, want attachment; filename=\"report.pdf\"", cd)
+	}
+
+	// Verify body streamed from notmuch
+	if w.Body.String() != "fake-pdf-bytes" {
+		t.Errorf("Body = %q, want fake-pdf-bytes", w.Body.String())
+	}
+}
+
+func TestStoreDownloadAttachmentNotFound(t *testing.T) {
+	mock := notmuch.NewMockClient()
+	db := newTestStore(t)
+
+	h := NewWithStore(mock, db, nil)
+	w := httptest.NewRecorder()
+
+	err := h.DownloadAttachment("nonexistent@test", 1, w)
+	if err == nil {
+		t.Error("expected error for nonexistent attachment")
 	}
 }

@@ -84,6 +84,7 @@ func (h *Handler) DownloadAttachmentHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.DownloadAttachment(messageID, partID, w); err != nil {
+		slog.Warn("Attachment download failed", "module", "HANDLER", "message_id", messageID, "part_id", partID, "err", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 	}
 }
