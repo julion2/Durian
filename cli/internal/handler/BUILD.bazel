@@ -20,7 +20,6 @@ go_library(
         "//cli/internal/contacts",
         "//cli/internal/imap",
         "//cli/internal/mail",
-        "//cli/internal/notmuch",
         "//cli/internal/protocol",
         "//cli/internal/sanitize",
         "//cli/internal/store",

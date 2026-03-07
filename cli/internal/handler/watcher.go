@@ -16,7 +16,6 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/imap"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
@@ -45,20 +44,18 @@ type accountWatcher struct {
 // and broadcast new-mail events via the EventHub.
 type WatcherManager struct {
 	hub      *EventHub
-	notmuch  notmuch.Client
-	store    *store.DB              // optional SQLite store for dual-write syncs
+	store    *store.DB
 	log      *slog.Logger
 	locks    map[string]*sync.Mutex // per-account sync locks keyed by email
 	locksMu  sync.Mutex             // protects the locks map
 	watchers map[string]*accountWatcher // keyed by maildir basename (e.g. "habric")
 }
 
-// NewWatcherManager creates a WatcherManager wired to the given EventHub,
-// notmuch client, and SQLite store.
-func NewWatcherManager(hub *EventHub, nm notmuch.Client, db *store.DB) *WatcherManager {
+// NewWatcherManager creates a WatcherManager wired to the given EventHub
+// and SQLite store.
+func NewWatcherManager(hub *EventHub, db *store.DB) *WatcherManager {
 	return &WatcherManager{
 		hub:      hub,
-		notmuch:  nm,
 		store:    db,
 		log:      slog.Default().With("module", "WATCHER"),
 		locks:    make(map[string]*sync.Mutex),
@@ -424,7 +421,7 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 	syncer := imap.NewSyncerWithClient(account, client, opts)
 
 	// Run sync with timeout so a flaky server can't block the watcher forever.
-	// This ensures messages are in notmuch (whether downloaded by us or quickSync).
+	// This ensures messages are in the store (whether downloaded by us or quickSync).
 	type syncOutcome struct {
 		result *imap.SyncResult
 		err    error
@@ -467,50 +464,29 @@ func (w *WatcherManager) syncAndNotify(account *config.AccountConfig, client *im
 		return
 	}
 
-	// Collect Message-IDs and query notmuch for thread/subject/from
-	var idQueries []string
+	// Look up each new message in the SQLite store for thread/subject/from/body
+	messages := make([]NewMailInfo, 0, len(envelopes))
 	for uid, messageID := range envelopes {
-		if messageID != "" {
-			w.log.Debug("UID to Message-ID mapping", "account", account.Email, "uid", uid, "message_id", messageID)
-			idQueries = append(idQueries, fmt.Sprintf("id:%s", messageID))
-		}
-	}
-	if len(idQueries) == 0 {
-		w.log.Debug("No Message-IDs found in envelopes", "account", account.Email, "envelope_count", len(envelopes))
-		return
-	}
-
-	query := strings.Join(idQueries, " OR ")
-	w.log.Debug("Running notmuch query", "account", account.Email, "query", query)
-
-	// Fetch full message bodies via notmuch show (reuses ExtractBodyContent)
-	msgs, err := w.notmuch.ShowMessages(query)
-	if err != nil {
-		w.log.Error("Notmuch show failed", "account", account.Email, "err", err)
-		return
-	}
-	if len(msgs) == 0 {
-		w.log.Debug("Notmuch returned 0 messages for query", "account", account.Email)
-		return
-	}
-
-	messages := make([]NewMailInfo, 0, len(msgs))
-	for _, msg := range msgs {
-		// Look up thread ID for this message
-		results, err := w.notmuch.Search("id:"+msg.ID, 1)
-		if err != nil || len(results) == 0 {
-			w.log.Debug("Notmuch search failed or empty", "account", account.Email, "message_id", msg.ID)
+		if messageID == "" {
 			continue
 		}
-		r := results[0]
-		text, _, _ := notmuch.ExtractBodyContent(msg.Body)
+		w.log.Debug("UID to Message-ID mapping", "account", account.Email, "uid", uid, "message_id", messageID)
+		msg, err := w.store.GetByMessageID(messageID)
+		if err != nil {
+			w.log.Error("Store lookup failed", "account", account.Email, "message_id", messageID, "err", err)
+			continue
+		}
+		if msg == nil {
+			w.log.Debug("Message not yet in store", "account", account.Email, "message_id", messageID)
+			continue
+		}
 		messages = append(messages, NewMailInfo{
-			ThreadID: r.Thread,
-			Subject:  r.Subject,
-			From:     r.Authors,
-			Snippet:  cleanSnippet(text, 150),
+			ThreadID: msg.ThreadID,
+			Subject:  msg.Subject,
+			From:     msg.FromAddr,
+			Snippet:  cleanSnippet(msg.BodyText, 150),
 		})
-		w.log.Info("New mail", "account", account.Email, "thread", r.Thread, "from", r.Authors, "subject", r.Subject)
+		w.log.Info("New mail", "account", account.Email, "thread", msg.ThreadID, "from", msg.FromAddr, "subject", msg.Subject)
 	}
 
 	w.log.Info("Broadcasting new messages", "account", account.Email, "count", len(messages))

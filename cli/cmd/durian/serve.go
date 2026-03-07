@@ -17,7 +17,6 @@ import (
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/handler"
-	"github.com/durian-dev/durian/cli/internal/notmuch"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
@@ -44,8 +43,6 @@ func runServe(cmd *cobra.Command, args []string) {
 		defer f.Close()
 		slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: level})))
 	}
-
-	nmClient := notmuch.NewClient("")
 
 	// Open contacts database (non-fatal if missing)
 	var contactsDB *contacts.DB
@@ -95,7 +92,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
-			watcher := handler.NewWatcherManager(eventHub, nmClient, emailDB)
+			watcher := handler.NewWatcherManager(eventHub, emailDB)
 			h.SetFetcher(watcher)
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))
