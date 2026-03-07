@@ -13,9 +13,9 @@ Email client: Go CLI backend + Swift macOS GUI.
 ## Project Structure
 
 - Config dir: `~/.config/durian/` (`config.toml`, `keymaps.toml`, `profiles.toml`; see `docs/config-example.toml`)
-- `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, notmuch search, HTTP API server
+- `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, SQLite store, HTTP API server
   - `cli/cmd/durian/` — CLI commands (sync, send, serve, search, tag, contacts, draft, auth)
-  - `cli/internal/` — Internal packages (config, imap, smtp, handler, notmuch, oauth, mail, encoding, contacts, draft, keychain, protocol)
+  - `cli/internal/` — Internal packages (config, imap, smtp, handler, store, oauth, mail, encoding, contacts, draft, keychain, protocol)
 - `gui/` — Swift macOS app (SwiftUI)
   - `gui/durian/Managers/` — Singleton `ObservableObject` managers (`@MainActor`, `.shared`)
   - `gui/durian/Views/` — SwiftUI view components
@@ -55,7 +55,7 @@ Format: `<type>(<scope>): <short description>`
 
 ## Key Architecture
 
-- GUI ↔ CLI: HTTP API on `localhost:9723` (GUI starts CLI via `durian serve`). GUI must never call notmuch directly — always go through the durian CLI API.
+- GUI ↔ CLI: HTTP API on `localhost:9723` (GUI starts CLI via `durian serve`). GUI must never access the database directly — always go through the durian CLI API.
 - State management: Combine publishers, `@Published` properties
 - Navigation: Custom `KeySequenceEngine` for vim bindings
 - Error display: `ErrorManager` → `ErrorBannerView` (bottom-right toast, warnings auto-dismiss 5s)

@@ -755,7 +755,7 @@ struct ThreadMessageCardView: View {
     }
 
     private func fetchAttachmentData(_ attachment: AttachmentInfo) async -> Data? {
-        guard let backend = AccountManager.shared.notmuchBackend else {
+        guard let backend = AccountManager.shared.emailBackend else {
             downloadStates[attachment.partId] = .failed(error: "Not connected")
             scheduleErrorClear(attachment.partId)
             return nil

@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 
 enum DetailViewMode: Equatable {
-    case notmuchEmailDetail(emailId: String)
+    case emailDetail(emailId: String)
     case empty
 }
 
@@ -36,7 +36,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            notmuchView
+            emailView
             
             if showSearchPopup {
                 searchPopupOverlay
@@ -69,7 +69,7 @@ struct ContentView: View {
             accountManager.pendingNotificationThreadId = nil
             cursorEmailId = threadId
             markedEmails = [threadId]
-            handleNotmuchEmailSelection(threadId)
+            handleEmailSelection(threadId)
         }
     }
 
@@ -104,7 +104,7 @@ struct ContentView: View {
                         lastSearchQuery = query
                         cursorEmailId = selectedId
                         markedEmails = [selectedId]
-                        handleNotmuchEmailSelection(selectedId)
+                        handleEmailSelection(selectedId)
                     }
                 )
                 .padding(.top, 80)
@@ -186,10 +186,10 @@ struct ContentView: View {
             .filter { !$0.isEmpty }
     }
 
-    // MARK: - Notmuch View
+    // MARK: - Email View
     
     @ViewBuilder
-    private var notmuchView: some View {
+    private var emailView: some View {
         NavigationSplitView {
             // Sidebar: Profile Header + Tags + Network Status
             VStack(spacing: 0) {
@@ -236,7 +236,7 @@ struct ContentView: View {
                             switch email.bodyState {
                             case .notLoaded, .failed:
                                 Task {
-                                    await accountManager.fetchNotmuchEmailBody(id: email.id)
+                                    await accountManager.fetchEmailBody(id: email.id)
                                 }
                             case .loading, .loaded:
                                 break // Already loading or loaded
@@ -244,17 +244,17 @@ struct ContentView: View {
                         },
                         onTogglePin: { emailId in
                             Task {
-                                await accountManager.toggleNotmuchPin(id: emailId)
+                                await accountManager.togglePin(id: emailId)
                             }
                         },
                         onToggleRead: { emailId in
                             Task {
-                                await accountManager.toggleNotmuchRead(id: emailId)
+                                await accountManager.toggleRead(id: emailId)
                             }
                         },
                         onDelete: { emailId in
                             Task {
-                                await accountManager.deleteNotmuchMessage(id: emailId)
+                                await accountManager.deleteMessage(id: emailId)
                                 await MainActor.run {
                                     // Clear selection after delete
                                     markedEmails = []
@@ -339,7 +339,7 @@ struct ContentView: View {
                     Button(action: {
                         Task {
                             await syncManager.quickSync()
-                            await accountManager.reloadNotmuch()
+                            await accountManager.reloadEmail()
                         }
                     }) {
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -370,7 +370,7 @@ struct ContentView: View {
                         onForward: forwardSelected,
                         onLoadBody: {
                             Task {
-                                await accountManager.fetchNotmuchEmailBody(id: email.id)
+                                await accountManager.fetchEmailBody(id: email.id)
                             }
                         },
                         onEditDraft: email.isDraft ? editSelectedDraft : nil,
@@ -419,7 +419,7 @@ struct ContentView: View {
                 searchResults = []
                 lastSearchQuery = ""
                 Task {
-                    await accountManager.selectNotmuchTag(tagId)
+                    await accountManager.selectTag(tagId)
                 }
             }
         }
@@ -427,7 +427,7 @@ struct ContentView: View {
             // When selection changes externally (e.g., click), sync cursor
             if newSelection.count == 1, let emailId = newSelection.first {
                 cursorEmailId = emailId
-                handleNotmuchEmailSelection(emailId)
+                handleEmailSelection(emailId)
             }
         }
         .onChange(of: accountManager.mailMessages) { _, newMessages in
@@ -483,15 +483,15 @@ struct ContentView: View {
 
     // MARK: - Helper Methods
     
-    private func handleNotmuchEmailSelection(_ emailId: String) {
-        detailMode = .notmuchEmailDetail(emailId: emailId)
+    private func handleEmailSelection(_ emailId: String) {
+        detailMode = .emailDetail(emailId: emailId)
 
         // Auto-load body if not loaded or previously failed
         if let email = displayEmails.first(where: { $0.id == emailId }) {
             switch email.bodyState {
             case .notLoaded, .failed:
                 Task {
-                    await accountManager.fetchNotmuchEmailBody(id: emailId)
+                    await accountManager.fetchEmailBody(id: emailId)
                 }
             case .loading, .loaded:
                 break // Already loading or loaded
@@ -500,13 +500,13 @@ struct ContentView: View {
             // Mark as read
             if !email.isRead {
                 Task {
-                    await accountManager.markNotmuchAsRead(id: emailId)
+                    await accountManager.markAsRead(id: emailId)
                 }
             }
         } else {
             // Email not in current folder (e.g. opened from search) — fetch it
             Task {
-                await accountManager.fetchNotmuchEmailBody(id: emailId)
+                await accountManager.fetchEmailBody(id: emailId)
             }
         }
     }
@@ -560,7 +560,7 @@ struct ContentView: View {
     
     private func togglePin() {
         guard let emailId = markedEmails.first else { return }
-        Task { await accountManager.toggleNotmuchPin(id: emailId) }
+        Task { await accountManager.togglePin(id: emailId) }
     }
     
     private func toggleRead() {
@@ -629,8 +629,8 @@ struct ContentView: View {
 
     /// Fetch unstripped body for the reply target message (lazy-loaded on reply action)
     private func fetchOriginalReplyBody(for email: MailMessage, fromAccount: String) async -> (body: String, html: String?)? {
-        guard let targetId = EmailDraft.replyTargetNotmuchId(for: email, fromAccount: fromAccount),
-              let backend = AccountManager.shared.notmuchBackend else { return nil }
+        guard let targetId = EmailDraft.replyTargetMessageId(for: email, fromAccount: fromAccount),
+              let backend = AccountManager.shared.emailBackend else { return nil }
         guard let response = await backend.fetchOriginalBody(messageId: targetId) else { return nil }
         return (body: response.body, html: response.html)
     }
@@ -832,7 +832,7 @@ struct ContentView: View {
             await MainActor.run {
                 guard let emailId = markedEmails.first else { return }
                 Task {
-                    await accountManager.toggleNotmuchPin(id: emailId)
+                    await accountManager.togglePin(id: emailId)
                 }
             }
         }

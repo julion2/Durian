@@ -262,7 +262,7 @@ struct EmailRowView: View {
             if !result.isEmpty { return result }
         }
 
-        // Fallback: parse notmuch authors string (before thread load).
+        // Fallback: parse authors string (before thread load).
         // This is just names, no emails — can't reliably split "Last, First" vs
         // two separate authors, so we use it as-is for the display name and pass
         // the whole string for avatar name-based lookup.
@@ -271,7 +271,7 @@ struct EmailRowView: View {
             let p = Self.participant(from: raw)
             return [p]
         }
-        // Split by pipe (notmuch read/unread separator), keep commas intact
+        // Split by pipe (read/unread separator), keep commas intact
         // since they might be "Last, First" format.
         var authors: [String] = []
         for segment in raw.components(separatedBy: ",") {

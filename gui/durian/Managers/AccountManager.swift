@@ -2,7 +2,7 @@
 //  AccountManager.swift
 //  Durian
 //
-//  Manages notmuch backend for email access
+//  Manages email backend for email access
 //
 
 import Foundation
@@ -13,8 +13,8 @@ import AppKit
 class AccountManager: ObservableObject {
     static let shared = AccountManager()
     
-    // MARK: - Notmuch Properties
-    @Published var notmuchBackend: NotmuchBackend?
+    // MARK: - Email Backend Properties
+    @Published var emailBackend: EmailBackend?
     @Published var mailMessages: [MailMessage] = []    // Messages
     @Published var selectedFolder: String = "inbox"
     @Published var isLoadingEmails = false
@@ -36,24 +36,24 @@ class AccountManager: ObservableObject {
     }
     
     private init() {
-        setupNotmuchBackend()
+        setupEmailBackend()
     }
     
-    // MARK: - Notmuch Setup
+    // MARK: - Backend Setup
     
-    private func setupNotmuchBackend() {
-        Log.debug("BACKEND", "AccountManager: Setting up notmuch backend")
-        notmuchBackend = NotmuchBackend()
+    private func setupEmailBackend() {
+        Log.debug("BACKEND", "AccountManager: Setting up email backend")
+        emailBackend = EmailBackend()
         
         // Subscribe to backend changes
-        notmuchBackend?.objectWillChange.sink { [weak self] in
+        emailBackend?.objectWillChange.sink { [weak self] in
             self?.objectWillChange.send()
-            self?.syncFromNotmuch()
+            self?.syncFromBackend()
         }.store(in: &cancellables)
     }
     
-    private func syncFromNotmuch() {
-        guard let backend = notmuchBackend else { return }
+    private func syncFromBackend() {
+        guard let backend = emailBackend else { return }
         // mailFolders is now a computed property from ProfileManager
         mailMessages = backend.emails
         isLoadingEmails = backend.isLoadingEmails
@@ -63,23 +63,23 @@ class AccountManager: ObservableObject {
     // MARK: - Connection
     
     func connectToAllAccounts() async {
-        Log.debug("BACKEND", "AccountManager: Connecting to notmuch...")
-        guard let backend = notmuchBackend else {
+        Log.debug("BACKEND", "AccountManager: Connecting to email backend...")
+        guard let backend = emailBackend else {
             Log.error("BACKEND", "Backend not initialized")
             return
         }
         await backend.connect()
-        syncFromNotmuch()
+        syncFromBackend()
     }
     
     // MARK: - Folder/Tag Selection
     
-    func selectNotmuchTag(_ tag: String) async {
-        guard let backend = notmuchBackend else { return }
+    func selectTag(_ tag: String) async {
+        guard let backend = emailBackend else { return }
         selectedFolder = tag
         mailMessages.removeAll()
         await backend.selectFolder(tag)
-        syncFromNotmuch()
+        syncFromBackend()
     }
     
     // MARK: - Profile Switching
@@ -91,29 +91,29 @@ class AccountManager: ObservableObject {
         Log.info("BACKEND", "Switched to profile '\(profile.name)'")
         
         // Reload current folder with new profile filter
-        await selectNotmuchTag(selectedFolder)
+        await selectTag(selectedFolder)
     }
     
     // MARK: - Email Operations
     
-    func fetchNotmuchEmailBody(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func fetchEmailBody(id: String) async {
+        guard let backend = emailBackend else { return }
         await backend.fetchEmailBody(id: id)
-        syncFromNotmuch()
+        syncFromBackend()
     }
     
-    func markNotmuchAsRead(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func markAsRead(id: String) async {
+        guard let backend = emailBackend else { return }
         do {
             try await backend.markAsRead(id: id)
         } catch {
             Log.error("BACKEND", "Failed to mark as read: \(error)")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
-    func toggleNotmuchReadStatus(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func toggleReadStatus(id: String) async {
+        guard let backend = emailBackend else { return }
         do {
             if let email = mailMessages.first(where: { $0.id == id }) {
                 if email.isRead {
@@ -126,73 +126,73 @@ class AccountManager: ObservableObject {
             Log.error("BACKEND", "Failed to toggle read status: \(error)")
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
-    func deleteNotmuchMessage(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func deleteMessage(id: String) async {
+        guard let backend = emailBackend else { return }
         do {
             try await backend.deleteMessage(id: id)
         } catch {
             Log.error("BACKEND", "Failed to delete message: \(error)")
             BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete message.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func addTag(id: String, tag: String) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         do {
             try await backend.addTag(id: id, tag: tag)
         } catch {
             Log.error("BACKEND", "Failed to add tag: \(error)")
             BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not add tag '\(tag)'.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func removeTag(id: String, tag: String) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         do {
             try await backend.removeTag(id: id, tag: tag)
         } catch {
             Log.error("BACKEND", "Failed to remove tag: \(error)")
             BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not remove tag '\(tag)'.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func fetchAllTags() async -> [String] {
-        guard let backend = notmuchBackend else { return [] }
+        guard let backend = emailBackend else { return [] }
         return await backend.fetchAllTags()
     }
 
-    func toggleNotmuchPin(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func togglePin(id: String) async {
+        guard let backend = emailBackend else { return }
         do {
             try await backend.togglePin(id: id)
         } catch {
             Log.error("BACKEND", "Failed to toggle pin: \(error)")
             BannerManager.shared.showWarning(title: "Pin Failed", message: "Could not toggle pin.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
-    func toggleNotmuchRead(id: String) async {
-        guard let backend = notmuchBackend else { return }
+    func toggleRead(id: String) async {
+        guard let backend = emailBackend else { return }
         do {
             try await backend.toggleRead(id: id)
         } catch {
             Log.error("BACKEND", "Failed to toggle read: \(error)")
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update read status.")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     // MARK: - Batch Operations (Multi-Selection)
 
     func deleteMessages(ids: Set<String>) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         var failCount = 0
         for id in ids {
             do { try await backend.deleteMessage(id: id) }
@@ -201,11 +201,11 @@ class AccountManager: ObservableObject {
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete \(failCount) message(s).")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func toggleReadForMessages(ids: Set<String>) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         var failCount = 0
         for id in ids {
             do { try await backend.toggleRead(id: id) }
@@ -214,11 +214,11 @@ class AccountManager: ObservableObject {
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func markMessagesAsRead(ids: Set<String>) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         var failCount = 0
         for id in ids {
             do { try await backend.markAsRead(id: id) }
@@ -227,11 +227,11 @@ class AccountManager: ObservableObject {
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
 
     func markMessagesAsUnread(ids: Set<String>) async {
-        guard let backend = notmuchBackend else { return }
+        guard let backend = emailBackend else { return }
         var failCount = 0
         for id in ids {
             do { try await backend.markAsUnread(id: id) }
@@ -240,7 +240,7 @@ class AccountManager: ObservableObject {
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Read Status Failed", message: "Could not update \(failCount) message(s).")
         }
-        syncFromNotmuch()
+        syncFromBackend()
     }
     
     // MARK: - Notification Navigation
@@ -257,12 +257,12 @@ class AccountManager: ObservableObject {
 
     // MARK: - Full Reload
     
-    func reloadNotmuch() async {
-        guard let backend = notmuchBackend else { return }
+    func reloadEmail() async {
+        guard let backend = emailBackend else { return }
         
         isLoadingEmails = true
         
-        // Quick sync via SyncManager (configured channels + notmuch new)
+        // Quick sync via SyncManager
         let success = await SyncManager.shared.quickSync()
         
         if !success {
@@ -271,10 +271,10 @@ class AccountManager: ObservableObject {
             return
         }
         
-        // Reload from notmuch
+        // Reload from backend
         loadingProgress = "Loading..."
-        Log.debug("BACKEND", "Reloading from notmuch")
+        Log.debug("BACKEND", "Reloading from backend")
         await backend.reload()
-        syncFromNotmuch()
+        syncFromBackend()
     }
 }

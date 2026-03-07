@@ -388,7 +388,7 @@ class SyncManager: ObservableObject {
     
     /// Reload the email list after sync to show new messages
     private func reloadEmailList() async {
-        guard let backend = AccountManager.shared.notmuchBackend else { return }
+        guard let backend = AccountManager.shared.emailBackend else { return }
         Log.debug("SYNC", "Reloading email list")
         await backend.reload()
     }
@@ -406,7 +406,7 @@ class SyncManager: ObservableObject {
         reloadDebounceTask?.cancel()
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor in
-                guard let backend = AccountManager.shared.notmuchBackend else { return }
+                guard let backend = AccountManager.shared.emailBackend else { return }
                 await backend.reload()
                 self?.lastSyncTime = Date()
             }

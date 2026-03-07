@@ -221,9 +221,9 @@ class DraftService: ObservableObject {
         activeDrafts.removeValue(forKey: id)
     }
     
-    /// Load a draft from notmuch for editing
+    /// Load a draft from backend for editing
     /// Returns the UUID of the new draft window
-    func loadFromNotmuch(messageId: String) async throws -> UUID {
+    func loadFromBackend(messageId: String) async throws -> UUID {
         // Load draft metadata — content is populated by the caller
         let id = UUID()
         var draft = EmailDraft(from: ConfigManager.shared.getAccounts().first?.email ?? "")
@@ -241,7 +241,7 @@ class DraftService: ObservableObject {
                 process.executableURL = URL(fileURLWithPath: self.durianPath)
                 process.arguments = args
                 
-                // Set PATH for notmuch
+                // Set PATH for durian CLI
                 var environment = ProcessInfo.processInfo.environment
                 let homebrewPaths = "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin"
                 environment["PATH"] = homebrewPaths + ":" + (environment["PATH"] ?? "")

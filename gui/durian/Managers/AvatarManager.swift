@@ -58,7 +58,7 @@ class AvatarManager: ObservableObject {
     ///   - size: Desired image size in pixels
     /// - Returns: NSImage if found, nil otherwise (fallback to initials)
     func loadAvatar(for email: String, size: Int = 128) async -> NSImage? {
-        // Extract first author from notmuch authors string
+        // Extract first author from authors string
         // Separators: ", " (comma) or "|" without leading space
         // " | " (space-pipe-space) is part of name, don't split
         let firstAuthor: String

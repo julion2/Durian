@@ -131,7 +131,7 @@ class ProfileManager: ObservableObject {
         }
     }
     
-    /// Build notmuch query for a folder name
+    /// Build search query for a folder name
     /// - Looks up query from profile's folder config
     /// - Adds profile path filter for non-"All" profiles
     func buildQuery(folderName: String) -> String {

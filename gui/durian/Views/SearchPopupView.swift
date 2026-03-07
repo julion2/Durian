@@ -2,7 +2,7 @@
 //  SearchPopupView.swift
 //  Durian
 //
-//  Raycast-style search popup for notmuch queries
+//  Raycast-style search popup for email queries
 //
 
 import SwiftUI

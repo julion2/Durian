@@ -1,9 +1,9 @@
 
 //
-//  NotmuchBackend.swift
+//  EmailBackend.swift
 //  Durian
 //
-//  notmuch mail backend using durian CLI HTTP server
+//  Email backend using durian CLI HTTP server
 //
 
 import Foundation
@@ -15,8 +15,8 @@ import AppKit
 struct DurianResponse: Decodable {
     let ok: Bool
     let error: String?
-    let results: [NotmuchMailResult]?
-    let mail: NotmuchMailContent?
+    let results: [MailSearchResult]?
+    let mail: MailContent?
     let thread: ThreadContent?
     let threads: [String: ThreadContent]?
     let message_body: MessageBodyResponse?
@@ -41,7 +41,7 @@ struct MessageBodyResponse: Decodable {
     let html: String?
 }
 
-struct NotmuchMailResult: Decodable {
+struct MailSearchResult: Decodable {
     let thread_id: String
     let subject: String
     let from: String
@@ -50,7 +50,7 @@ struct NotmuchMailResult: Decodable {
     let tags: String
 }
 
-struct NotmuchMailContent: Decodable {
+struct MailContent: Decodable {
     let from: String
     let to: String
     let cc: String?
@@ -70,17 +70,17 @@ struct ThreadContent: Decodable {
     let messages: [ThreadMessage]
 }
 
-enum NotmuchTagError: Error, LocalizedError {
+enum TagError: Error, LocalizedError {
     case tagFailed(String)
     var errorDescription: String? {
         switch self { case .tagFailed(let msg): return msg }
     }
 }
 
-// MARK: - Notmuch Backend
+// MARK: - Email Backend
 
 @MainActor
-class NotmuchBackend: ObservableObject {
+class EmailBackend: ObservableObject {
     private var durianProcess: Process?
     private let decoder = JSONDecoder()
     private let baseURL = URL(string: "http://localhost:9723/api/v1")!
@@ -114,7 +114,7 @@ class NotmuchBackend: ObservableObject {
     }
 
     init() {
-        folders = MailFolder.defaultNotmuchTags
+        folders = MailFolder.defaultTags
     }
 
     // MARK: - Connection Management
@@ -156,7 +156,7 @@ class NotmuchBackend: ObservableObject {
         durianProcess?.executableURL = URL(fileURLWithPath: durianPath)
         durianProcess?.arguments = ["serve"]
 
-        // Ensure child process can find notmuch and other tools
+        // Ensure child process can find durian and other tools
         var env = ProcessInfo.processInfo.environment
         let extraPaths = ["/opt/homebrew/bin", "/usr/local/bin", "\(NSHomeDirectory())/.local/bin"]
         let currentPath = env["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -182,11 +182,11 @@ class NotmuchBackend: ObservableObject {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 { // 404 is ok, means our base endpoint is handled
                 isConnected = true
-                connectionStatus = "Connected to notmuch"
+                connectionStatus = "Connected"
                 Log.info("BACKEND", "Server is responsive")
                 await selectFolder("inbox")
             } else {
-                throw NSError(domain: "NotmuchBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server not responsive"])
+                throw NSError(domain: "EmailBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server not responsive"])
             }
         } catch {
             connectionStatus = "Failed to start or connect to server: \(error.localizedDescription)"
@@ -449,7 +449,7 @@ class NotmuchBackend: ObservableObject {
         } else {
             let msg = response?.error ?? "unknown error"
             Log.error("BACKEND", "Tag error: \(msg)")
-            throw NotmuchTagError.tagFailed(msg)
+            throw TagError.tagFailed(msg)
         }
     }
 
@@ -746,6 +746,6 @@ class NotmuchBackend: ObservableObject {
 }
 
 // MARK: - Protocol Conformance
-extension NotmuchBackend: MailBackendProtocol {}
+extension EmailBackend: MailBackendProtocol {}
 
 

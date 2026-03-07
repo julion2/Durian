@@ -2,7 +2,7 @@
 //  MailBackendProtocol.swift
 //  Durian
 //
-//  Abstract protocol for mail backends (notmuch)
+//  Abstract protocol for mail backends
 //
 
 import Foundation
@@ -11,7 +11,7 @@ import Combine
 // MARK: - Mail Backend Protocol
 
 /// Protocol defining the interface for mail backends.
-/// Both IMAPClient and NotmuchBackend should conform to this.
+/// EmailBackend conforms to this.
 @MainActor
 protocol MailBackendProtocol: ObservableObject {
     // MARK: - Connection State
@@ -29,7 +29,7 @@ protocol MailBackendProtocol: ObservableObject {
     func disconnect() async
 
     // MARK: - Folder/Tag Selection
-    /// Select a folder (IMAP) or tag (notmuch) to view
+    /// Select a folder or tag to view
     func selectFolder(_ name: String) async
 
     // MARK: - Email Operations

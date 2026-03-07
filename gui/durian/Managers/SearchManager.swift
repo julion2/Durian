@@ -2,7 +2,7 @@
 //  SearchManager.swift
 //  Durian
 //
-//  Manages debounced email search via NotmuchBackend
+//  Manages debounced email search via EmailBackend
 //
 
 import Foundation
@@ -40,8 +40,8 @@ class SearchManager: ObservableObject {
             
             guard !Task.isCancelled else { return }
             
-            // Perform search via NotmuchBackend
-            guard let backend = AccountManager.shared.notmuchBackend else {
+            // Perform search via EmailBackend
+            guard let backend = AccountManager.shared.emailBackend else {
                 results = []
                 isSearching = false
                 return

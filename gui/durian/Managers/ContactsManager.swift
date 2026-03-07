@@ -78,8 +78,8 @@ class ContactsManager {
 
     private init() {}
 
-    private var backend: NotmuchBackend? {
-        AccountManager.shared.notmuchBackend
+    private var backend: EmailBackend? {
+        AccountManager.shared.emailBackend
     }
 
     // MARK: - Public API

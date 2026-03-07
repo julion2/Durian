@@ -5,7 +5,7 @@
 <h1 align="center">Durian</h1>
 
 <p align="center">
-  A macOS email client for power users. Vim-style navigation, IMAP + notmuch backend.
+  A macOS email client for power users. Vim-style navigation, IMAP + SQLite backend.
 </p>
 
 ---
@@ -13,14 +13,14 @@
 ## Structure
 ```
 gui/    # Swift macOS app
-cli/    # Go backend (IMAP sync + notmuch)
+cli/    # Go backend (IMAP sync + SQLite store)
 specs/  # Feature specs
 agents/ # OpenCode agents
 ```
 
 ## Prerequisites
 ```bash
-brew install notmuch bazel
+brew install bazel
 ```
 
 ## Build
@@ -99,4 +99,4 @@ durian auth status
 
 - [docs/config-example.toml](docs/config-example.toml) – Full config example
 - [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) – OAuth setup for Gmail/Microsoft
-- [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md) – IMAP/notmuch setup
+- [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md) – IMAP sync setup

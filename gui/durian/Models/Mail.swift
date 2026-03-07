@@ -100,7 +100,7 @@ enum EmailBodyState: Equatable, Hashable {
 
 // MARK: - Unified Models
 
-/// Unified folder/tag model that works for both IMAP and notmuch
+/// Unified folder/tag model
 struct MailFolder: Identifiable, Hashable {
     let id: String
     let name: String
@@ -114,13 +114,13 @@ struct MailFolder: Identifiable, Hashable {
         case inbox, sent, drafts, trash, archive, junk
     }
     
-    /// Create for notmuch tag
+    /// Create for tag-based folder
     init(tag: String, icon: String) {
         self.id = "tag:\(tag)"
         self.name = tag
         self.displayName = tag.capitalized
         self.icon = icon
-        self.accountId = "notmuch"
+        self.accountId = "default"
         
         switch tag {
         case "inbox":
@@ -150,7 +150,7 @@ struct MailFolder: Identifiable, Hashable {
         self.name = name
         self.displayName = displayName
         self.icon = icon
-        self.accountId = "notmuch"
+        self.accountId = "default"
         
         switch name.lowercased() {
         case "inbox":
@@ -175,9 +175,9 @@ struct MailFolder: Identifiable, Hashable {
     }
 }
 
-/// Unified email model for notmuch
+/// Unified email model
 struct MailMessage: Identifiable, Hashable {
-    let id: String  // thread_id for notmuch
+    let id: String  // thread_id
     let subject: String
     var from: String
     var to: String?
@@ -202,7 +202,7 @@ struct MailMessage: Identifiable, Hashable {
     var inReplyTo: String?
     var references: String?
     
-    /// Create from notmuch mail
+    /// Create from search result
     init(threadId: String, subject: String, from: String, date: String, timestamp: Int, tags: String) {
         self.id = threadId
         self.subject = subject
@@ -276,10 +276,10 @@ struct MailMessage: Identifiable, Hashable {
     }
 }
 
-// MARK: - Default Tags for Notmuch
+// MARK: - Default Tags
 
 extension MailFolder {
-    static let defaultNotmuchTags: [MailFolder] = [
+    static let defaultTags: [MailFolder] = [
         MailFolder(tag: "inbox", icon: "tray"),
         MailFolder(tag: "unread", icon: "envelope.badge"),
         MailFolder(tag: "sent", icon: "paperplane"),
