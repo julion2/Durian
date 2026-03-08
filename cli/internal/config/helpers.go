@@ -296,12 +296,10 @@ func (a *AccountConfig) GetIMAPBatchSize() int {
 	return a.IMAP.BatchSize
 }
 
-// GetIMAPMaildir returns the expanded Maildir path
-func (a *AccountConfig) GetIMAPMaildir() string {
-	if a.IMAP.Maildir == "" {
-		return ""
-	}
-	return ExpandPath(a.IMAP.Maildir)
+// AccountIdentifier returns the lowercased account name, used as the
+// account column in SQLite and as a watcher map key.
+func (a *AccountConfig) AccountIdentifier() string {
+	return strings.ToLower(a.Name)
 }
 
 // GetIMAPMailboxes returns the mailboxes to sync, using smart defaults if not configured

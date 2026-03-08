@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/mail"
 	"mime/quotedprintable"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -49,7 +48,7 @@ type WatcherManager struct {
 	log      *slog.Logger
 	locks    map[string]*sync.Mutex // per-account sync locks keyed by email
 	locksMu  sync.Mutex             // protects the locks map
-	watchers map[string]*accountWatcher // keyed by maildir basename (e.g. "habric")
+	watchers map[string]*accountWatcher // keyed by account identifier (e.g. "habric")
 }
 
 // NewWatcherManager creates a WatcherManager wired to the given EventHub
@@ -80,7 +79,7 @@ func (w *WatcherManager) accountLock(email string) *sync.Mutex {
 func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountConfig) {
 	// Build watchers map so FetchAttachment can route requests by account
 	for _, acc := range accounts {
-		key := filepath.Base(acc.GetIMAPMaildir())
+		key := acc.AccountIdentifier()
 		aw := &accountWatcher{
 			account: acc,
 			fetchCh: make(chan FetchRequest, 1),

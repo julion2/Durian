@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"net/mail"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -965,9 +964,10 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	return nil
 }
 
-// accountName returns the account folder name (e.g. "habric") derived from the maildir path.
+// accountName returns the account identifier (e.g. "habric") used as the
+// account column in the SQLite store.
 func (s *Syncer) accountName() string {
-	return filepath.Base(s.account.GetIMAPMaildir())
+	return s.account.AccountIdentifier()
 }
 
 // storeInsertMessage parses a raw email and inserts it into the SQLite store.

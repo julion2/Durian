@@ -30,7 +30,6 @@ max_attachment_size = "20MB"  # GMX limit is 20MB
 host = "imap.example.com"
 port = 993
 auth = "password"
-maildir = "~/.mail/personal"
 max_messages = 5000  # Limit per mailbox, 0 = unlimited
 # mailboxes = ["INBOX", "Sent", "Drafts"]  # Optional, has smart defaults
 
@@ -57,7 +56,6 @@ max_attachment_size = "25MB"  # Office 365 default, can be up to 150MB
 host = "outlook.office365.com"
 port = 993
 auth = "oauth2"
-maildir = "~/.mail/work"
 max_messages = 5000
 
 [accounts.oauth]
@@ -80,7 +78,6 @@ max_attachment_size = "25MB"  # Gmail limit is 25MB
 host = "imap.gmail.com"
 port = 993
 auth = "oauth2"
-maildir = "~/.mail/gmail"
 max_messages = 5000
 
 [accounts.oauth]
