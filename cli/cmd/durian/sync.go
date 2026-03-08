@@ -11,11 +11,12 @@ import (
 )
 
 var (
-	syncDryRun       bool
-	syncQuiet        bool
-	syncNoFlags      bool
-	syncDownloadOnly bool
-	syncUploadOnly   bool
+	syncDryRun          bool
+	syncQuiet           bool
+	syncNoFlags         bool
+	syncDownloadOnly    bool
+	syncUploadOnly      bool
+	syncBackfillHeaders bool
 )
 
 var syncCmd = &cobra.Command{
@@ -59,6 +60,7 @@ func init() {
 	syncCmd.Flags().BoolVar(&syncNoFlags, "no-flags", false, "skip flag synchronization")
 	syncCmd.Flags().BoolVar(&syncDownloadOnly, "download-only", false, "only download from server (no flag upload)")
 	syncCmd.Flags().BoolVar(&syncUploadOnly, "upload-only", false, "only upload local changes to server")
+	syncCmd.Flags().BoolVar(&syncBackfillHeaders, "backfill-headers", false, "fetch and store headers for existing messages")
 
 	rootCmd.AddCommand(syncCmd)
 }
@@ -68,6 +70,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return err
+	}
+
+	// Load filter rules (non-fatal if missing)
+	rules, err := config.LoadRules("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load rules: %v\n", err)
 	}
 
 	// Determine sync mode
@@ -87,11 +95,13 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	// Build sync options
 	options := &imap.SyncOptions{
-		DryRun:  syncDryRun,
-		Quiet:   syncQuiet,
-		NoFlags: syncNoFlags,
-		Mode:    mode,
-		Store:   emailDB,
+		DryRun:          syncDryRun,
+		Quiet:           syncQuiet,
+		NoFlags:         syncNoFlags,
+		Mode:            mode,
+		Store:           emailDB,
+		FilterRules:     rules,
+		BackfillHeaders: syncBackfillHeaders,
 	}
 
 	// Determine which accounts to sync

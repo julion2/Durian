@@ -73,7 +73,7 @@ func (d *DB) Init() error {
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			version INTEGER NOT NULL
 		)`,
-		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 3)`,
+		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 4)`,
 
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,6 +148,13 @@ func (d *DB) Init() error {
 		)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_db_id)`,
+
+		`CREATE TABLE IF NOT EXISTS message_headers (
+			message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			value TEXT NOT NULL,
+			PRIMARY KEY (message_id, name)
+		)`,
 
 		`CREATE TABLE IF NOT EXISTS outbox (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,6 +275,22 @@ func (d *DB) migrate() error {
 			if _, err := d.db.Exec(stmt); err != nil {
 				return fmt.Errorf("migrate v2→v3: %w", err)
 			}
+		}
+		version = 3
+	}
+
+	if version < 4 {
+		_, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS message_headers (
+			message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			value TEXT NOT NULL,
+			PRIMARY KEY (message_id, name)
+		)`)
+		if err != nil {
+			return fmt.Errorf("migrate v3→v4: %w", err)
+		}
+		if _, err := d.db.Exec("UPDATE schema_version SET version = 4 WHERE rowid = 1"); err != nil {
+			return fmt.Errorf("migrate v3→v4 version bump: %w", err)
 		}
 	}
 

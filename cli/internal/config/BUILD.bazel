@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "config.go",
         "helpers.go",
+        "rules.go",
         "types.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/config",

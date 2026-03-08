@@ -84,6 +84,14 @@ func runServe(cmd *cobra.Command, args []string) {
 	watcherCtx, watcherCancel := context.WithCancel(context.Background())
 	defer watcherCancel()
 
+	// Load filter rules (non-fatal if missing)
+	rules, rulesErr := config.LoadRules("")
+	if rulesErr != nil {
+		slog.Warn("Could not load filter rules", "module", "SERVE", "err", rulesErr)
+	} else if len(rules) > 0 {
+		slog.Info("Loaded filter rules", "module", "SERVE", "count", len(rules))
+	}
+
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		slog.Warn("Could not load config", "module", "SERVE", "err", err)
@@ -92,7 +100,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
-			watcher := handler.NewWatcherManager(eventHub, emailDB)
+			watcher := handler.NewWatcherManager(eventHub, emailDB, rules)
 			h.SetFetcher(watcher)
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))

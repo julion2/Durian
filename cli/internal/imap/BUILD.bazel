@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "client.go",
         "flags.go",
+        "rules.go",
         "state.go",
         "sync.go",
     ],
@@ -27,6 +28,7 @@ go_test(
     size = "small",
     srcs = [
         "flags_test.go",
+        "rules_test.go",
         "state_test.go",
         "sync_test.go",
     ],

@@ -1,0 +1,208 @@
+package imap
+
+import (
+	"net/mail"
+	"testing"
+
+	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/store"
+)
+
+func TestEvalExpr_FieldFrom(t *testing.T) {
+	msg := &store.Message{FromAddr: "alice@work.test"}
+	expr, _ := parseRuleQuery("from:@work.test")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected from:@work.test to match")
+	}
+
+	expr2, _ := parseRuleQuery("from:@example.com")
+	if evalExpr(expr2, msg, 0, nil) {
+		t.Error("expected from:@example.com to NOT match")
+	}
+}
+
+func TestEvalExpr_FieldTo(t *testing.T) {
+	msg := &store.Message{ToAddrs: "newsletter@example.com, bob@test.com"}
+	expr, _ := parseRuleQuery("to:newsletter@")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected to:newsletter@ to match")
+	}
+}
+
+func TestEvalExpr_FieldSubject(t *testing.T) {
+	msg := &store.Message{Subject: "Weekly Status Report"}
+	expr, _ := parseRuleQuery("subject:status")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected subject:status to match (case-insensitive)")
+	}
+}
+
+func TestEvalExpr_HasAttachment(t *testing.T) {
+	msg := &store.Message{}
+	expr, _ := parseRuleQuery("has:attachment")
+	if evalExpr(expr, msg, 0, nil) {
+		t.Error("expected has:attachment to NOT match with 0 attachments")
+	}
+	if !evalExpr(expr, msg, 2, nil) {
+		t.Error("expected has:attachment to match with 2 attachments")
+	}
+}
+
+func TestEvalExpr_BareWord(t *testing.T) {
+	msg := &store.Message{Subject: "Invoice for January", BodyText: "Please find attached."}
+	expr, _ := parseRuleQuery("invoice")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected bare word 'invoice' to match subject")
+	}
+
+	expr2, _ := parseRuleQuery("attached")
+	if !evalExpr(expr2, msg, 0, nil) {
+		t.Error("expected bare word 'attached' to match body")
+	}
+
+	expr3, _ := parseRuleQuery("missing")
+	if evalExpr(expr3, msg, 0, nil) {
+		t.Error("expected bare word 'missing' to NOT match")
+	}
+}
+
+func TestEvalExpr_BooleanAND(t *testing.T) {
+	msg := &store.Message{FromAddr: "alice@work.test", Subject: "Report"}
+	expr, _ := parseRuleQuery("from:@work.test subject:report")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected implicit AND to match")
+	}
+
+	msg2 := &store.Message{FromAddr: "alice@work.test", Subject: "Hello"}
+	if evalExpr(expr, msg2, 0, nil) {
+		t.Error("expected implicit AND to NOT match when subject differs")
+	}
+}
+
+func TestEvalExpr_BooleanOR(t *testing.T) {
+	msg := &store.Message{FromAddr: "alice@work.test"}
+	expr, _ := parseRuleQuery("from:@work.test OR from:@example.com")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected OR to match first branch")
+	}
+
+	msg2 := &store.Message{FromAddr: "bob@other.com"}
+	if evalExpr(expr, msg2, 0, nil) {
+		t.Error("expected OR to NOT match when neither branch matches")
+	}
+}
+
+func TestEvalExpr_BooleanNOT(t *testing.T) {
+	msg := &store.Message{FromAddr: "alice@work.test"}
+	expr, _ := parseRuleQuery("NOT from:@example.com")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected NOT to match when inner doesn't match")
+	}
+
+	expr2, _ := parseRuleQuery("NOT from:@work.test")
+	if evalExpr(expr2, msg, 0, nil) {
+		t.Error("expected NOT to NOT match when inner matches")
+	}
+}
+
+func TestEvalExpr_Parentheses(t *testing.T) {
+	msg := &store.Message{FromAddr: "alice@work.test", Subject: "Report"}
+	expr, _ := parseRuleQuery("(from:@work.test OR from:@example.com) subject:report")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected grouped OR + AND to match")
+	}
+}
+
+func TestEvalExpr_CaseInsensitive(t *testing.T) {
+	msg := &store.Message{FromAddr: "Alice@WORK.TEST"}
+	expr, _ := parseRuleQuery("from:@work.test")
+	if !evalExpr(expr, msg, 0, nil) {
+		t.Error("expected case-insensitive match on from")
+	}
+}
+
+func TestEvalExpr_Header(t *testing.T) {
+	msg := &store.Message{}
+	hdr := mail.Header{"List-Id": []string{"<python-dev.python.org>"}}
+
+	expr, _ := parseRuleQuery("header:list-id:python-dev")
+	if !evalExpr(expr, msg, 0, hdr) {
+		t.Error("expected header:list-id to match")
+	}
+
+	expr2, _ := parseRuleQuery("header:list-id:ruby")
+	if evalExpr(expr2, msg, 0, hdr) {
+		t.Error("expected header:list-id:ruby to NOT match")
+	}
+}
+
+func TestEvalExpr_HeaderReturnPath(t *testing.T) {
+	msg := &store.Message{}
+	hdr := mail.Header{"Return-Path": []string{"<bounces@lists.test>"}}
+
+	expr, _ := parseRuleQuery("header:return-path:bounces@")
+	if !evalExpr(expr, msg, 0, hdr) {
+		t.Error("expected header:return-path to match")
+	}
+}
+
+func TestEvalExpr_HeaderExistence(t *testing.T) {
+	msg := &store.Message{}
+
+	// Header present → should match
+	hdr := mail.Header{"List-Unsubscribe": []string{"<mailto:unsub@test.com>"}}
+	expr, _ := parseRuleQuery("header:list-unsubscribe:")
+	if !evalExpr(expr, msg, 0, hdr) {
+		t.Error("expected header:list-unsubscribe: to match when header exists")
+	}
+
+	// Header absent → should NOT match
+	hdrEmpty := mail.Header{}
+	if evalExpr(expr, msg, 0, hdrEmpty) {
+		t.Error("expected header:list-unsubscribe: to NOT match when header is absent")
+	}
+
+	// Nil header → should NOT match
+	if evalExpr(expr, msg, 0, nil) {
+		t.Error("expected header:list-unsubscribe: to NOT match with nil header")
+	}
+}
+
+func TestMatchingRules(t *testing.T) {
+	rules := []config.RuleConfig{
+		{Name: "Work", Match: "from:@work.test", AddTags: []string{"work"}},
+		{Name: "Newsletter", Match: "to:newsletter@", AddTags: []string{"newsletter"}, RemoveTags: []string{"inbox"}},
+		{Name: "Bad rule", Match: "(((", AddTags: []string{"bad"}},
+	}
+
+	msg := &store.Message{
+		FromAddr: "alice@work.test",
+		ToAddrs:  "newsletter@work.test",
+	}
+
+	matched := MatchingRules(rules, msg, 0, nil, "myaccount")
+	if len(matched) != 2 {
+		t.Errorf("expected 2 matched rules, got %d", len(matched))
+	}
+}
+
+func TestMatchingRules_AccountScope(t *testing.T) {
+	rules := []config.RuleConfig{
+		{Name: "Scoped", Match: "from:@work.test", AddTags: []string{"work"}, Accounts: []string{"personal"}},
+		{Name: "Global", Match: "from:@work.test", AddTags: []string{"all"}},
+	}
+
+	msg := &store.Message{FromAddr: "alice@work.test"}
+
+	// Should match only the global rule when account doesn't match
+	matched := MatchingRules(rules, msg, 0, nil, "office")
+	if len(matched) != 1 || matched[0].Name != "Global" {
+		t.Errorf("expected only Global rule, got %v", matched)
+	}
+
+	// Should match both when account matches
+	matched2 := MatchingRules(rules, msg, 0, nil, "personal")
+	if len(matched2) != 2 {
+		t.Errorf("expected 2 rules for matching account, got %d", len(matched2))
+	}
+}

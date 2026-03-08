@@ -4,6 +4,7 @@ go_library(
     name = "store",
     srcs = [
         "attachments.go",
+        "headers.go",
         "messages.go",
         "outbox.go",
         "search.go",

@@ -864,6 +864,56 @@ func (c *Client) FetchBodySection(uid uint32, sectionPath []int, w io.Writer) er
 	return fmt.Errorf("section %v not found in response for UID %d", sectionPath, uid)
 }
 
+// FetchHeadersOnly fetches only the RFC822 headers for a batch of UIDs.
+// Returns a map of UID → raw header bytes.
+func (c *Client) FetchHeadersOnly(uids []uint32) (map[uint32][]byte, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+	if len(uids) == 0 {
+		return make(map[uint32][]byte), nil
+	}
+
+	section := &imap.BodySectionName{
+		BodyPartName: imap.BodyPartName{
+			Specifier: imap.HeaderSpecifier,
+		},
+		Peek: true,
+	}
+
+	seqSet := new(imap.SeqSet)
+	for _, uid := range uids {
+		seqSet.AddNum(uid)
+	}
+
+	items := []imap.FetchItem{imap.FetchUid, section.FetchItem()}
+
+	messages := make(chan *imap.Message, len(uids))
+	done := make(chan error, 1)
+	go func() {
+		done <- c.conn.UidFetch(seqSet, items, messages)
+	}()
+
+	result := make(map[uint32][]byte)
+	for msg := range messages {
+		for _, body := range msg.Body {
+			if body == nil {
+				continue
+			}
+			data, err := io.ReadAll(body)
+			if err == nil && len(data) > 0 {
+				result[msg.Uid] = data
+			}
+			break
+		}
+	}
+
+	if err := <-done; err != nil {
+		return nil, fmt.Errorf("fetch headers: %w", err)
+	}
+	return result, nil
+}
+
 // Close closes the IMAP connection
 func (c *Client) Close() error {
 	if c.conn == nil {

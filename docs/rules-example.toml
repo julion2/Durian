@@ -1,0 +1,45 @@
+# Filter rules — applied automatically when syncing new messages.
+# Copy to ~/.config/durian/rules.toml and customize.
+
+[[rules]]
+name = "Work emails"
+match = "from:@work.test"
+add_tags = ["work"]
+
+[[rules]]
+name = "Newsletters"
+match = "to:newsletter@"
+add_tags = ["newsletter"]
+remove_tags = ["inbox"]
+
+[[rules]]
+name = "Invoices with attachments"
+match = "subject:invoice has:attachment"
+add_tags = ["invoice"]
+
+[[rules]]
+name = "Mailing list"
+match = "header:list-id:dev-list"
+accounts = ["personal"]
+add_tags = ["mailing-list"]
+remove_tags = ["inbox"]
+
+[[rules]]
+name = "Bounce detection"
+match = "header:return-path:bounces@"
+add_tags = ["bounce"]
+
+# Supported match syntax:
+#   from:value              — case-insensitive contains on sender address
+#   to:value                — case-insensitive contains on recipient addresses
+#   subject:value           — case-insensitive contains on subject
+#   header:Name:value       — case-insensitive contains on any email header
+#   has:attachment           — message has at least one attachment
+#   bare words              — case-insensitive contains on subject + body
+#   AND (implicit)          — adjacent terms are ANDed
+#   OR                      — explicit OR between terms
+#   NOT                     — negates the next term
+#   ( )                     — grouping
+#
+# Optional fields:
+#   accounts = ["alias"]    — only apply this rule to specific accounts (by alias)

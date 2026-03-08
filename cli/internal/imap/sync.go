@@ -51,12 +51,14 @@ var specialUseFolderTags = map[string]FolderTagMapping{
 
 // SyncOptions configures the sync behavior
 type SyncOptions struct {
-	DryRun    bool
-	Quiet     bool
-	NoFlags   bool      // Skip flag synchronization
-	Mode      SyncMode  // Sync direction
-	Mailboxes []string  // Specific mailboxes to sync (empty = all)
-	Store     *store.DB // SQLite store (required)
+	DryRun           bool
+	Quiet            bool
+	NoFlags          bool                // Skip flag synchronization
+	Mode             SyncMode            // Sync direction
+	Mailboxes        []string            // Specific mailboxes to sync (empty = all)
+	Store            *store.DB           // SQLite store (required)
+	FilterRules      []config.RuleConfig // User-defined filter rules applied at insert time
+	BackfillHeaders  bool                // Fetch and store headers for existing messages
 }
 
 // SyncResult contains the results of a sync operation
@@ -249,8 +251,97 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		}
 	}
 
+	// Backfill headers for existing messages (one-time operation)
+	if s.options.BackfillHeaders && !s.options.DryRun {
+		s.backfillHeaders(mailboxes)
+	}
+
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+// selectedHeaders are the headers stored in message_headers for rule matching.
+var selectedHeaders = []string{
+	"List-Id", "List-Unsubscribe", "Precedence",
+	"X-Mailer", "Return-Path", "X-GitHub-Reason",
+	"Authentication-Results",
+}
+
+// backfillHeaders fetches headers from the IMAP server for messages that
+// are already in the store but don't have entries in message_headers yet.
+func (s *Syncer) backfillHeaders(mailboxes []string) {
+	fmt.Fprintf(s.output, "  Backfilling headers...\n")
+
+	for _, mboxName := range mailboxes {
+		mboxState := s.state.GetMailboxState(mboxName)
+		if _, err := s.client.SelectMailbox(mboxName); err != nil {
+			slog.Debug("Backfill: skip mailbox", "module", "SYNC", "mailbox", mboxName, "err", err)
+			continue
+		}
+
+		// Get all synced UIDs that have a Message-ID mapping
+		var uidsToFetch []uint32
+		for _, uid := range mboxState.SyncedUIDs {
+			messageID, ok := mboxState.GetMessageID(uid)
+			if !ok || messageID == "" {
+				continue
+			}
+			// Check if this message already has headers in the DB
+			dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
+			if err != nil || dbID == 0 {
+				continue
+			}
+			if has, _ := s.store.HasHeaders(dbID); has {
+				continue
+			}
+			uidsToFetch = append(uidsToFetch, uid)
+		}
+
+		if len(uidsToFetch) == 0 {
+			continue
+		}
+
+		fmt.Fprintf(s.output, "    %s: fetching headers for %d messages...\n", mboxName, len(uidsToFetch))
+
+		// Fetch in batches
+		const batchSize = 500
+		stored := 0
+		for i := 0; i < len(uidsToFetch); i += batchSize {
+			end := i + batchSize
+			if end > len(uidsToFetch) {
+				end = len(uidsToFetch)
+			}
+			batch := uidsToFetch[i:end]
+
+			headers, err := s.client.FetchHeadersOnly(batch)
+			if err != nil {
+				slog.Debug("Backfill fetch failed", "module", "SYNC", "mailbox", mboxName, "err", err)
+				continue
+			}
+
+			for uid, rawHeader := range headers {
+				messageID, _ := mboxState.GetMessageID(uid)
+				dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
+				if err != nil || dbID == 0 {
+					continue
+				}
+
+				parsed, err := mail.ReadMessage(bytes.NewReader(append(rawHeader, '\r', '\n')))
+				if err != nil {
+					continue
+				}
+
+				for _, hdrName := range selectedHeaders {
+					if v := parsed.Header.Get(hdrName); v != "" {
+						_ = s.store.InsertHeader(dbID, strings.ToLower(hdrName), v)
+					}
+				}
+				stored++
+			}
+		}
+
+		fmt.Fprintf(s.output, "    ✓ %d messages backfilled\n", stored)
+	}
 }
 
 // getMailboxesToSync returns the list of mailboxes to sync
@@ -1033,6 +1124,13 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 		}
 	}
 
+	// Store selected headers for rule matching and analysis
+	for _, hdrName := range selectedHeaders {
+		if v := parsed.Header.Get(hdrName); v != "" {
+			_ = s.store.InsertHeader(storeMsg.ID, strings.ToLower(hdrName), v)
+		}
+	}
+
 	// Eagerly apply folder tags (inbox, sent, trash, etc.)
 	mapping := s.getFolderTagMapping(mailboxName)
 	if mapping != nil {
@@ -1056,6 +1154,24 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 	if bytes.Contains(msgBody, []byte("text/calendar")) {
 		if err := s.store.AddTag(storeMsg.ID, "cal"); err != nil {
 			return fmt.Errorf("add cal tag: %w", err)
+		}
+	}
+
+	// Apply user-defined filter rules
+	if len(s.options.FilterRules) > 0 {
+		matched := MatchingRules(s.options.FilterRules, storeMsg, len(content.Attachments), parsed.Header, s.accountName())
+		for _, rule := range matched {
+			for _, tag := range rule.AddTags {
+				if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
+					return fmt.Errorf("add rule tag %q: %w", tag, err)
+				}
+			}
+			for _, tag := range rule.RemoveTags {
+				if err := s.store.RemoveTag(storeMsg.ID, tag); err != nil {
+					return fmt.Errorf("remove rule tag %q: %w", tag, err)
+				}
+			}
+			slog.Debug("Applied filter rule", "module", "SYNC", "rule", rule.Name, "message_id", messageID)
 		}
 	}
 
