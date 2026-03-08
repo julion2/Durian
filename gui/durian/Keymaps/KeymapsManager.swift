@@ -111,12 +111,9 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "prev_email", key: "Up", modifiers: [], description: "Previous email (arrow)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last email (Shift+G)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First email (vim gg)", enabled: true, sequence: true, supportsCount: false),
-            KeymapEntry(action: "center_view", key: "zz", modifiers: [], description: "Center current email in view", enabled: true, sequence: true, supportsCount: false),
             KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down (Ctrl+d)", enabled: true, sequence: false, supportsCount: true),
             KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up (Ctrl+u)", enabled: true, sequence: false, supportsCount: true),
-            // Email Actions
-            KeymapEntry(action: "open_email", key: "o", modifiers: [], description: "Open email", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "open_email", key: "Return", modifiers: [], description: "Open email (Enter)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "archive", key: "a", modifiers: [], description: "Archive email (remove inbox)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "compose", key: "c", modifiers: [], description: "Compose new email", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "reply_all", key: "R", modifiers: [], description: "Reply to all (Shift+R)", enabled: true, sequence: false, supportsCount: false),
@@ -216,10 +213,7 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "first_email", key: "gg", modifiers: [],
                        description: "First email (vim gg)", enabled: true,
                        sequence: true, supportsCount: false),
-            KeymapEntry(action: "center_view", key: "zz", modifiers: [],
-                       description: "Center current email in view", enabled: true,
-                       sequence: true, supportsCount: false),
-            
+
             // ═══════════════════════════════════════════════════════════
             // PAGE NAVIGATION
             // ═══════════════════════════════════════════════════════════
@@ -229,15 +223,12 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"],
                        description: "Half-page up (Ctrl+u)", enabled: true,
                        sequence: false, supportsCount: true),
-            
+
             // ═══════════════════════════════════════════════════════════
             // EMAIL ACTIONS
             // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "open_email", key: "o", modifiers: [],
-                       description: "Open email", enabled: true,
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "open_email", key: "Return", modifiers: [],
-                       description: "Open email (Enter)", enabled: true,
+            KeymapEntry(action: "archive", key: "a", modifiers: [],
+                       description: "Archive email (remove inbox)", enabled: true,
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "compose", key: "c", modifiers: [],
                        description: "Compose new email", enabled: true,

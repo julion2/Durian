@@ -20,19 +20,18 @@ enum KeymapAction: String, CaseIterable {
     case pageUp = "page_up"
     
     // Email Actions
-    case openEmail = "open_email"
     case compose = "compose"
     case reply = "reply"
     case replyAll = "reply_all"
     case forward = "forward"
     case deleteEmail = "delete"
+    case archiveEmail = "archive"
     case toggleRead = "toggle_read"
     case toggleStar = "toggle_star"
     
     // View Control
     case closeDetail = "close_detail"
     case reloadInbox = "reload_inbox"
-    case centerView = "center_view"
     case search = "search"
     
     // Tag Picker

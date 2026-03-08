@@ -844,6 +844,19 @@ struct ContentView: View {
             }
         }
         
+        // Archive: a - remove inbox tag (works with multi-selection)
+        keymapHandler.registerSimpleHandler(for: .archiveEmail) { [self] in
+            await MainActor.run {
+                let ids = markedEmails
+                guard !ids.isEmpty else { return }
+                Task {
+                    for id in ids {
+                        await accountManager.removeTag(id: id, tag: "inbox")
+                    }
+                }
+            }
+        }
+
         // Delete: dd - works with multi-selection
         keymapHandler.registerSimpleHandler(for: .deleteEmail) { [self] in
             await MainActor.run {
@@ -851,6 +864,30 @@ struct ContentView: View {
             }
         }
         
+        // ═══════════════════════════════════════════════════════════
+        // FOLDER NAVIGATION HANDLERS
+        // ═══════════════════════════════════════════════════════════
+
+        // gi - Go to Inbox
+        keymapHandler.registerSimpleHandler(for: .goInbox) { [self] in
+            await MainActor.run { selectedTagID = "inbox" }
+        }
+
+        // gs - Go to Sent
+        keymapHandler.registerSimpleHandler(for: .goSent) { [self] in
+            await MainActor.run { selectedTagID = "sent" }
+        }
+
+        // gd - Go to Drafts
+        keymapHandler.registerSimpleHandler(for: .goDrafts) { [self] in
+            await MainActor.run { selectedTagID = "drafts" }
+        }
+
+        // ga - Go to Archive
+        keymapHandler.registerSimpleHandler(for: .goArchive) { [self] in
+            await MainActor.run { selectedTagID = "archive" }
+        }
+
         // ═══════════════════════════════════════════════════════════
         // VISUAL MODE HANDLERS
         // ═══════════════════════════════════════════════════════════

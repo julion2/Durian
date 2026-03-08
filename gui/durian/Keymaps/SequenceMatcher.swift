@@ -56,16 +56,19 @@ class SequenceMatcher {
     func reloadFromConfig() {
         let keymapEntries = KeymapsManager.shared.keymaps.keymaps
         
-        // Build sequences from config - entries without modifiers (vim-style keys)
-        // Note: Entries WITH modifiers are handled by KeymapHandler.handleLegacyKeymap()
+        // Build sequences from config
+        // Entries without modifiers use key directly (vim-style: "j", "gg", "gi")
+        // Entries with ctrl modifier use normalized form ("ctrl+d", "ctrl+u")
+        // Other modifier entries (Cmd+r, etc.) are handled by KeymapHandler.handleLegacyKeymap()
         sequences = keymapEntries
-            .filter { $0.enabled && $0.modifiers.isEmpty }
+            .filter { $0.enabled && ($0.modifiers.isEmpty || $0.modifiers == ["ctrl"]) }
             .compactMap { entry -> SequenceDefinition? in
                 guard let action = KeymapAction(rawValue: entry.action) else {
                     Log.debug("SEQMATCH", "Unknown action '\(entry.action)' - skipping")
                     return nil
                 }
-                return SequenceDefinition(entry.key, action, entry.description)
+                let seqKey = entry.modifiers == ["ctrl"] ? "ctrl+\(entry.key.lowercased())" : entry.key
+                return SequenceDefinition(seqKey, action, entry.description)
             }
         
         // Build count-supported actions set from config
