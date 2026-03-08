@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"net/textproto"
+)
 
 // InsertHeader stores a message header. Overwrites if the header already exists.
 func (d *DB) InsertHeader(messageDBID int64, name, value string) error {
@@ -48,4 +51,69 @@ func (d *DB) GetMessageDBID(messageID, account string) (int64, error) {
 		return 0, nil
 	}
 	return id, nil
+}
+
+// AllMessages returns all messages with fields needed for rule matching.
+func (d *DB) AllMessages() ([]*Message, error) {
+	rows, err := d.db.Query(
+		"SELECT id, message_id, subject, from_addr, to_addrs, body_text, account FROM messages")
+	if err != nil {
+		return nil, fmt.Errorf("query messages: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []*Message
+	for rows.Next() {
+		m := &Message{}
+		if err := rows.Scan(&m.ID, &m.MessageID, &m.Subject, &m.FromAddr, &m.ToAddrs, &m.BodyText, &m.Account); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// AllHeadersByMessage loads all stored headers, keyed by message DB ID.
+// Header names are returned in canonical MIME form (e.g. "List-Unsubscribe").
+func (d *DB) AllHeadersByMessage() (map[int64]map[string][]string, error) {
+	rows, err := d.db.Query("SELECT message_id, name, value FROM message_headers")
+	if err != nil {
+		return nil, fmt.Errorf("query headers: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]map[string][]string)
+	for rows.Next() {
+		var msgID int64
+		var name, value string
+		if err := rows.Scan(&msgID, &name, &value); err != nil {
+			return nil, fmt.Errorf("scan header: %w", err)
+		}
+		if result[msgID] == nil {
+			result[msgID] = make(map[string][]string)
+		}
+		canonical := textproto.CanonicalMIMEHeaderKey(name)
+		result[msgID][canonical] = append(result[msgID][canonical], value)
+	}
+	return result, rows.Err()
+}
+
+// AttachmentCounts returns the number of attachments per message DB ID.
+func (d *DB) AttachmentCounts() (map[int64]int, error) {
+	rows, err := d.db.Query("SELECT message_db_id, COUNT(*) FROM attachments GROUP BY message_db_id")
+	if err != nil {
+		return nil, fmt.Errorf("query attachment counts: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]int)
+	for rows.Next() {
+		var msgID int64
+		var count int
+		if err := rows.Scan(&msgID, &count); err != nil {
+			return nil, fmt.Errorf("scan attachment count: %w", err)
+		}
+		result[msgID] = count
+	}
+	return result, rows.Err()
 }

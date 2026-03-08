@@ -8,6 +8,7 @@ go_library(
         "draft.go",
         "main.go",
         "root.go",
+        "rules.go",
         "search.go",
         "send.go",
         "serve.go",
