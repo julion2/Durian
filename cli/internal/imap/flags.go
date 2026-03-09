@@ -164,8 +164,13 @@ func DiffFlags(local, server FlagState) (toAdd, toRemove []string) {
 
 // NeedsUpload checks if local flags differ from stored state (needs upload to server)
 func NeedsUpload(local, stored FlagState) bool {
+	// When server marked a message as Completed, ToTagOps removes the local
+	// "flagged" tag. Don't treat that removal as a local change — it's the
+	// result of a prior download, not a user action.
+	flaggedChanged := local.Flagged != stored.Flagged && !stored.Completed
+
 	return local.Seen != stored.Seen ||
-		local.Flagged != stored.Flagged ||
+		flaggedChanged ||
 		local.Answered != stored.Answered ||
 		local.Deleted != stored.Deleted
 }

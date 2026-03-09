@@ -72,6 +72,7 @@ type SyncResult struct {
 	TotalDeduplicated int // Messages that already existed locally (tags updated)
 	FlagsUploaded     int // Flags uploaded to server
 	FlagsDownload     int // Flags downloaded from server
+	TotalMoved        int // Messages moved between IMAP folders
 	NewMessageIDs     []string // Message-IDs of newly downloaded messages
 	Error             error
 }
@@ -86,6 +87,7 @@ type MailboxResult struct {
 	DeduplicatedMsgs int // Messages that already existed locally (tags updated)
 	FlagsUploaded    int
 	FlagsDownload    int
+	MovedMsgs        int // Messages moved between IMAP folders
 	NewMessageIDs    []string // Message-IDs of newly downloaded messages
 	Error            error
 }
@@ -100,6 +102,7 @@ type Syncer struct {
 	options         *SyncOptions
 	output          io.Writer
 	trashMailbox    string                // Cached trash mailbox name for delete operations
+	archiveMailbox  string                // Cached archive mailbox name for archive operations
 	serverMailboxes []*goimap.MailboxInfo // Cached mailbox list for exclusion tags
 	ownsClient      bool                  // true = syncer manages connection lifecycle
 	store           *store.DB            // SQLite store for messages and tags
@@ -237,6 +240,7 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		result.TotalDeduplicated += mboxResult.DeduplicatedMsgs
 		result.FlagsUploaded += mboxResult.FlagsUploaded
 		result.FlagsDownload += mboxResult.FlagsDownload
+		result.TotalMoved += mboxResult.MovedMsgs
 		result.NewMessageIDs = append(result.NewMessageIDs, mboxResult.NewMessageIDs...)
 
 		if mboxResult.Error != nil && result.Error == nil {
@@ -492,16 +496,33 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			fmt.Fprintf(s.output, "    Would remove %d deleted messages\n", len(deletedUIDs))
 			result.DeletedMsgs = len(deletedUIDs)
 		} else {
-			fmt.Fprintf(s.output, "    ✗ Removing %d deleted messages...\n", len(deletedUIDs))
+			// When a message disappears from a folder, remove that folder's tags
+			// instead of deleting the message. The message may have been moved to
+			// another folder (e.g. archived) and will reappear during that folder's sync.
+			tagMapping := s.getFolderTagMapping(mailboxName)
+
+			fmt.Fprintf(s.output, "    ✗ Removing %d messages from %s...\n", len(deletedUIDs), mailboxName)
 			for _, uid := range deletedUIDs {
 				messageID, hasID := mboxState.GetMessageID(uid)
 				if hasID && messageID != "" {
-					slog.Debug("Removing deleted message", "module", "SYNC", "uid", uid, "message_id", messageID)
-					if err := s.store.DeleteByMessageIDAndAccount(messageID, s.accountName()); err != nil {
-						slog.Warn("store delete failed", "module", "SYNC", "uid", uid, "err", err)
+					if tagMapping != nil && len(tagMapping.AddTags) > 0 {
+						// Remove the folder's tags (reverse of adding them on download)
+						slog.Debug("Removing folder tags for moved message", "module", "SYNC",
+							"uid", uid, "message_id", messageID, "folder", mailboxName, "tags", tagMapping.AddTags)
+						if err := s.store.ModifyTagsByMessageIDAndAccount(
+							messageID, s.accountName(), nil, tagMapping.AddTags); err != nil {
+							slog.Warn("remove tags failed", "module", "SYNC", "uid", uid, "err", err)
+						}
+					} else {
+						// No tag mapping for this folder — delete the message
+						slog.Debug("Deleting message removed from untagged folder", "module", "SYNC",
+							"uid", uid, "message_id", messageID, "folder", mailboxName)
+						if err := s.store.DeleteByMessageIDAndAccount(messageID, s.accountName()); err != nil {
+							slog.Warn("store delete failed", "module", "SYNC", "uid", uid, "err", err)
+						}
 					}
 				} else {
-					slog.Debug("No Message-ID for deleted UID, skipping deletion", "module", "SYNC", "uid", uid)
+					slog.Debug("No Message-ID for deleted UID, skipping", "module", "SYNC", "uid", uid)
 				}
 				mboxState.RemoveSyncedUID(uid)
 				result.DeletedMsgs++
@@ -516,9 +537,10 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		// Still run flag sync even if no new messages
 		// Flag sync runs even in dry-run mode to show what would happen
 		if !s.options.NoFlags {
-			uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
+			uploaded, downloaded, movedMsgs := s.syncFlags(mailboxName, mboxState, allUIDs)
 			result.FlagsUploaded = uploaded
 			result.FlagsDownload = downloaded
+			result.MovedMsgs = movedMsgs
 		}
 		return result
 	}
@@ -591,6 +613,11 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 						}
 					}
 
+					// Update mailbox to reflect the message's current server folder
+					if err := s.store.UpdateMailbox(messageID, s.accountName(), mailboxName); err != nil {
+						slog.Debug("Failed to update mailbox", "module", "SYNC", "message_id", messageID, "err", err)
+					}
+
 					// Mark as synced (we don't need to download)
 					mboxState.AddSyncedUID(uid)
 					mboxState.SetMessageID(uid, messageID)
@@ -614,9 +641,10 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		if result.DeduplicatedMsgs > 0 || result.DeletedMsgs > 0 {
 			// Still run flag sync
 			if !s.options.NoFlags {
-				uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
+				uploaded, downloaded, movedMsgs := s.syncFlags(mailboxName, mboxState, allUIDs)
 				result.FlagsUploaded = uploaded
 				result.FlagsDownload = downloaded
+				result.MovedMsgs = movedMsgs
 			}
 		}
 		return result
@@ -702,9 +730,10 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	// Runs in all modes except when --no-flags is set
 	// The syncFlags function internally respects the sync mode and dry-run for upload/download
 	if !s.options.NoFlags {
-		uploaded, downloaded := s.syncFlags(mailboxName, mboxState, allUIDs)
+		uploaded, downloaded, movedMsgs := s.syncFlags(mailboxName, mboxState, allUIDs)
 		result.FlagsUploaded = uploaded
 		result.FlagsDownload = downloaded
+		result.MovedMsgs = movedMsgs
 	}
 
 	return result
@@ -791,15 +820,15 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 }
 
 // syncFlags synchronizes flags between local store and IMAP server.
-// Returns (flagsUploaded, flagsDownloaded)
+// Returns (flagsUploaded, flagsDownloaded, moved)
 //
 // This works for ALL messages on the server, not just those downloaded by durian.
 // It builds a UID<->Message-ID mapping on first run (cached in state).
-func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs []uint32) (int, int) {
-	var uploaded, downloaded, flagErrors int
+func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs []uint32) (int, int, int) {
+	var uploaded, downloaded, moved, flagErrors int
 
 	if len(allUIDs) == 0 {
-		return 0, 0
+		return 0, 0, 0
 	}
 
 	// 1. Ensure we have Message-ID mapping for all UIDs
@@ -812,7 +841,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 	serverFlags, err := s.client.FetchFlags(allUIDs)
 	if err != nil {
 		fmt.Fprintf(s.output, "    Warning: failed to fetch flags: %v\n", err)
-		return 0, 0
+		return 0, 0, 0
 	}
 
 	// 3. Get all local messages with tags in a single batch query
@@ -956,19 +985,146 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		}
 	}
 
-	slog.Debug("Flag sync complete", "module", "SYNC", "checked", checkedCount, "uploaded", uploaded, "downloaded", downloaded, "errors", flagErrors)
+	// Upload folder moves for INBOX messages that lost their "inbox" tag
+	if strings.EqualFold(mailboxName, "INBOX") && s.options.Mode != SyncDownloadOnly {
+		moved = s.uploadFolderMoves(mboxState, localMessages, allUIDs)
+	}
 
-	if uploaded > 0 || downloaded > 0 || flagErrors > 0 {
+	slog.Debug("Flag sync complete", "module", "SYNC", "checked", checkedCount, "uploaded", uploaded, "downloaded", downloaded, "moved", moved, "errors", flagErrors)
+
+	if uploaded > 0 || downloaded > 0 || moved > 0 || flagErrors > 0 {
 		if s.options.DryRun {
 			fmt.Fprintf(s.output, "    ⚑ Flags: %d would upload, %d would download (dry-run)\n", uploaded, downloaded)
 		} else if flagErrors > 0 {
-			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded, %d errors\n", uploaded, downloaded, flagErrors)
+			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded, %d moved, %d errors\n", uploaded, downloaded, moved, flagErrors)
 		} else {
-			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded\n", uploaded, downloaded)
+			fmt.Fprintf(s.output, "    ⚑ Flags: %d uploaded, %d downloaded, %d moved\n", uploaded, downloaded, moved)
 		}
 	}
 
-	return uploaded, downloaded
+	return uploaded, downloaded, moved
+}
+
+// folderMove represents a pending IMAP folder move operation.
+type folderMove struct {
+	uid       uint32
+	messageID string
+	dest      string // destination mailbox name
+}
+
+// uploadFolderMoves detects INBOX messages whose local tags no longer include
+// "inbox" and moves them to the appropriate IMAP folder (Trash or Archive).
+// Uses COPY + \Deleted + Expunge since go-imap v1 has no MOVE command.
+// Returns the number of messages moved.
+func (s *Syncer) uploadFolderMoves(mboxState *MailboxState, localMessages map[string][]string, allUIDs []uint32) int {
+	// Build O(1) lookup set for server UIDs
+	allUIDSet := make(map[uint32]struct{}, len(allUIDs))
+	for _, uid := range allUIDs {
+		allUIDSet[uid] = struct{}{}
+	}
+
+	// Scan for messages that lost the "inbox" tag
+	var moves []folderMove
+	for messageID, tags := range localMessages {
+		hasInbox := false
+		hasDeleted := false
+		for _, tag := range tags {
+			switch tag {
+			case "inbox":
+				hasInbox = true
+			case "deleted":
+				hasDeleted = true
+			}
+		}
+		if hasInbox {
+			continue // Still in inbox — nothing to do
+		}
+
+		// Resolve UID from state mapping
+		uid, ok := mboxState.GetUIDByMessageID(messageID)
+		if !ok || uid == 0 {
+			continue // No UID mapping — can't move
+		}
+		if _, onServer := allUIDSet[uid]; !onServer {
+			continue // Already gone from INBOX on server
+		}
+
+		// Pick destination
+		dest := "archive"
+		if hasDeleted {
+			dest = "trash"
+		}
+		moves = append(moves, folderMove{uid: uid, messageID: messageID, dest: dest})
+	}
+
+	if len(moves) == 0 {
+		return 0
+	}
+
+	// Lazily resolve destination mailbox names
+	if s.trashMailbox == "" {
+		if trash, err := s.client.FindTrashMailbox(); err == nil {
+			s.trashMailbox = trash
+			slog.Debug("Resolved trash mailbox", "module", "SYNC", "account", s.accountName(), "mailbox", trash)
+		} else {
+			slog.Warn("No trash mailbox found", "module", "SYNC", "account", s.accountName(), "err", err)
+		}
+	}
+	if s.archiveMailbox == "" {
+		if archive, err := s.client.FindArchiveMailbox(); err == nil {
+			s.archiveMailbox = archive
+			slog.Debug("Resolved archive mailbox", "module", "SYNC", "account", s.accountName(), "mailbox", archive)
+		} else {
+			slog.Warn("No archive mailbox found", "module", "SYNC", "account", s.accountName(), "err", err)
+		}
+	}
+
+	moved := 0
+	for _, m := range moves {
+		destMailbox := s.archiveMailbox
+		if m.dest == "trash" {
+			destMailbox = s.trashMailbox
+		}
+		if destMailbox == "" {
+			slog.Debug("No destination mailbox found, skipping move", "module", "SYNC", "account", s.accountName(), "uid", m.uid, "dest", m.dest)
+			continue
+		}
+
+		if s.options.DryRun {
+			slog.Debug("[dry-run] Would move message", "module", "SYNC", "uid", m.uid, "dest", destMailbox)
+			moved++
+			continue
+		}
+
+		// COPY to destination
+		if err := s.client.CopyToMailbox(m.uid, destMailbox); err != nil {
+			slog.Debug("Copy failed for folder move", "module", "SYNC", "uid", m.uid, "dest", destMailbox, "err", err)
+			continue
+		}
+
+		// Set \Deleted on source (INBOX)
+		if err := s.client.AddFlags(m.uid, []string{goimap.DeletedFlag}); err != nil {
+			slog.Debug("AddFlags failed for folder move", "module", "SYNC", "uid", m.uid, "err", err)
+			continue
+		}
+
+		// Expunge from INBOX
+		if err := s.client.Expunge(); err != nil {
+			slog.Debug("Expunge failed for folder move", "module", "SYNC", "uid", m.uid, "err", err)
+		}
+
+		// Clean up INBOX tracking state so next sync doesn't see this as "deleted from server"
+		mboxState.RemoveSyncedUID(m.uid)
+
+		moved++
+		slog.Info("Moved message", "module", "SYNC", "uid", m.uid, "message_id", m.messageID, "dest", destMailbox)
+	}
+
+	if moved > 0 {
+		fmt.Fprintf(s.output, "    ↗ Moved %d messages\n", moved)
+	}
+
+	return moved
 }
 
 // uploadFlagChanges uploads flag changes to the IMAP server

@@ -40,22 +40,23 @@ const (
 var defaultRoleFallbacks = map[SpecialUseRole][]string{
 	RoleSent: {
 		"Sent", "Sent Items", "Sent Messages", "INBOX.Sent",
-		"[Gmail]/Sent Mail", "Gesendete Elemente", "Envoyés",
+		"[Gmail]/Sent Mail", "[Gmail]/Gesendet", "Gesendete Elemente", "Envoyés",
 	},
 	RoleDrafts: {
-		"Drafts", "Draft", "INBOX.Drafts", "[Gmail]/Drafts",
-		"Entwürfe", "Brouillons",
+		"Drafts", "Draft", "INBOX.Drafts",
+		"[Gmail]/Drafts", "[Gmail]/Entwürfe", "Entwürfe", "Brouillons",
 	},
 	RoleTrash: {
 		"Trash", "Deleted Items", "Deleted Messages", "INBOX.Trash",
-		"[Gmail]/Trash", "Gelöschte Elemente", "Papierkorb", "Corbeille",
+		"[Gmail]/Trash", "[Gmail]/Papierkorb", "Gelöschte Elemente", "Papierkorb", "Corbeille",
 	},
 	RoleJunk: {
 		"Junk", "Spam", "INBOX.Junk", "INBOX.Spam",
 		"[Gmail]/Spam", "Junk-E-Mail",
 	},
 	RoleArchive: {
-		"Archive", "Archives", "INBOX.Archive", "[Gmail]/All Mail",
+		"Archive", "Archives", "INBOX.Archive",
+		"[Gmail]/All Mail", "[Gmail]/Alle Nachrichten",
 		"Archiv",
 	},
 }
@@ -645,6 +646,12 @@ func (c *Client) FindSentMailbox() (string, error) {
 // Falls back to common names if SPECIAL-USE is not available
 func (c *Client) FindTrashMailbox() (string, error) {
 	return c.FindMailboxByRole(RoleTrash)
+}
+
+// FindArchiveMailbox finds the Archive mailbox using SPECIAL-USE attributes
+// Falls back to common names if SPECIAL-USE is not available
+func (c *Client) FindArchiveMailbox() (string, error) {
+	return c.FindMailboxByRole(RoleArchive)
 }
 
 // CopyToMailbox copies a message to another mailbox by UID

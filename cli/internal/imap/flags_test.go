@@ -330,6 +330,18 @@ func TestNeedsUpload(t *testing.T) {
 			stored:   FlagState{Deleted: false},
 			expected: true, // Deleted changes are now uploaded for trash workflow
 		},
+		{
+			name:     "completed suppresses flagged upload",
+			local:    FlagState{Seen: true, Flagged: false},
+			stored:   FlagState{Seen: true, Flagged: true, Completed: true},
+			expected: false, // Flagged was removed by Completed download, not a local change
+		},
+		{
+			name:     "flagged change without completed still uploads",
+			local:    FlagState{Seen: true, Flagged: false},
+			stored:   FlagState{Seen: true, Flagged: true, Completed: false},
+			expected: true, // Genuine local un-flag
+		},
 	}
 
 	for _, tt := range tests {
