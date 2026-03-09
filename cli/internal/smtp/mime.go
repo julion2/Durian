@@ -81,10 +81,10 @@ func (m *Message) Build() ([]byte, error) {
 	fmt.Fprintf(&buf, "Date: %s\r\n", date)
 	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
 	if m.InReplyTo != "" {
-		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", m.InReplyTo)
+		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", ensureAngleBrackets(m.InReplyTo))
 	}
 	if m.References != "" {
-		fmt.Fprintf(&buf, "References: %s\r\n", m.References)
+		fmt.Fprintf(&buf, "References: %s\r\n", bracketReferences(m.References))
 	}
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 
@@ -213,6 +213,27 @@ func toQuotedPrintable(s string) string {
 	}
 
 	return buf.String()
+}
+
+// ensureAngleBrackets wraps a Message-ID in <> if not already present.
+func ensureAngleBrackets(id string) string {
+	id = strings.TrimSpace(id)
+	if !strings.HasPrefix(id, "<") {
+		id = "<" + id
+	}
+	if !strings.HasSuffix(id, ">") {
+		id = id + ">"
+	}
+	return id
+}
+
+// bracketReferences wraps each space-separated Message-ID in <> if needed.
+func bracketReferences(refs string) string {
+	parts := strings.Fields(refs)
+	for i, p := range parts {
+		parts[i] = ensureAngleBrackets(p)
+	}
+	return strings.Join(parts, " ")
 }
 
 // ParseAddress parses an email address string
