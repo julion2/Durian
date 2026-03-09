@@ -312,15 +312,24 @@ struct EditableWebView: NSViewRepresentable {
                     }
 
                     let html = container.innerHTML;
+                    // Empty-line divs: <div><br></div> = single newline
+                    html = html.replace(/<div><br\\s*\\/?><\\/div>/gi, '\\n');
+                    // Block elements: opening tag = line break
+                    html = html.replace(/<div[^>]*>/gi, '\\n');
+                    html = html.replace(/<\\/div>/gi, '');
+                    // Inline line breaks
                     html = html.replace(/<br\\s*\\/?>/gi, '\\n');
-                    html = html.replace(/<\\/div>/gi, '\\n');
-                    html = html.replace(/<\\/p>/gi, '\\n');
+                    // Paragraphs
+                    html = html.replace(/<p[^>]*>/gi, '\\n');
+                    html = html.replace(/<\\/p>/gi, '');
+                    // Strip remaining tags
                     html = html.replace(/<[^>]+>/g, '');
                     // Decode HTML entities
                     const ta = document.createElement('textarea');
                     ta.innerHTML = html;
                     let text = ta.value;
-                    // Trim trailing newlines
+                    // Trim leading and trailing newlines
+                    text = text.replace(/^\\n+/, '');
                     text = text.replace(/\\n+$/, '');
                     return text;
                 }
