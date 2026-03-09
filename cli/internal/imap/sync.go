@@ -815,7 +815,20 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 		break
 	}
 
-	// No special-use attribute found - no tag changes
+	// No special-use attribute — check if the folder name matches a known role fallback
+	for role, fallbacks := range defaultRoleFallbacks {
+		for _, name := range fallbacks {
+			if strings.EqualFold(mailboxName, name) {
+				roleStr := string(role)
+				for specialUse, mapping := range specialUseFolderTags {
+					if strings.EqualFold(roleStr, specialUse) {
+						return &mapping
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
