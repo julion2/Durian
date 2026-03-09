@@ -162,6 +162,17 @@ class AccountManager: ObservableObject {
         syncFromBackend()
     }
 
+    func modifyTags(id: String, add: [String], remove: [String]) async {
+        guard let backend = emailBackend else { return }
+        do {
+            try await backend.modifyTags(id: id, add: add, remove: remove)
+        } catch {
+            Log.error("BACKEND", "Failed to modify tags: \(error)")
+            BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not modify tags.")
+        }
+        syncFromBackend()
+    }
+
     func fetchAllTags() async -> [String] {
         guard let backend = emailBackend else { return [] }
         return await backend.fetchAllTags()

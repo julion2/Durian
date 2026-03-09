@@ -614,6 +614,12 @@ class EmailBackend: ObservableObject {
         await reload()
     }
 
+    func modifyTags(id: String, add: [String], remove: [String]) async throws {
+        let ops = add.map { "+\($0)" } + remove.map { "-\($0)" }
+        try await self.tag(query: "thread:\(id)", tags: ops.joined(separator: " "))
+        await reload()
+    }
+
     func deleteMessage(id: String) async throws {
         try await tag(query: "thread:\(id)", tags: "+deleted -inbox -unread")
         emails.removeAll { $0.id == id }

@@ -844,14 +844,14 @@ struct ContentView: View {
             }
         }
         
-        // Archive: a - remove inbox tag (works with multi-selection)
+        // Archive: a - add archive tag and remove inbox tag (works with multi-selection)
         keymapHandler.registerSimpleHandler(for: .archiveEmail) { [self] in
             await MainActor.run {
                 let ids = markedEmails
                 guard !ids.isEmpty else { return }
                 Task {
                     for id in ids {
-                        await accountManager.removeTag(id: id, tag: "inbox")
+                        await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
                     }
                 }
             }
