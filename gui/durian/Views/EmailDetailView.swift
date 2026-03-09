@@ -274,29 +274,10 @@ struct EmailDetailView: View {
 
     // MARK: - Helper Methods
 
-    /// Extract display name from email format
-    /// "Julian Schenker <julian@example.com>" -> "Julian Schenker"
     private func extractName(from: String) -> String {
-        var name = from
-        
-        // Extract name before <email> part
-        if let range = from.range(of: "<") {
-            name = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-        }
-        
-        // Remove surrounding quotes
-        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-        
-        // If still empty, try to extract from email
-        if name.isEmpty && from.contains("@") {
-            if let atIndex = from.firstIndex(of: "@") {
-                name = String(from[..<atIndex])
-            }
-        }
-        
-        return name.isEmpty ? from : name
+        AddressUtils.extractName(from: from)
     }
-    
+
     /// Format RFC 2822 date string to readable format
     private func formatDate(_ dateString: String) -> String {
         // Parse RFC 2822 format: "Tue, 30 Dec 2025 17:20:47 +0100"
@@ -874,26 +855,9 @@ struct ThreadMessageCardView: View {
     // MARK: - Helper Methods
 
     private func extractName(from: String) -> String {
-        var name = from
-        
-        // Extract name before <email> part
-        if let range = from.range(of: "<") {
-            name = String(from[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-        }
-        
-        // Remove surrounding quotes
-        name = name.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-        
-        // If still empty, try to extract from email
-        if name.isEmpty && from.contains("@") {
-            if let atIndex = from.firstIndex(of: "@") {
-                name = String(from[..<atIndex])
-            }
-        }
-        
-        return name.isEmpty ? from : name
+        AddressUtils.extractName(from: from)
     }
-    
+
     /// Format RFC 2822 date string to readable format
     private func formatDate(_ dateString: String) -> String {
         // Parse RFC 2822 format: "Tue, 30 Dec 2025 17:20:47 +0100"

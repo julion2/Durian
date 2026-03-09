@@ -11,6 +11,8 @@ import (
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
+var multiSpaceRe = regexp.MustCompile(`\s{2,}`)
+
 // ImportFromStore imports contacts by scanning From, To, and CC addresses
 // in the email store.
 func ImportFromStore(emailDB *store.DB) ([]Contact, error) {
@@ -97,6 +99,11 @@ func parseAddress(addr string) (email, name string) {
 			name = strings.TrimSpace(addr[:idx])
 			// Remove surrounding quotes from name
 			name = strings.Trim(name, `"'`)
+			// Discard name if it looks like an email address (garbage before <>)
+			if strings.Contains(name, "@") {
+				name = ""
+			}
+			name = multiSpaceRe.ReplaceAllString(name, " ")
 			return
 		}
 	}

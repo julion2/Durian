@@ -166,35 +166,12 @@ struct EmailRowView: View {
         return ownNames.contains(name)
     }
 
-    /// Strip surrounding quotes (" or ') from a string.
-    private static func stripQuotes(_ s: String) -> String {
-        var r = s
-        if (r.hasPrefix("\"") && r.hasSuffix("\"")) || (r.hasPrefix("'") && r.hasSuffix("'")) {
-            r = String(r.dropFirst().dropLast())
-        }
-        return r.trimmingCharacters(in: .whitespaces)
-    }
-
     private static func extractName(from address: String) -> String {
-        if let range = address.range(of: "<") {
-            let name = String(address[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-            if !name.isEmpty { return stripQuotes(name) }
-        }
-        // Strip angle brackets, then check for bare email
-        let stripped = address.trimmingCharacters(in: .whitespaces)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-            .trimmingCharacters(in: .whitespaces)
-        if stripped.contains("@") && !stripped.contains(" ") {
-            return stripped  // show full email as name for bare addresses
-        }
-        return stripQuotes(stripped)
+        AddressUtils.extractName(from: address)
     }
 
     private static func extractEmail(from address: String) -> String {
-        if let start = address.range(of: "<"), let end = address.range(of: ">") {
-            return String(address[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespaces)
-        }
-        return address.trimmingCharacters(in: .whitespaces)
+        AddressUtils.extractEmail(from: address)
     }
 
     /// Parse a comma-separated address list, respecting quoted names and angle-bracket emails.

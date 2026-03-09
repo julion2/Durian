@@ -279,6 +279,11 @@ func TestDecodeHeader(t *testing.T) {
 			header:   "=?UTF-8?Q?M=C3=BCller?= <mueller@example.com>",
 			expected: "Müller <mueller@example.com>",
 		},
+		{
+			name:     "Windows-1252 Q-encoding",
+			header:   "=?Windows-1252?Q?Kronthaler=2C_R=FCdiger?= <ruediger.kronthaler@br.de>",
+			expected: "Kronthaler, Rüdiger <ruediger.kronthaler@br.de>",
+		},
 	}
 
 	for _, tt := range tests {
