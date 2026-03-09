@@ -24,6 +24,8 @@ type Message struct {
 	Subject     string
 	Body        string
 	IsHTML      bool
+	InReplyTo  string // Message-ID of the message being replied to
+	References string // Space-separated list of Message-IDs in the thread
 	Attachments []Attachment
 }
 
@@ -78,6 +80,12 @@ func (m *Message) Build() ([]byte, error) {
 	fmt.Fprintf(&buf, "Subject: %s\r\n", encodeHeader(m.Subject))
 	fmt.Fprintf(&buf, "Date: %s\r\n", date)
 	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
+	if m.InReplyTo != "" {
+		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", m.InReplyTo)
+	}
+	if m.References != "" {
+		fmt.Fprintf(&buf, "References: %s\r\n", m.References)
+	}
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 
 	// Determine content type

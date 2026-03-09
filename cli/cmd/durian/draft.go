@@ -13,16 +13,18 @@ import (
 )
 
 var (
-	draftTo      string
-	draftCC      string
-	draftBCC     string
-	draftSubject string
-	draftBody    string
-	draftFrom    string
-	draftAttach  []string
-	draftHTML    bool
-	draftReplace string // Message-ID of draft to replace
-	draftAccount string // Account to use
+	draftTo         string
+	draftCC         string
+	draftBCC        string
+	draftSubject    string
+	draftBody       string
+	draftFrom       string
+	draftAttach     []string
+	draftHTML       bool
+	draftReplace    string // Message-ID of draft to replace
+	draftAccount    string // Account to use
+	draftInReplyTo  string
+	draftReferences string
 )
 
 var draftCmd = &cobra.Command{
@@ -79,6 +81,8 @@ func init() {
 	draftSaveCmd.Flags().StringSliceVar(&draftAttach, "attach", nil, "attach file(s)")
 	draftSaveCmd.Flags().BoolVar(&draftHTML, "html", false, "body is HTML")
 	draftSaveCmd.Flags().StringVar(&draftReplace, "replace", "", "Message-ID of draft to replace")
+	draftSaveCmd.Flags().StringVar(&draftInReplyTo, "in-reply-to", "", "Message-ID of the message being replied to")
+	draftSaveCmd.Flags().StringVar(&draftReferences, "references", "", "space-separated Message-IDs of the thread")
 	draftSaveCmd.MarkFlagRequired("account")
 
 	// Delete command flags
@@ -147,13 +151,15 @@ func runDraftSave(cmd *cobra.Command, args []string) error {
 
 	// Build message
 	msg := &smtp.Message{
-		From:    from,
-		To:      toRecipients,
-		CC:      ccRecipients,
-		BCC:     bccRecipients,
-		Subject: draftSubject,
-		Body:    draftBody,
-		IsHTML:  draftHTML,
+		From:       from,
+		To:         toRecipients,
+		CC:         ccRecipients,
+		BCC:        bccRecipients,
+		Subject:    draftSubject,
+		Body:       draftBody,
+		IsHTML:     draftHTML,
+		InReplyTo:  draftInReplyTo,
+		References: draftReferences,
 	}
 
 	// Load attachments

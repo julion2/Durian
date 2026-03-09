@@ -146,6 +146,14 @@ class DraftService: ObservableObject {
             args += ["--bcc", draft.bcc.joined(separator: ",")]
         }
         
+        // Reply threading headers
+        if let inReplyTo = draft.inReplyTo, !inReplyTo.isEmpty {
+            args += ["--in-reply-to", inReplyTo]
+        }
+        if let references = draft.references, !references.isEmpty {
+            args += ["--references", references]
+        }
+
         // Replace existing draft if we have a message ID
         if let messageId = draft.messageId, !messageId.isEmpty {
             args += ["--replace", messageId]

@@ -20,16 +20,18 @@ import (
 )
 
 var (
-	sendTo       string
-	sendCC       string
-	sendBCC      string
-	sendSubject  string
-	sendBody     string
-	sendFrom     string
-	sendAttach   []string
-	sendBodyFile string
-	sendHTML     bool
-	sendForce    bool
+	sendTo         string
+	sendCC         string
+	sendBCC        string
+	sendSubject    string
+	sendBody       string
+	sendFrom       string
+	sendAttach     []string
+	sendBodyFile   string
+	sendHTML       bool
+	sendForce      bool
+	sendInReplyTo  string
+	sendReferences string
 )
 
 var sendCmd = &cobra.Command{
@@ -76,6 +78,8 @@ func init() {
 	sendCmd.Flags().StringVar(&sendBodyFile, "body-file", "", "read body from file (cannot use with --body)")
 	sendCmd.Flags().BoolVar(&sendHTML, "html", false, "send body as HTML")
 	sendCmd.Flags().BoolVar(&sendForce, "force", false, "send even if attachments exceed size limit")
+	sendCmd.Flags().StringVar(&sendInReplyTo, "in-reply-to", "", "Message-ID of the message being replied to")
+	sendCmd.Flags().StringVar(&sendReferences, "references", "", "space-separated Message-IDs of the thread")
 
 	rootCmd.AddCommand(sendCmd)
 }
@@ -181,13 +185,15 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	// Build message
 	msg := &smtp.Message{
-		From:    account.Email,
-		To:      recipients,
-		CC:      ccRecipients,
-		BCC:     bccRecipients,
-		Subject: subject,
-		Body:    body,
-		IsHTML:  sendHTML,
+		From:       account.Email,
+		To:         recipients,
+		CC:         ccRecipients,
+		BCC:        bccRecipients,
+		Subject:    subject,
+		Body:       body,
+		IsHTML:     sendHTML,
+		InReplyTo:  sendInReplyTo,
+		References: sendReferences,
 	}
 
 	// Load attachments if specified

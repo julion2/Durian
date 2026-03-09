@@ -69,6 +69,16 @@ class EmailSendingManager: ObservableObject {
             "--subject", draft.subject
         ]
 
+        // Reply threading headers
+        if let inReplyTo = draft.inReplyTo, !inReplyTo.isEmpty {
+            args.append("--in-reply-to")
+            args.append(inReplyTo)
+        }
+        if let references = draft.references, !references.isEmpty {
+            args.append("--references")
+            args.append(references)
+        }
+
         // CC recipients
         if !draft.cc.isEmpty {
             args.append("--cc")
