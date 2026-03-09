@@ -212,6 +212,26 @@ func (d *DB) GetTagsByMessageID(messageID string) ([]string, error) {
 	return tags, rows.Err()
 }
 
+// GetAccountsByThread returns all distinct accounts that have messages in a thread.
+func (d *DB) GetAccountsByThread(threadID string) ([]string, error) {
+	rows, err := d.db.Query(
+		"SELECT DISTINCT account FROM messages WHERE thread_id = ?", threadID)
+	if err != nil {
+		return nil, fmt.Errorf("get accounts by thread: %w", err)
+	}
+	defer rows.Close()
+
+	var accounts []string
+	for rows.Next() {
+		var account string
+		if err := rows.Scan(&account); err != nil {
+			return nil, fmt.Errorf("scan account: %w", err)
+		}
+		accounts = append(accounts, account)
+	}
+	return accounts, rows.Err()
+}
+
 // GetAllMessagesWithTags returns a map of message_id → tags for all messages
 // in a given mailbox. When account is non-empty, results are scoped to that account.
 // Used for IMAP flag synchronization.

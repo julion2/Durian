@@ -18,12 +18,19 @@ type AttachmentFetcher interface {
 		w io.Writer) error
 }
 
+// SyncTrigger triggers an upload-only IMAP sync for an account.
+// Implemented by WatcherManager to break IDLE and push local tag changes.
+type SyncTrigger interface {
+	TriggerSync(account string)
+}
+
 // Handler processes commands and returns responses
 type Handler struct {
-	store    *store.DB // SQLite store (primary read backend)
-	parser   *mail.Parser
-	contacts *contacts.DB
-	fetcher  AttachmentFetcher // optional IMAP attachment fetcher
+	store       *store.DB // SQLite store (primary read backend)
+	parser      *mail.Parser
+	contacts    *contacts.DB
+	fetcher     AttachmentFetcher // optional IMAP attachment fetcher
+	syncTrigger SyncTrigger       // optional sync trigger for tag changes
 }
 
 // New creates a Handler that reads from the SQLite store.
@@ -38,6 +45,11 @@ func New(db *store.DB, contactsDB *contacts.DB) *Handler {
 // SetFetcher sets the IMAP attachment fetcher (typically the WatcherManager).
 func (h *Handler) SetFetcher(f AttachmentFetcher) {
 	h.fetcher = f
+}
+
+// SetSyncTrigger sets the sync trigger for pushing tag changes to IMAP.
+func (h *Handler) SetSyncTrigger(s SyncTrigger) {
+	h.syncTrigger = s
 }
 
 // Handle dispatches a command to the appropriate handler method

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/durian-dev/durian/cli/internal/protocol"
@@ -19,6 +20,16 @@ func (h *Handler) Tag(query string, tags string) protocol.Response {
 		threadID := strings.TrimPrefix(query, "thread:")
 		if err := h.store.ModifyTagsByThread(threadID, add, remove); err != nil {
 			return protocol.Fail(protocol.ErrBackendError, err)
+		}
+		// Trigger IMAP sync for affected accounts to push folder moves
+		if h.syncTrigger != nil {
+			accounts, err := h.store.GetAccountsByThread(threadID)
+			if err != nil {
+				slog.Debug("Failed to get accounts for sync trigger", "module", "TAG", "thread", threadID, "err", err)
+			}
+			for _, account := range accounts {
+				h.syncTrigger.TriggerSync(account)
+			}
 		}
 		return protocol.Success()
 	}

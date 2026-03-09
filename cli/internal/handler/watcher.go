@@ -38,6 +38,7 @@ type FetchResult struct{ Err error }
 type accountWatcher struct {
 	account *config.AccountConfig
 	fetchCh chan FetchRequest // buffered(1)
+	syncCh  chan struct{}     // buffered(1) — signals upload-only sync for tag changes
 }
 
 // WatcherManager runs per-account IMAP IDLE watchers that trigger syncs
@@ -85,6 +86,7 @@ func (w *WatcherManager) Start(ctx context.Context, accounts []*config.AccountCo
 		aw := &accountWatcher{
 			account: acc,
 			fetchCh: make(chan FetchRequest, 1),
+			syncCh:  make(chan struct{}, 1),
 		}
 		w.watchers[key] = aw
 	}
@@ -220,6 +222,20 @@ func (w *WatcherManager) watchAccount(ctx context.Context, aw *accountWatcher) {
 				newStatus, err := client.SelectMailbox("INBOX")
 				if err != nil {
 					w.log.Error("Re-SELECT INBOX failed after fetch, reconnecting", "account", account.Email, "err", err)
+					connectionAlive = false
+				} else {
+					uidNext = newStatus.UidNext
+				}
+			case <-aw.syncCh:
+				// Break IDLE to push local tag/folder changes to IMAP
+				close(stopIdle)
+				<-idleDone
+				w.log.Info("Tag change detected, syncing flags", "account", account.Email)
+				w.syncFlagsOnly(account, client)
+				// Re-SELECT INBOX and resume IDLE
+				newStatus, err := client.SelectMailbox("INBOX")
+				if err != nil {
+					w.log.Error("Re-SELECT INBOX failed after sync, reconnecting", "account", account.Email, "err", err)
 					connectionAlive = false
 				} else {
 					uidNext = newStatus.UidNext
@@ -406,6 +422,48 @@ func isAttachmentLike(bs *goImap.BodyStructure) bool {
 		name = bs.Params["name"]
 	}
 	return name != "" && !strings.EqualFold(bs.MIMEType, "text")
+}
+
+// TriggerSync signals the account's watcher to break IDLE and run an
+// upload-only sync (flags + folder moves). Non-blocking: if a sync is
+// already pending, the signal is dropped (the pending sync will pick up
+// the latest state).
+func (w *WatcherManager) TriggerSync(account string) {
+	aw, ok := w.watchers[account]
+	if !ok {
+		return
+	}
+	select {
+	case aw.syncCh <- struct{}{}:
+	default:
+		// Already pending — the next sync will pick up current state
+	}
+}
+
+// syncFlagsOnly runs an upload-only sync for INBOX to push local flag and
+// folder move changes to the IMAP server.
+func (w *WatcherManager) syncFlagsOnly(account *config.AccountConfig, client *imap.Client) {
+	mu := w.accountLock(account.Email)
+	mu.Lock()
+	defer mu.Unlock()
+
+	opts := &imap.SyncOptions{
+		Quiet:     true,
+		Mode:      imap.SyncUploadOnly,
+		Mailboxes: []string{"INBOX"},
+		Store:     w.store,
+	}
+	syncer := imap.NewSyncerWithClient(account, client, opts)
+
+	result, err := syncer.Sync()
+	if err != nil {
+		w.log.Error("Upload-only sync failed", "account", account.Email, "err", err)
+		return
+	}
+	if result.FlagsUploaded > 0 || result.TotalMoved > 0 {
+		w.log.Info("Upload-only sync complete", "account", account.Email,
+			"flags_uploaded", result.FlagsUploaded, "moved", result.TotalMoved)
+	}
 }
 
 // syncAndNotify syncs the account and broadcasts a NewMailEvent if new
