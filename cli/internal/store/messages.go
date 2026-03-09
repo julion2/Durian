@@ -58,6 +58,10 @@ func (d *DB) insertMessageTx(tx *sql.Tx, msg *Message) error {
 			body_text, body_html, mailbox, flags, uid, size, fetched_body, account
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(message_id, account) DO UPDATE SET
+			subject = excluded.subject,
+			from_addr = excluded.from_addr,
+			to_addrs = excluded.to_addrs,
+			cc_addrs = excluded.cc_addrs,
 			body_text = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
 			                 THEN excluded.body_text ELSE messages.body_text END,
 			body_html = CASE WHEN excluded.fetched_body = 1 AND messages.fetched_body = 0
@@ -90,6 +94,17 @@ func (d *DB) UpdateBody(messageID, bodyText, bodyHTML string) error {
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
 		return fmt.Errorf("message not found: %s", messageID)
+	}
+	return nil
+}
+
+// UpdateMailbox sets the mailbox for a message identified by message_id and account.
+func (d *DB) UpdateMailbox(messageID, account, mailbox string) error {
+	_, err := d.db.Exec(
+		"UPDATE messages SET mailbox = ? WHERE message_id = ? AND account = ?",
+		mailbox, messageID, account)
+	if err != nil {
+		return fmt.Errorf("update mailbox: %w", err)
 	}
 	return nil
 }
