@@ -60,12 +60,16 @@ func LoadAttachment(path string) (*Attachment, error) {
 func (m *Message) Build() ([]byte, error) {
 	var buf bytes.Buffer
 
-	// Generate Message-ID
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "localhost"
+	// Generate Message-ID using sender's domain
+	domain := "localhost"
+	if at := strings.LastIndex(m.From, "@"); at != -1 {
+		d := strings.TrimSpace(m.From[at+1:])
+		d = strings.TrimRight(d, ">")
+		if d != "" {
+			domain = d
+		}
 	}
-	messageID := fmt.Sprintf("<%s@%s>", uuid.New().String(), hostname)
+	messageID := fmt.Sprintf("<%s@%s>", uuid.New().String(), domain)
 
 	// Format date per RFC 5322
 	date := time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700")

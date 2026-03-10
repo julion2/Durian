@@ -40,6 +40,9 @@ var quoteRegexPatterns = []*regexp.Regexp{
 	// Forwarded message separators (German/English)
 	regexp.MustCompile(`(?i)-{3,}\s*Urspr(?:ü|&uuml;|&#xFC;)ngliche Nachricht\s*-{3,}`),
 	regexp.MustCompile(`(?i)-{3,}\s*Original Message\s*-{3,}`),
+
+	// Durian: <div style="color: #555;"><p ...>On ..., ... wrote:</p>
+	regexp.MustCompile(`(?i)<div[^>]*style="color:\s*#555;?"[^>]*>\s*<p[^>]*>On\s`),
 }
 
 // StripQuotedContent removes quoted reply content from HTML.
