@@ -281,8 +281,13 @@ func TestDecodeHeader(t *testing.T) {
 		},
 		{
 			name:     "Windows-1252 Q-encoding",
-			header:   "=?Windows-1252?Q?Kronthaler=2C_R=FCdiger?= <ruediger.kronthaler@br.de>",
-			expected: "Kronthaler, Rüdiger <ruediger.kronthaler@br.de>",
+			header:   "=?Windows-1252?Q?Mustermann=2C_R=FCdiger?= <max@example.com>",
+			expected: "Mustermann, Rüdiger <max@example.com>",
+		},
+		{
+			name:     "Multi-word ISO-8859-1 filename",
+			header:   "=?iso-8859-1?Q?Offene_Rechnungen_-_Zahlungseing=E4nge_ber=FCc?= =?iso-8859-1?Q?ksichtigt.PDF?=",
+			expected: "Offene Rechnungen - Zahlungseingänge berücksichtigt.PDF",
 		},
 	}
 

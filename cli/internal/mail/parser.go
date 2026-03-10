@@ -93,7 +93,7 @@ func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string,
 		mediaType, params, _ := mime.ParseMediaType(contentType)
 
 		if strings.Contains(contentDisp, "attachment") || (part.FileName() != "" && !strings.HasPrefix(mediaType, "text/")) {
-			name := part.FileName()
+			name := encoding.DecodeHeader(part.FileName())
 			if name == "" {
 				name = "unnamed"
 			}
