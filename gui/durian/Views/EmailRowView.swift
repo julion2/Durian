@@ -148,22 +148,15 @@ struct EmailRowView: View {
         let email: String  // may equal name if no email available
     }
 
-    private static let ownEmails: Set<String> = {
-        Set(ConfigManager.shared.getAccounts().map { $0.email.lowercased() })
-    }()
-
-    private static let ownNames: Set<String> = {
-        Set(ConfigManager.shared.getAccounts().map {
-            $0.name.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        })
-    }()
-
     private static func isOwn(_ address: String) -> Bool {
+        let accounts = ConfigManager.shared.getAccounts()
         let email = extractEmail(from: address).lowercased()
-        if ownEmails.contains(email) { return true }
+        if accounts.contains(where: { $0.email.lowercased() == email }) { return true }
         let name = extractName(from: address).lowercased()
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        return ownNames.contains(name)
+        return accounts.contains(where: {
+            $0.name.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression) == name
+        })
     }
 
     private static func extractName(from address: String) -> String {
@@ -240,34 +233,42 @@ struct EmailRowView: View {
         }
 
         // Fallback: parse authors string (before thread load).
-        // This is just names, no emails — can't reliably split "Last, First" vs
-        // two separate authors, so we use it as-is for the display name and pass
-        // the whole string for avatar name-based lookup.
         let raw = email.from
+        var authors: [String]
         if raw.contains("<") {
-            let p = Self.participant(from: raw)
-            return [p]
-        }
-        // Split by pipe (read/unread separator), keep commas intact
-        // since they might be "Last, First" format.
-        var authors: [String] = []
-        for segment in raw.components(separatedBy: ",") {
-            let trimmed = segment.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { continue }
-            if let pipeRange = trimmed.range(of: "|"),
-               pipeRange.lowerBound > trimmed.startIndex,
-               trimmed[trimmed.index(before: pipeRange.lowerBound)] != " " {
-                let before = String(trimmed[..<pipeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
-                let after = String(trimmed[trimmed.index(after: pipeRange.lowerBound)...]).trimmingCharacters(in: .whitespaces)
-                if !before.isEmpty { authors.append(before) }
-                if !after.isEmpty { authors.append(after) }
-            } else {
-                authors.append(trimmed)
+            // Structured addresses — use proper parser
+            authors = Self.parseAddressList(raw)
+        } else {
+            // Plain names/emails — split by comma, handle pipe separators
+            authors = []
+            for segment in raw.components(separatedBy: ",") {
+                let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { continue }
+                if let pipeRange = trimmed.range(of: "|"),
+                   pipeRange.lowerBound > trimmed.startIndex,
+                   trimmed[trimmed.index(before: pipeRange.lowerBound)] != " " {
+                    let before = String(trimmed[..<pipeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+                    let after = String(trimmed[trimmed.index(after: pipeRange.lowerBound)...]).trimmingCharacters(in: .whitespaces)
+                    if !before.isEmpty { authors.append(before) }
+                    if !after.isEmpty { authors.append(after) }
+                } else {
+                    authors.append(trimmed)
+                }
             }
         }
         let others = authors.filter { !Self.isOwn($0) }
-        let final = others.isEmpty ? authors : others
-        return final.map { Participant(name: Self.extractName(from: $0), email: $0) }
+        if !others.isEmpty {
+            return others.map { Self.participant(from: $0) }
+        }
+        // All authors are own → sent message. Show recipients instead.
+        if let to = email.to, !to.isEmpty {
+            let recipients = Self.parseAddressList(to)
+                .filter { !Self.isOwn($0) }
+            if !recipients.isEmpty {
+                return recipients.map { Self.participant(from: $0) }
+            }
+        }
+        return authors.map { Participant(name: Self.extractName(from: $0), email: $0) }
     }
 
     private var senderName: String {

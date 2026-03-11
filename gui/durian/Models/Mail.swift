@@ -203,11 +203,11 @@ struct MailMessage: Identifiable, Hashable {
     var references: String?
     
     /// Create from search result
-    init(threadId: String, subject: String, from: String, date: String, timestamp: Int, tags: String) {
+    init(threadId: String, subject: String, from: String, to: String? = nil, date: String, timestamp: Int, tags: String) {
         self.id = threadId
         self.subject = subject
         self.from = from
-        self.to = nil
+        self.to = to
         self.cc = nil
         self.date = date
         self.timestamp = timestamp

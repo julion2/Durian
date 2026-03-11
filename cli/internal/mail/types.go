@@ -16,6 +16,7 @@ type Mail struct {
 	File      string `json:"file"`
 	Subject   string `json:"subject"`
 	From      string `json:"from"`
+	To        string `json:"to,omitempty"`
 	Date      string `json:"date"`
 	Timestamp int64  `json:"timestamp"`
 	Tags      string `json:"tags"`

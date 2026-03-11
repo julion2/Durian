@@ -26,6 +26,7 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 			ThreadID:  r.Thread,
 			Subject:   r.Subject,
 			From:      r.Authors,
+			To:        r.Recipients,
 			Date:      r.DateRelative,
 			Timestamp: r.Timestamp,
 			Tags:      strings.Join(r.Tags, ","),

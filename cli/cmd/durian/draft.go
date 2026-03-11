@@ -119,10 +119,14 @@ func runDraftSave(cmd *cobra.Command, args []string) error {
 		return outputDraftError(fmt.Sprintf("no IMAP host configured for %s", account.Email))
 	}
 
-	// Build from address
+	// Build from address — include display name if configured
 	from := draftFrom
 	if from == "" {
-		from = account.Email
+		if account.DisplayName != "" {
+			from = fmt.Sprintf("%s <%s>", account.DisplayName, account.Email)
+		} else {
+			from = account.Email
+		}
 	}
 
 	// Parse recipients

@@ -45,6 +45,7 @@ struct MailSearchResult: Decodable {
     let thread_id: String
     let subject: String
     let from: String
+    let to: String?
     let date: String
     let timestamp: Int
     let tags: String
@@ -380,6 +381,7 @@ class EmailBackend: ObservableObject {
                 threadId: mail.thread_id,
                 subject: mail.subject,
                 from: mail.from,
+                to: mail.to,
                 date: mail.date,
                 timestamp: mail.timestamp,
                 tags: mail.tags
@@ -426,6 +428,7 @@ class EmailBackend: ObservableObject {
                 threadId: mail.thread_id,
                 subject: mail.subject,
                 from: mail.from,
+                to: mail.to,
                 date: mail.date,
                 timestamp: mail.timestamp,
                 tags: mail.tags

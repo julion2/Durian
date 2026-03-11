@@ -32,6 +32,7 @@ type ContactsConfig struct {
 // AccountConfig represents a single email account
 type AccountConfig struct {
 	Name             string      `toml:"name"`
+	DisplayName      string      `toml:"display_name"` // Full name for From header (e.g., "Julian Schenker")
 	Email            string      `toml:"email"`
 	Alias            string      `toml:"alias"` // Short alias for CLI (e.g., "gmx", "habric")
 	Default          bool        `toml:"default"`

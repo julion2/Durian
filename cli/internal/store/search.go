@@ -23,7 +23,10 @@ func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 			m.thread_id,
 			MAX(m.subject) AS subject,
 			GROUP_CONCAT(DISTINCT m.from_addr) AS authors,
-			MAX(m.date) AS max_date
+			MAX(m.date) AS max_date,
+			(SELECT m2.to_addrs FROM messages m2
+			 WHERE m2.thread_id = m.thread_id
+			 ORDER BY m2.date DESC LIMIT 1) AS recipients
 		FROM messages m
 	`
 	if where != "" {
@@ -46,7 +49,7 @@ func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 	var results []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		err := rows.Scan(&r.Thread, &r.Subject, &r.Authors, &r.Timestamp)
+		err := rows.Scan(&r.Thread, &r.Subject, &r.Authors, &r.Timestamp, &r.Recipients)
 		if err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan search result: %w", err)

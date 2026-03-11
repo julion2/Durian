@@ -183,9 +183,14 @@ func runSend(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build message
+	// Build message — include display name in From if configured
+	from := account.Email
+	if account.DisplayName != "" {
+		from = fmt.Sprintf("%s <%s>", account.DisplayName, account.Email)
+	}
+
 	msg := &smtp.Message{
-		From:       account.Email,
+		From:       from,
 		To:         recipients,
 		CC:         ccRecipients,
 		BCC:        bccRecipients,

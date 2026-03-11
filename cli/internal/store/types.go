@@ -44,6 +44,7 @@ type SearchResult struct {
 	Thread       string   `json:"thread"`
 	Subject      string   `json:"subject"`
 	Authors      string   `json:"authors"`
+	Recipients   string   `json:"recipients"`
 	DateRelative string   `json:"date_relative"`
 	Timestamp    int64    `json:"timestamp"`
 	Tags         []string `json:"tags"`

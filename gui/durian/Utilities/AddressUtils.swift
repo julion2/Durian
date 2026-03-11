@@ -44,7 +44,15 @@ enum AddressUtils {
         }
 
         name = collapseWhitespace(name)
-        return name.isEmpty ? address : name
+        if name.isEmpty {
+            // No display name — use local part of email
+            let email = extractEmail(from: address)
+            if let at = email.firstIndex(of: "@") {
+                return String(email[..<at])
+            }
+            return address
+        }
+        return name
     }
 
     /// Extract email address from `"Name <email>"` format.
