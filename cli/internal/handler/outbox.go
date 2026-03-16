@@ -25,16 +25,17 @@ import (
 
 // OutboxDraft is the JSON payload for enqueuing an email to the outbox.
 type OutboxDraft struct {
-	From        string             `json:"from"`
-	To          []string           `json:"to"`
-	CC          []string           `json:"cc"`
-	BCC         []string           `json:"bcc"`
-	Subject     string             `json:"subject"`
-	Body        string             `json:"body"`
-	IsHTML      bool               `json:"is_html"`
-	InReplyTo   string             `json:"in_reply_to"`
-	References  string             `json:"references"`
-	Attachments []OutboxAttachment `json:"attachments"`
+	From         string             `json:"from"`
+	To           []string           `json:"to"`
+	CC           []string           `json:"cc"`
+	BCC          []string           `json:"bcc"`
+	Subject      string             `json:"subject"`
+	Body         string             `json:"body"`
+	IsHTML       bool               `json:"is_html"`
+	InReplyTo    string             `json:"in_reply_to"`
+	References   string             `json:"references"`
+	Attachments  []OutboxAttachment `json:"attachments"`
+	DelaySeconds int                `json:"delay_seconds"`
 }
 
 // OutboxAttachment represents a base64-encoded attachment in the outbox payload.
@@ -69,16 +70,21 @@ func (h *Handler) EnqueueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.store.Enqueue(string(draftJSON))
+	var sendAfter int64
+	if draft.DelaySeconds > 0 {
+		sendAfter = time.Now().Unix() + int64(draft.DelaySeconds)
+	}
+
+	id, err := h.store.Enqueue(string(draftJSON), sendAfter)
 	if err != nil {
 		slog.Error("Failed to enqueue outbox item", "module", "OUTBOX", "err", err)
 		http.Error(w, "Failed to enqueue", http.StatusInternalServerError)
 		return
 	}
 
-	slog.Info("Enqueued outbox item", "module", "OUTBOX", "id", id, "to", draft.To, "subject", draft.Subject, "is_html", draft.IsHTML, "body_len", len(draft.Body))
+	slog.Info("Enqueued outbox item", "module", "OUTBOX", "id", id, "to", draft.To, "subject", draft.Subject, "is_html", draft.IsHTML, "body_len", len(draft.Body), "send_after", sendAfter)
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id, "send_after": sendAfter})
 }
 
 // ListOutboxHandler handles GET /api/v1/outbox.

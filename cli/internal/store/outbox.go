@@ -7,10 +7,12 @@ import (
 )
 
 // Enqueue adds a draft to the outbox for sending.
-func (d *DB) Enqueue(draftJSON string) (int64, error) {
+// sendAfter is a Unix timestamp before which the worker will not dequeue this item.
+// Use 0 for immediate sending.
+func (d *DB) Enqueue(draftJSON string, sendAfter int64) (int64, error) {
 	result, err := d.db.Exec(
-		"INSERT INTO outbox (draft_json, created_at) VALUES (?, ?)",
-		draftJSON, time.Now().Unix())
+		"INSERT INTO outbox (draft_json, created_at, send_after) VALUES (?, ?, ?)",
+		draftJSON, time.Now().Unix(), sendAfter)
 	if err != nil {
 		return 0, fmt.Errorf("enqueue: %w", err)
 	}
@@ -28,9 +30,10 @@ func (d *DB) Dequeue() (*OutboxItem, error) {
 		SELECT id, draft_json, attempts, last_error, created_at
 		FROM outbox
 		WHERE attempts < 5
+		  AND send_after <= ?
 		  AND (attempts = 0 OR last_attempted_at + attempts * attempts * 30 <= ?)
 		ORDER BY attempts ASC, created_at ASC
-		LIMIT 1`, now)
+		LIMIT 1`, now, now)
 	return scanOutboxItem(row)
 }
 

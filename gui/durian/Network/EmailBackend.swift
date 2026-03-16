@@ -50,6 +50,7 @@ struct OutboxPayload: Encodable {
     let in_reply_to: String?
     let references: String?
     let attachments: [OutboxAttachmentPayload]
+    let delay_seconds: Int
 }
 
 struct OutboxAttachmentPayload: Encodable {
@@ -564,10 +565,11 @@ class EmailBackend: ObservableObject {
 
     /// Enqueue an email draft to the outbox for background sending.
     /// Returns (ok, id, error) where id is the outbox item ID on success.
-    func enqueueOutbox(_ payload: OutboxPayload) async -> (ok: Bool, id: Int64?, error: String?) {
+    func enqueueOutbox(_ payload: OutboxPayload) async -> (ok: Bool, id: Int64?, sendAfter: Int64?, error: String?) {
         struct EnqueueResponse: Decodable {
             let ok: Bool
             let id: Int64?
+            let send_after: Int64?
             let error: String?
         }
 
@@ -578,9 +580,9 @@ class EmailBackend: ObservableObject {
         )
 
         if let response, response.ok {
-            return (true, response.id, nil)
+            return (true, response.id, response.send_after, nil)
         }
-        return (false, nil, response?.error ?? "Failed to enqueue email")
+        return (false, nil, nil, response?.error ?? "Failed to enqueue email")
     }
 
     /// List all outbox items.

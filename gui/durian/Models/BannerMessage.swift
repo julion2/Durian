@@ -55,15 +55,17 @@ struct BannerAction: Identifiable {
 struct BannerMessage: Identifiable {
     let id = UUID()
     let title: String
-    let message: String
+    var message: String
     let severity: BannerSeverity
     let actions: [BannerAction]
+    let onTap: (() -> Void)?
 
-    init(title: String, message: String, severity: BannerSeverity, actions: [BannerAction] = []) {
+    init(title: String, message: String, severity: BannerSeverity, actions: [BannerAction] = [], onTap: (() -> Void)? = nil) {
         self.title = title
         self.message = message
         self.severity = severity
         self.actions = actions
+        self.onTap = onTap
     }
 }
 

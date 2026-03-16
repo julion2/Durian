@@ -8,7 +8,7 @@
 import Foundation
 
 struct EmailDraft: Identifiable, Codable, Equatable {
-    let id: UUID
+    var id: UUID
     var from: String
     var to: [String]
     var cc: [String]
@@ -37,6 +37,9 @@ struct EmailDraft: Identifiable, Codable, Equatable {
 
     /// HTML body from the rich text editor (formatted user content, excluding signature)
     var htmlBody: String?
+
+    /// Thread ID of the original message (for navigating back after send)
+    var replyThreadId: String?
 
     init(
         id: UUID = UUID(),
@@ -214,7 +217,7 @@ extension EmailDraft {
         let toAddresses = message.to.map { parseEmailList($0) } ?? []
         let ccAddresses = message.cc.map { parseEmailList($0) } ?? []
 
-        return EmailDraft(
+        var draft = EmailDraft(
             from: message.from,
             to: toAddresses,
             cc: ccAddresses,
@@ -224,6 +227,8 @@ extension EmailDraft {
             messageId: message.messageId,
             htmlBody: message.htmlBody
         )
+        draft.replyThreadId = message.id
+        return draft
     }
 
     /// Returns the message ID of the message that should be quoted in a reply.
@@ -275,7 +280,7 @@ extension EmailDraft {
             ? quoteBodyHTML(quoteHTML!, from: target.from, date: target.date)
             : Self.quoteBody(quoteBody ?? "", from: target.from, date: target.date)
 
-        return EmailDraft(
+        var draft = EmailDraft(
             from: fromAccount,
             to: [replyTo],
             subject: subject,
@@ -285,6 +290,8 @@ extension EmailDraft {
             quotedContent: quotedBody,
             quotedIsHTML: hasHTML
         )
+        draft.replyThreadId = message.id
+        return draft
     }
     
     /// Create a reply-all draft from a mail message
@@ -346,7 +353,7 @@ extension EmailDraft {
                 ? buildForwardThreadHTML(threadMessages)
                 : buildForwardThread(threadMessages)
 
-            return EmailDraft(
+            var draft = EmailDraft(
                 from: fromAccount,
                 to: [],
                 subject: subject,
@@ -354,6 +361,8 @@ extension EmailDraft {
                 quotedContent: forwardedBody,
                 quotedIsHTML: anyHTML
             )
+            draft.replyThreadId = message.id
+            return draft
         }
 
         // Fallback: single message (no thread loaded)
@@ -362,7 +371,7 @@ extension EmailDraft {
             ? buildForwardBodyHTML(message)
             : buildForwardBody(message)
 
-        return EmailDraft(
+        var draft = EmailDraft(
             from: fromAccount,
             to: [],
             subject: subject,
@@ -370,6 +379,8 @@ extension EmailDraft {
             quotedContent: forwardedBody,
             quotedIsHTML: hasHTML
         )
+        draft.replyThreadId = message.id
+        return draft
     }
     
     // MARK: - Reply Target Resolution

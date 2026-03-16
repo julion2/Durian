@@ -24,7 +24,7 @@ class BannerManager: ObservableObject {
 
     // MARK: - Show / Dismiss
 
-    func show(_ banner: BannerMessage) {
+    func show(_ banner: BannerMessage, persistent: Bool = false) {
         // Drop non-critical banners during startup — transient init chatter (NetworkMonitor, connect)
         let sinceStartup = Date().timeIntervalSince(startupTime)
         if sinceStartup < 4 && banner.severity != .critical {
@@ -40,7 +40,7 @@ class BannerManager: ObservableObject {
             guard !Task.isCancelled else { return }
             self.currentBanner = banner
 
-            if banner.severity != .critical {
+            if banner.severity != .critical && !persistent {
                 self.autoDismissTask = Task {
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                     if !Task.isCancelled {
@@ -52,8 +52,15 @@ class BannerManager: ObservableObject {
     }
 
     func dismiss() {
+        showTask?.cancel()
         autoDismissTask?.cancel()
         currentBanner = nil
+    }
+
+    /// Update the message text of the current banner without triggering
+    /// a full show/dismiss cycle. Used for countdown timers.
+    func updateMessage(_ message: String) {
+        currentBanner?.message = message
     }
 
     // MARK: - Convenience
@@ -72,5 +79,10 @@ class BannerManager: ObservableObject {
 
     func showCritical(title: String, message: String, actions: [BannerAction] = []) {
         show(BannerMessage(title: title, message: message, severity: .critical, actions: actions))
+    }
+
+    /// Show a persistent info banner (no auto-dismiss). Caller must dismiss manually.
+    func showPersistentInfo(title: String, message: String, actions: [BannerAction] = [], onTap: (() -> Void)? = nil) {
+        show(BannerMessage(title: title, message: message, severity: .info, actions: actions, onTap: onTap), persistent: true)
     }
 }

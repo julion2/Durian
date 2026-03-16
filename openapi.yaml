@@ -188,6 +188,10 @@ paths:
                   id:
                     type: integer
                     format: int64
+                  send_after:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp after which the worker may send the email (0 = immediate)
         '400':
           description: Invalid request (missing fields)
   /outbox:
@@ -435,6 +439,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/OutboxAttachment'
+        delay_seconds:
+          type: integer
+          description: Seconds to delay before the worker may send (undo window). 0 = immediate.
+          default: 0
       required:
         - from
         - to

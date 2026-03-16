@@ -12,6 +12,7 @@ struct ComposeWindow: View {
     let draftId: UUID
     
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var draftService = DraftService.shared
     @StateObject private var sendingManager = EmailSendingManager.shared
     
@@ -222,8 +223,11 @@ struct ComposeWindow: View {
     }
 
     private func handleDismiss() {
+        // Hide the compose window instantly, save draft in background
+        let composeWindow = NSApp.keyWindow
+        composeWindow?.orderOut(nil)
         isSaving = true
-        
+
         Task {
             do {
                 _ = try await draftService.saveToServer(id: draftId)
@@ -232,43 +236,67 @@ struct ComposeWindow: View {
                 }
             } catch {
                 await MainActor.run {
+                    // Save failed — bring window back so user can act
                     isSaving = false
+                    composeWindow?.makeKeyAndOrderFront(nil)
                     saveErrorMessage = error.localizedDescription
                     showSaveError = true
                 }
             }
         }
     }
-    
+
     private func handleSend() {
         guard let draft = draftService.getDraft(id: draftId) else { return }
-        
+
+        // Pre-validate recipients so we can show inline warnings before closing
+        guard draft.hasRecipients else { return }
+
+        let allRecipients = draft.to + draft.cc + draft.bcc
+        let invalid = EmailHelper.validateRecipients(allRecipients)
+        if !invalid.isEmpty {
+            invalidEmails = invalid
+            showInvalidEmailWarning = true
+            return
+        }
+
+        // Capture refs before closing — window is gone after closeWindow()
+        let reopenDraft = openWindow
+        let capturedDraftId = draftId
+
+        // Hide the compose window instantly (it's key window right now)
+        let composeWindow = NSApp.keyWindow
+        composeWindow?.orderOut(nil)
+
+        // Close via SwiftUI for proper cleanup
+        isSaving = true
+        closeWindow()
+
         Task {
             do {
-                try await sendingManager.send(draft: draft, fromAccount: draft.from)
-                
-                // Delete the draft from IMAP after successful send
-                await draftService.deleteAfterSend(id: draftId)
-                
-                await MainActor.run {
-                    dismiss()
-                }
-            } catch let error as EmailSendingError {
-                if let emails = error.invalidEmails {
-                    await MainActor.run {
-                        invalidEmails = emails
-                        showInvalidEmailWarning = true
+                try await sendingManager.send(
+                    draft: draft,
+                    fromAccount: draft.from,
+                    skipValidation: true,
+                    onUndo: {
+                        if let newId = DraftService.shared.cloneDraft(id: capturedDraftId) {
+                            reopenDraft(value: newId)
+                        }
+                    },
+                    onConfirmedSent: {
+                        Task {
+                            await DraftService.shared.deleteAfterSend(id: capturedDraftId)
+                        }
                     }
-                } else {
-                    Log.error("COMPOSE", "Send failed - \(error)")
-                    await MainActor.run {
-                        BannerManager.shared.show(error.bannerMessage)
-                    }
-                }
+                )
             } catch {
                 Log.error("COMPOSE", "Send failed - \(error)")
                 await MainActor.run {
-                    BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    if let sendError = error as? EmailSendingError {
+                        BannerManager.shared.show(sendError.bannerMessage)
+                    } else {
+                        BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    }
                 }
             }
         }
@@ -276,26 +304,39 @@ struct ComposeWindow: View {
 
     private func handleSendWithSkipValidation() {
         guard let draft = draftService.getDraft(id: draftId) else { return }
-        
+
+        let reopenDraft = openWindow
+        let capturedDraftId = draftId
+
+        // Hide content and close immediately — validation already handled
+        isSaving = true
+        closeWindow()
+
         Task {
             do {
-                try await sendingManager.send(draft: draft, fromAccount: draft.from, skipValidation: true)
-                
-                // Delete the draft from IMAP after successful send
-                await draftService.deleteAfterSend(id: draftId)
-                
-                await MainActor.run {
-                    dismiss()
-                }
-            } catch let error as EmailSendingError {
-                Log.error("COMPOSE", "Send failed - \(error)")
-                await MainActor.run {
-                    BannerManager.shared.show(error.bannerMessage)
-                }
+                try await sendingManager.send(
+                    draft: draft,
+                    fromAccount: draft.from,
+                    skipValidation: true,
+                    onUndo: {
+                        if let newId = DraftService.shared.cloneDraft(id: capturedDraftId) {
+                            reopenDraft(value: newId)
+                        }
+                    },
+                    onConfirmedSent: {
+                        Task {
+                            await DraftService.shared.deleteAfterSend(id: capturedDraftId)
+                        }
+                    }
+                )
             } catch {
                 Log.error("COMPOSE", "Send failed - \(error)")
                 await MainActor.run {
-                    BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    if let sendError = error as? EmailSendingError {
+                        BannerManager.shared.show(sendError.bannerMessage)
+                    } else {
+                        BannerManager.shared.showCritical(title: "Email Not Sent", message: error.localizedDescription)
+                    }
                 }
             }
         }

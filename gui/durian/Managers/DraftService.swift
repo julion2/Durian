@@ -98,6 +98,16 @@ class DraftService: ObservableObject {
         activeDrafts.removeValue(forKey: id)
         Log.debug("DRAFT", "Discarded draft \(id)")
     }
+
+    /// Clone a draft with a fresh UUID (for undo-send: reopens in a new window).
+    func cloneDraft(id: UUID) -> UUID? {
+        guard var draft = activeDrafts.removeValue(forKey: id) else { return nil }
+        let newId = UUID()
+        draft.id = newId
+        activeDrafts[newId] = draft
+        Log.debug("DRAFT", "Cloned draft \(id) → \(newId)")
+        return newId
+    }
     
     // MARK: - IMAP Operations
     

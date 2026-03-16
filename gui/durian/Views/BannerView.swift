@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct BannerView: View {
     let banner: BannerMessage
@@ -23,6 +24,16 @@ struct BannerView: View {
                 Text(banner.message)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                banner.onTap?()
+            }
+            .onHover { hovering in
+                if banner.onTap != nil {
+                    if hovering { NSCursor.pointingHand.push() }
+                    else { NSCursor.pop() }
+                }
             }
 
             Spacer()

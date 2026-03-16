@@ -482,8 +482,14 @@ class SyncManager: ObservableObject {
 
         switch event.status {
         case "sent":
-            let subject = event.subject ?? "Email"
-            BannerManager.shared.showSuccess(title: "Sent Successfully", message: "\(subject) has been delivered.")
+            // If undo countdown is still active for this item, let it handle cleanup
+            // instead of showing a duplicate "Sent" banner.
+            if EmailSendingManager.shared.isUndoActive(itemId: event.item_id) {
+                EmailSendingManager.shared.handleSentEvent(itemId: event.item_id)
+            } else {
+                let subject = event.subject ?? "Email"
+                BannerManager.shared.showSuccess(title: "Sent Successfully", message: "\(subject) has been delivered.")
+            }
         case "failed":
             let detail = event.error ?? "Unknown error"
             let subject = event.subject ?? "Email"

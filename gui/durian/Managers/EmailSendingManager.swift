@@ -12,11 +12,121 @@ import Combine
 class EmailSendingManager: ObservableObject {
     static let shared = EmailSendingManager()
 
+    static let sendDelay = 10
+
     @Published var isSending = false
     @Published var sendingProgress = ""
     @Published var lastError: EmailSendingError?
 
+    /// Tracks a pending send that can still be undone.
+    struct PendingUndo {
+        let itemId: Int64
+        let draftId: UUID
+        let recipient: String
+        let threadId: String?
+        let timer: Timer
+        var secondsLeft: Int
+        let onUndo: () -> Void
+        let onConfirmedSent: () -> Void
+    }
+
+    private(set) var pendingUndoInfo: PendingUndo?
+
     private init() {}
+
+    // MARK: - Undo Send
+
+    /// Returns true if the given outbox item is still in the undo countdown window.
+    func isUndoActive(itemId: Int64) -> Bool {
+        pendingUndoInfo?.itemId == itemId
+    }
+
+    /// Called by SyncManager when an SSE "sent" event arrives for an item
+    /// that may still be in the undo window. Cleans up the timer.
+    func handleSentEvent(itemId: Int64) {
+        guard let pending = pendingUndoInfo, pending.itemId == itemId else { return }
+        pending.timer.invalidate()
+        pendingUndoInfo = nil
+        BannerManager.shared.dismiss()
+    }
+
+    /// Starts the undo countdown banner after a successful enqueue.
+    func startCountdown(itemId: Int64, draftId: UUID, recipient: String, threadId: String?, onUndo: @escaping () -> Void, onConfirmedSent: @escaping () -> Void) {
+        // Cancel any existing countdown
+        pendingUndoInfo?.timer.invalidate()
+
+        let secondsLeft = Self.sendDelay
+
+        // Create the repeating timer (fires on main run loop since we're @MainActor)
+        let timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] t in
+            Task { @MainActor in
+                guard let self = self, var pending = self.pendingUndoInfo else {
+                    t.invalidate()
+                    return
+                }
+
+                pending.secondsLeft -= 1
+                self.pendingUndoInfo = pending
+
+                if pending.secondsLeft <= 0 {
+                    // Countdown expired — email is committed to send
+                    t.invalidate()
+                    self.pendingUndoInfo = nil
+                    BannerManager.shared.dismiss()
+                    pending.onConfirmedSent()
+                } else {
+                    BannerManager.shared.updateMessage("Sending in \(pending.secondsLeft)s to \(pending.recipient)...")
+                }
+            }
+        }
+
+        pendingUndoInfo = PendingUndo(
+            itemId: itemId,
+            draftId: draftId,
+            recipient: recipient,
+            threadId: threadId,
+            timer: timer,
+            secondsLeft: secondsLeft,
+            onUndo: onUndo,
+            onConfirmedSent: onConfirmedSent
+        )
+
+        // Show the initial countdown banner with Undo button
+        BannerManager.shared.showPersistentInfo(
+            title: "Sending Email",
+            message: "Sending in \(secondsLeft)s to \(recipient)...",
+            actions: [
+                BannerAction("Undo") { [weak self] in
+                    Task { @MainActor in
+                        self?.performUndo()
+                    }
+                }
+            ],
+            onTap: threadId != nil ? { AccountManager.shared.pendingNotificationThreadId = threadId } : nil
+        )
+    }
+
+    /// Cancels the pending send: deletes outbox item, cleans up, and calls onUndo.
+    private func performUndo() {
+        guard let pending = pendingUndoInfo else { return }
+        pending.timer.invalidate()
+        pendingUndoInfo = nil
+        BannerManager.shared.dismiss()
+
+        let itemId = pending.itemId
+        let undoCb = pending.onUndo
+
+        // Delete from outbox, then re-show compose regardless of result
+        Task {
+            if let backend = AccountManager.shared.emailBackend {
+                let deleted = await backend.deleteOutboxItem(id: itemId)
+                if !deleted {
+                    Log.warning("EMAIL", "Failed to delete outbox item \(itemId) on undo")
+                }
+            }
+            await MainActor.run { undoCb() }
+        }
+    }
 
     /// Send email by enqueuing to the outbox via HTTP API.
     /// The background worker on the server handles actual SMTP delivery.
@@ -24,7 +134,9 @@ class EmailSendingManager: ObservableObject {
     ///   - draft: The email draft to send
     ///   - fromAccount: The account email to send from
     ///   - skipValidation: If true, skip email format validation (used when user confirms "Send Anyway")
-    func send(draft: EmailDraft, fromAccount accountEmail: String, skipValidation: Bool = false) async throws {
+    ///   - onUndo: Called if the user clicks "Undo" during the countdown window
+    ///   - onConfirmedSent: Called when the countdown expires (email committed to send)
+    func send(draft: EmailDraft, fromAccount accountEmail: String, skipValidation: Bool = false, onUndo: @escaping () -> Void = {}, onConfirmedSent: @escaping () -> Void = {}) async throws {
         guard draft.hasRecipients else {
             let error = EmailSendingError.invalidRecipients
             lastError = error
@@ -123,7 +235,8 @@ class EmailSendingManager: ObservableObject {
             is_html: finalIsHTML,
             in_reply_to: draft.inReplyTo,
             references: draft.references,
-            attachments: attachmentPayloads
+            attachments: attachmentPayloads,
+            delay_seconds: Self.sendDelay
         )
 
         // Enqueue via HTTP
@@ -153,8 +266,8 @@ class EmailSendingManager: ObservableObject {
 
         if result.ok {
             sendingProgress = "Email queued"
-            Log.info("EMAIL", "Enqueued successfully (id=\(result.id ?? -1))")
-            BannerManager.shared.showSuccess(title: "Email Queued", message: "Your email will be sent shortly.")
+            let itemId = result.id ?? -1
+            Log.info("EMAIL", "Enqueued successfully (id=\(itemId), send_after=\(result.sendAfter ?? 0))")
 
             // Update contact usage statistics
             let allRecipients = draft.to + draft.cc + draft.bcc
@@ -162,6 +275,17 @@ class EmailSendingManager: ObservableObject {
 
             // Refresh outbox count
             OutboxManager.shared.refresh()
+
+            // Start undo countdown (banner shown by startCountdown)
+            let recipient = draft.to.first ?? "recipient"
+            startCountdown(
+                itemId: itemId,
+                draftId: draft.id,
+                recipient: recipient,
+                threadId: draft.replyThreadId,
+                onUndo: onUndo,
+                onConfirmedSent: onConfirmedSent
+            )
         } else {
             let errorMessage = result.error ?? "Unknown error"
             Log.error("EMAIL", "Enqueue failed: \(errorMessage)")
