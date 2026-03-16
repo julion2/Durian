@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
@@ -29,6 +30,7 @@ type Handler struct {
 	store       *store.DB // SQLite store (primary read backend)
 	parser      *mail.Parser
 	contacts    *contacts.DB
+	cfg         *config.Config    // application config (for outbox worker)
 	fetcher     AttachmentFetcher // optional IMAP attachment fetcher
 	syncTrigger SyncTrigger       // optional sync trigger for tag changes
 }
@@ -50,6 +52,21 @@ func (h *Handler) SetFetcher(f AttachmentFetcher) {
 // SetSyncTrigger sets the sync trigger for pushing tag changes to IMAP.
 func (h *Handler) SetSyncTrigger(s SyncTrigger) {
 	h.syncTrigger = s
+}
+
+// SetConfig sets the application config (needed by outbox worker for account lookup).
+func (h *Handler) SetConfig(cfg *config.Config) {
+	h.cfg = cfg
+}
+
+// Config returns the application config.
+func (h *Handler) Config() *config.Config {
+	return h.cfg
+}
+
+// Store returns the database handle.
+func (h *Handler) Store() *store.DB {
+	return h.store
 }
 
 // Handle dispatches a command to the appropriate handler method

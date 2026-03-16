@@ -177,10 +177,14 @@ func (c *Client) Send(msg *Message) error {
 		return fmt.Errorf("MAIL FROM failed: %w", err)
 	}
 
-	// Set recipients
+	// Set recipients (extract bare email from "Name <email>" format)
 	for _, to := range msg.Recipients() {
-		if err := client.Rcpt(to); err != nil {
-			return fmt.Errorf("RCPT TO failed for %s: %w", to, err)
+		rcpt, err := ParseAddress(to)
+		if err != nil {
+			return fmt.Errorf("invalid recipient address %q: %w", to, err)
+		}
+		if err := client.Rcpt(rcpt); err != nil {
+			return fmt.Errorf("RCPT TO failed for %s: %w", rcpt, err)
 		}
 	}
 

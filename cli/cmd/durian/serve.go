@@ -80,6 +80,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/contacts", h.ListContactsHandler).Methods("GET")
 	r.Handle("/api/v1/events", eventHub).Methods("GET")
 
+	// Outbox routes
+	r.HandleFunc("/api/v1/outbox/send", h.EnqueueOutboxHandler).Methods("POST")
+	r.HandleFunc("/api/v1/outbox", h.ListOutboxHandler).Methods("GET")
+	r.HandleFunc("/api/v1/outbox/{id}", h.DeleteOutboxHandler).Methods("DELETE")
+
 	// Start IMAP IDLE watchers if accounts are configured
 	watcherCtx, watcherCancel := context.WithCancel(context.Background())
 	defer watcherCancel()
@@ -96,6 +101,8 @@ func runServe(cmd *cobra.Command, args []string) {
 	if err != nil {
 		slog.Warn("Could not load config", "module", "SERVE", "err", err)
 	} else {
+		h.SetConfig(cfg)
+
 		accounts := cfg.GetAccountsWithIMAP()
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
@@ -106,6 +113,10 @@ func runServe(cmd *cobra.Command, args []string) {
 			go watcher.Start(watcherCtx, accounts)
 			slog.Info("Started IDLE watchers", "module", "SERVE", "accounts", len(accounts))
 		}
+
+		// Start outbox background worker
+		outboxWorker := handler.NewOutboxWorker(emailDB, cfg, eventHub)
+		go outboxWorker.Start(watcherCtx)
 	}
 
 	server := &http.Server{

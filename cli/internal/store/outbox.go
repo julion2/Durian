@@ -19,24 +19,40 @@ func (d *DB) Enqueue(draftJSON string) (int64, error) {
 
 // Dequeue returns the next outbox item to send. Items with fewer attempts
 // are prioritized, and items with 5+ attempts are skipped as poison messages.
-// Returns nil if the queue is empty or all items are exhausted.
+// Exponential backoff: after each failure, the item must wait before retry:
+//
+//	attempt 1 → 30s,  attempt 2 → 120s,  attempt 3 → 270s,  attempt 4 → 480s
 func (d *DB) Dequeue() (*OutboxItem, error) {
+	now := time.Now().Unix()
 	row := d.db.QueryRow(`
 		SELECT id, draft_json, attempts, last_error, created_at
 		FROM outbox
 		WHERE attempts < 5
+		  AND (attempts = 0 OR last_attempted_at + attempts * attempts * 30 <= ?)
 		ORDER BY attempts ASC, created_at ASC
-		LIMIT 1`)
+		LIMIT 1`, now)
 	return scanOutboxItem(row)
 }
 
-// MarkAttempted increments the attempt count and records the error for an outbox item.
+// MarkAttempted increments the attempt count, records the error, and
+// timestamps the attempt for exponential backoff.
 func (d *DB) MarkAttempted(id int64, lastErr string) error {
 	_, err := d.db.Exec(
-		"UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?",
-		lastErr, id)
+		"UPDATE outbox SET attempts = attempts + 1, last_error = ?, last_attempted_at = ? WHERE id = ?",
+		lastErr, time.Now().Unix(), id)
 	if err != nil {
 		return fmt.Errorf("mark attempted: %w", err)
+	}
+	return nil
+}
+
+// PoisonOutboxItem marks an item as permanently failed by setting attempts to 5.
+func (d *DB) PoisonOutboxItem(id int64, reason string) error {
+	_, err := d.db.Exec(
+		"UPDATE outbox SET attempts = 5, last_error = ? WHERE id = ?",
+		reason, id)
+	if err != nil {
+		return fmt.Errorf("poison outbox item: %w", err)
 	}
 	return nil
 }
@@ -52,6 +68,32 @@ func (d *DB) DeleteOutboxItem(id int64) error {
 		return fmt.Errorf("outbox item not found: %d", id)
 	}
 	return nil
+}
+
+// ListOutbox returns all outbox items ordered by creation time (newest first).
+func (d *DB) ListOutbox() ([]OutboxItem, error) {
+	rows, err := d.db.Query(`
+		SELECT id, draft_json, attempts, last_error, created_at
+		FROM outbox
+		ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list outbox: %w", err)
+	}
+	defer rows.Close()
+
+	var items []OutboxItem
+	for rows.Next() {
+		var item OutboxItem
+		var lastErr sql.NullString
+		if err := rows.Scan(&item.ID, &item.DraftJSON, &item.Attempts, &lastErr, &item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan outbox item: %w", err)
+		}
+		if lastErr.Valid {
+			item.LastError = lastErr.String
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // scanOutboxItem scans a single row into an OutboxItem.

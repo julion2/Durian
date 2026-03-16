@@ -1,0 +1,344 @@
+package handler
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/emersion/go-imap"
+	"github.com/gorilla/mux"
+
+	"github.com/durian-dev/durian/cli/internal/auth"
+	"github.com/durian-dev/durian/cli/internal/config"
+	imapClient "github.com/durian-dev/durian/cli/internal/imap"
+	"github.com/durian-dev/durian/cli/internal/smtp"
+	"github.com/durian-dev/durian/cli/internal/store"
+)
+
+// OutboxDraft is the JSON payload for enqueuing an email to the outbox.
+type OutboxDraft struct {
+	From        string             `json:"from"`
+	To          []string           `json:"to"`
+	CC          []string           `json:"cc"`
+	BCC         []string           `json:"bcc"`
+	Subject     string             `json:"subject"`
+	Body        string             `json:"body"`
+	IsHTML      bool               `json:"is_html"`
+	InReplyTo   string             `json:"in_reply_to"`
+	References  string             `json:"references"`
+	Attachments []OutboxAttachment `json:"attachments"`
+}
+
+// OutboxAttachment represents a base64-encoded attachment in the outbox payload.
+type OutboxAttachment struct {
+	Filename   string `json:"filename"`
+	MIMEType   string `json:"mime_type"`
+	DataBase64 string `json:"data_base64"`
+}
+
+// MARK: - HTTP Handlers
+
+// EnqueueOutboxHandler handles POST /api/v1/outbox/send.
+func (h *Handler) EnqueueOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	var draft OutboxDraft
+	if err := json.NewDecoder(r.Body).Decode(&draft); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if draft.From == "" {
+		http.Error(w, "Missing 'from' field", http.StatusBadRequest)
+		return
+	}
+	if len(draft.To) == 0 {
+		http.Error(w, "Missing 'to' field", http.StatusBadRequest)
+		return
+	}
+
+	draftJSON, err := json.Marshal(draft)
+	if err != nil {
+		http.Error(w, "Failed to encode draft", http.StatusInternalServerError)
+		return
+	}
+
+	id, err := h.store.Enqueue(string(draftJSON))
+	if err != nil {
+		slog.Error("Failed to enqueue outbox item", "module", "OUTBOX", "err", err)
+		http.Error(w, "Failed to enqueue", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("Enqueued outbox item", "module", "OUTBOX", "id", id, "to", draft.To, "subject", draft.Subject)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
+}
+
+// ListOutboxHandler handles GET /api/v1/outbox.
+func (h *Handler) ListOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	items, err := h.store.ListOutbox()
+	if err != nil {
+		slog.Error("Failed to list outbox", "module", "OUTBOX", "err", err)
+		http.Error(w, "Failed to list outbox", http.StatusInternalServerError)
+		return
+	}
+
+	type outboxEntry struct {
+		ID        int64  `json:"id"`
+		Subject   string `json:"subject"`
+		To        string `json:"to"`
+		Attempts  int    `json:"attempts"`
+		LastError string `json:"last_error,omitempty"`
+		CreatedAt int64  `json:"created_at"`
+	}
+
+	entries := make([]outboxEntry, 0, len(items))
+	for _, item := range items {
+		var draft OutboxDraft
+		json.Unmarshal([]byte(item.DraftJSON), &draft)
+		entries = append(entries, outboxEntry{
+			ID:        item.ID,
+			Subject:   draft.Subject,
+			To:        strings.Join(draft.To, ", "),
+			Attempts:  item.Attempts,
+			LastError: item.LastError,
+			CreatedAt: item.CreatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(entries)
+}
+
+// DeleteOutboxHandler handles DELETE /api/v1/outbox/{id}.
+func (h *Handler) DeleteOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid outbox item ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.store.DeleteOutboxItem(id); err != nil {
+		slog.Error("Failed to delete outbox item", "module", "OUTBOX", "id", id, "err", err)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	slog.Info("Deleted outbox item", "module", "OUTBOX", "id", id)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true})
+}
+
+// MARK: - Background Worker
+
+// OutboxWorker processes the outbox queue in the background.
+type OutboxWorker struct {
+	store    *store.DB
+	cfg      *config.Config
+	eventHub *EventHub
+}
+
+// NewOutboxWorker creates a new outbox background worker.
+func NewOutboxWorker(db *store.DB, cfg *config.Config, hub *EventHub) *OutboxWorker {
+	return &OutboxWorker{store: db, cfg: cfg, eventHub: hub}
+}
+
+// Start runs the outbox processing loop until ctx is cancelled.
+func (w *OutboxWorker) Start(ctx context.Context) {
+	slog.Info("Outbox worker started", "module", "OUTBOX")
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Outbox worker stopped", "module", "OUTBOX")
+			return
+		case <-ticker.C:
+			w.processQueue()
+		}
+	}
+}
+
+// processQueue dequeues and sends items until the queue is empty.
+func (w *OutboxWorker) processQueue() {
+	for {
+		item, err := w.store.Dequeue()
+		if err != nil {
+			slog.Error("Failed to dequeue outbox item", "module", "OUTBOX", "err", err)
+			return
+		}
+		if item == nil {
+			return // queue empty
+		}
+
+		w.sendItem(item)
+	}
+}
+
+func (w *OutboxWorker) sendItem(item *store.OutboxItem) {
+	var draft OutboxDraft
+	if err := json.Unmarshal([]byte(item.DraftJSON), &draft); err != nil {
+		slog.Error("Failed to unmarshal draft", "module", "OUTBOX", "id", item.ID, "err", err)
+		w.store.MarkAttempted(item.ID, "invalid draft JSON: "+err.Error())
+		return
+	}
+
+	// Look up account config by sender email
+	account := w.findAccount(draft.From)
+	if account == nil {
+		errMsg := fmt.Sprintf("no account found for sender: %s", draft.From)
+		slog.Error(errMsg, "module", "OUTBOX", "id", item.ID)
+		w.store.PoisonOutboxItem(item.ID, errMsg)
+		w.broadcastStatus(item.ID, "failed", errMsg, draft.Subject, strings.Join(draft.To, ", "))
+		return
+	}
+
+	// Get SMTP auth
+	smtpAuth, err := auth.GetSMTPAuth(account)
+	if err != nil {
+		slog.Error("Auth failed for outbox item", "module", "OUTBOX", "id", item.ID, "err", err)
+		w.store.MarkAttempted(item.ID, "auth: "+err.Error())
+		w.broadcastStatus(item.ID, "failed", err.Error(), draft.Subject, strings.Join(draft.To, ", "))
+		return
+	}
+
+	// Build smtp.Message
+	from := account.Email
+	if account.DisplayName != "" {
+		from = fmt.Sprintf("%s <%s>", account.DisplayName, account.Email)
+	}
+
+	msg := &smtp.Message{
+		From:       from,
+		To:         draft.To,
+		CC:         draft.CC,
+		BCC:        draft.BCC,
+		Subject:    draft.Subject,
+		Body:       draft.Body,
+		IsHTML:     draft.IsHTML,
+		InReplyTo:  draft.InReplyTo,
+		References: draft.References,
+	}
+
+	// Decode base64 attachments
+	for _, att := range draft.Attachments {
+		data, err := base64.StdEncoding.DecodeString(att.DataBase64)
+		if err != nil {
+			slog.Error("Failed to decode attachment", "module", "OUTBOX", "id", item.ID, "filename", att.Filename, "err", err)
+			w.store.MarkAttempted(item.ID, "attachment decode: "+err.Error())
+			w.broadcastStatus(item.ID, "failed", "Bad attachment: "+att.Filename, draft.Subject, strings.Join(draft.To, ", "))
+			return
+		}
+		msg.Attachments = append(msg.Attachments, smtp.Attachment{
+			Filename: att.Filename,
+			Data:     data,
+			MIMEType: att.MIMEType,
+		})
+	}
+
+	// Send via SMTP
+	slog.Info("Sending outbox item", "module", "OUTBOX", "id", item.ID, "to", draft.To)
+	client := smtp.NewClient(account.SMTP.Host, account.SMTP.Port, smtpAuth)
+	if err := client.Send(msg); err != nil {
+		smtpErr := smtp.ParseSMTPError(err)
+		slog.Error("SMTP send failed", "module", "OUTBOX", "id", item.ID, "err", err)
+
+		if smtpErr != nil && smtpErr.IsPermanent() {
+			// 5xx permanent error — poison immediately
+			w.store.PoisonOutboxItem(item.ID, "permanent: "+err.Error())
+		} else {
+			w.store.MarkAttempted(item.ID, err.Error())
+		}
+		w.broadcastStatus(item.ID, "failed", err.Error(), draft.Subject, strings.Join(draft.To, ", "))
+		return
+	}
+
+	// Success — delete from outbox
+	slog.Info("Outbox item sent successfully", "module", "OUTBOX", "id", item.ID)
+	w.store.DeleteOutboxItem(item.ID)
+	w.broadcastStatus(item.ID, "sent", "", draft.Subject, strings.Join(draft.To, ", "))
+
+	// Append to IMAP Sent folder (best-effort, same logic as send.go)
+	w.appendToSent(account, msg)
+}
+
+// findAccount looks up the account config matching the sender email or display name format.
+func (w *OutboxWorker) findAccount(from string) *config.AccountConfig {
+	// Extract email from "Display Name <email>" format
+	email := from
+	if idx := strings.Index(from, "<"); idx != -1 {
+		end := strings.Index(from, ">")
+		if end > idx {
+			email = from[idx+1 : end]
+		}
+	}
+	email = strings.TrimSpace(email)
+
+	for i := range w.cfg.Accounts {
+		if strings.EqualFold(w.cfg.Accounts[i].Email, email) {
+			return &w.cfg.Accounts[i]
+		}
+	}
+	return nil
+}
+
+// appendToSent saves a copy to the IMAP Sent folder (skip for providers that auto-save).
+func (w *OutboxWorker) appendToSent(account *config.AccountConfig, msg *smtp.Message) {
+	if account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft" {
+		slog.Debug("Skipping Sent append", "module", "OUTBOX", "provider", account.OAuth.Provider)
+		return
+	}
+
+	messageData, err := msg.Build()
+	if err != nil {
+		slog.Warn("Failed to build message for Sent folder", "module", "OUTBOX", "err", err)
+		return
+	}
+
+	conn := imapClient.NewClient(account)
+	if err := conn.Connect(); err != nil {
+		slog.Warn("Failed to connect IMAP for Sent folder", "module", "OUTBOX", "err", err)
+		return
+	}
+	defer conn.Close()
+
+	if err := conn.Authenticate(); err != nil {
+		slog.Warn("Failed to authenticate IMAP for Sent folder", "module", "OUTBOX", "err", err)
+		return
+	}
+
+	sentMailbox, err := conn.FindSentMailbox()
+	if err != nil {
+		slog.Warn("Could not find Sent mailbox", "module", "OUTBOX", "err", err)
+		return
+	}
+
+	flags := []string{imap.SeenFlag}
+	if _, err := conn.Append(sentMailbox, flags, time.Now(), messageData); err != nil {
+		slog.Warn("Failed to save to Sent folder", "module", "OUTBOX", "err", err)
+		return
+	}
+
+	slog.Info("Saved to Sent folder", "module", "OUTBOX", "mailbox", sentMailbox)
+}
+
+// broadcastStatus sends an outbox_update SSE event.
+func (w *OutboxWorker) broadcastStatus(itemID int64, status, errMsg, subject, to string) {
+	if w.eventHub == nil {
+		return
+	}
+	w.eventHub.BroadcastOutbox(OutboxUpdateEvent{
+		ItemID:  itemID,
+		Status:  status,
+		Error:   errMsg,
+		Subject: subject,
+		To:      to,
+	})
+}

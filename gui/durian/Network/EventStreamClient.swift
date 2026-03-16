@@ -22,6 +22,14 @@ struct NewMailMessage: Decodable {
     let snippet: String
 }
 
+struct OutboxUpdateEvent: Decodable {
+    let item_id: Int64
+    let status: String   // "sent", "failed", "queued"
+    let error: String?
+    let subject: String?
+    let to: String?
+}
+
 // MARK: - Event Stream Client
 
 @MainActor
@@ -33,6 +41,7 @@ class EventStreamClient: ObservableObject {
     private let reconnectDelay: UInt64 = 5_000_000_000 // 5 seconds
 
     var onNewMail: ((NewMailEvent) -> Void)?
+    var onOutboxUpdate: ((OutboxUpdateEvent) -> Void)?
 
     // MARK: - Connection
 
@@ -133,23 +142,33 @@ class EventStreamClient: ObservableObject {
     // MARK: - Event Dispatch
 
     private func handleSSEEvent(type: String, data: String) {
-        guard type == "new_mail" else {
-            Log.debug("EVENTS", "Unknown event type: \(type)")
-            return
-        }
-
         Log.debug("EVENTS", "Raw SSE data: \(data.prefix(500))")
         guard let jsonData = data.data(using: .utf8) else { return }
 
-        do {
-            let event = try JSONDecoder().decode(NewMailEvent.self, from: jsonData)
-            Log.info("EVENTS", "new_mail — \(event.total_new) message(s) for \(event.account)")
-            for msg in event.messages {
-                Log.debug("EVENTS", "  thread=\(msg.thread_id) from=\(msg.from) subject=\(msg.subject)")
+        switch type {
+        case "new_mail":
+            do {
+                let event = try JSONDecoder().decode(NewMailEvent.self, from: jsonData)
+                Log.info("EVENTS", "new_mail — \(event.total_new) message(s) for \(event.account)")
+                for msg in event.messages {
+                    Log.debug("EVENTS", "  thread=\(msg.thread_id) from=\(msg.from) subject=\(msg.subject)")
+                }
+                onNewMail?(event)
+            } catch {
+                Log.error("EVENTS", "Failed to decode new_mail event: \(error)")
             }
-            onNewMail?(event)
-        } catch {
-            Log.error("EVENTS", "Failed to decode new_mail event: \(error)")
+
+        case "outbox_update":
+            do {
+                let event = try JSONDecoder().decode(OutboxUpdateEvent.self, from: jsonData)
+                Log.info("EVENTS", "outbox_update — id=\(event.item_id) status=\(event.status)")
+                onOutboxUpdate?(event)
+            } catch {
+                Log.error("EVENTS", "Failed to decode outbox_update event: \(error)")
+            }
+
+        default:
+            Log.debug("EVENTS", "Unknown event type: \(type)")
         }
     }
 }

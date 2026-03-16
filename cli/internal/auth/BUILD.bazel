@@ -1,0 +1,14 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "auth",
+    srcs = ["auth.go"],
+    importpath = "github.com/durian-dev/durian/cli/internal/auth",
+    visibility = ["//cli:__subpackages__"],
+    deps = [
+        "//cli/internal/config",
+        "//cli/internal/keychain",
+        "//cli/internal/oauth",
+        "//cli/internal/smtp",
+    ],
+)

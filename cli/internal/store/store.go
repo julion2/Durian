@@ -73,7 +73,7 @@ func (d *DB) Init() error {
 		`CREATE TABLE IF NOT EXISTS schema_version (
 			version INTEGER NOT NULL
 		)`,
-		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 4)`,
+		`INSERT OR IGNORE INTO schema_version (rowid, version) VALUES (1, 5)`,
 
 		`CREATE TABLE IF NOT EXISTS messages (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +161,8 @@ func (d *DB) Init() error {
 			draft_json TEXT NOT NULL,
 			attempts INTEGER DEFAULT 0,
 			last_error TEXT,
-			created_at INTEGER NOT NULL
+			created_at INTEGER NOT NULL,
+			last_attempted_at INTEGER DEFAULT 0
 		)`,
 	}
 
@@ -291,6 +292,18 @@ func (d *DB) migrate() error {
 		}
 		if _, err := d.db.Exec("UPDATE schema_version SET version = 4 WHERE rowid = 1"); err != nil {
 			return fmt.Errorf("migrate v3→v4 version bump: %w", err)
+		}
+	}
+
+	if version < 5 {
+		migrations := []string{
+			"ALTER TABLE outbox ADD COLUMN last_attempted_at INTEGER DEFAULT 0",
+			"UPDATE schema_version SET version = 5 WHERE rowid = 1",
+		}
+		for _, stmt := range migrations {
+			if _, err := d.db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate v4→v5: %w", err)
+			}
 		}
 	}
 

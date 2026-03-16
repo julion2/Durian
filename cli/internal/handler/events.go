@@ -24,6 +24,15 @@ type NewMailInfo struct {
 	Snippet  string `json:"snippet"`
 }
 
+// OutboxUpdateEvent is broadcast over SSE when an outbox item changes status.
+type OutboxUpdateEvent struct {
+	ItemID  int64  `json:"item_id"`
+	Status  string `json:"status"` // "sent", "failed", "queued"
+	Error   string `json:"error,omitempty"`
+	Subject string `json:"subject,omitempty"`
+	To      string `json:"to,omitempty"`
+}
+
 // EventHub is a fan-out broadcaster for SSE events.
 // It implements http.Handler and serves as the /api/v1/events endpoint.
 type EventHub struct {
@@ -74,6 +83,28 @@ func (h *EventHub) Broadcast(event NewMailEvent) {
 		case ch <- msg:
 		default:
 			slog.Warn("Dropped event for slow subscriber", "module", "EVENTS")
+		}
+	}
+}
+
+// BroadcastOutbox serialises an OutboxUpdateEvent and sends it to all SSE clients.
+func (h *EventHub) BroadcastOutbox(event OutboxUpdateEvent) {
+	data, err := json.Marshal(event)
+	if err != nil {
+		slog.Error("Failed to marshal outbox event", "module", "EVENTS", "err", err)
+		return
+	}
+
+	msg := fmt.Appendf(nil, "event: outbox_update\ndata: %s\n\n", data)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	for ch := range h.subscribers {
+		select {
+		case ch <- msg:
+		default:
+			slog.Warn("Dropped outbox event for slow subscriber", "module", "EVENTS")
 		}
 	}
 }

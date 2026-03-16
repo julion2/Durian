@@ -103,6 +103,11 @@ class SyncManager: ObservableObject {
                 self?.handleNewMailEvent(event)
             }
         }
+        stream.onOutboxUpdate = { [weak self] event in
+            Task { @MainActor in
+                self?.handleOutboxUpdate(event)
+            }
+        }
         stream.connect()
         eventStream = stream
 
@@ -469,6 +474,28 @@ class SyncManager: ObservableObject {
         }
     }
     
+    // MARK: - Outbox Update Handler
+
+    /// Handle an outbox_update SSE event — show banners for sent/failed status.
+    private func handleOutboxUpdate(_ event: OutboxUpdateEvent) {
+        Log.info("OUTBOX", "SSE outbox_update: id=\(event.item_id) status=\(event.status)")
+
+        switch event.status {
+        case "sent":
+            let subject = event.subject ?? "Email"
+            BannerManager.shared.showSuccess(title: "Sent Successfully", message: "\(subject) has been delivered.")
+        case "failed":
+            let detail = event.error ?? "Unknown error"
+            let subject = event.subject ?? "Email"
+            BannerManager.shared.showWarning(title: "\(subject) Not Sent", message: detail)
+        default:
+            break
+        }
+
+        // Notify OutboxManager to refresh counts
+        OutboxManager.shared.refresh()
+    }
+
     // MARK: - Command Execution
     
     private struct CommandResult {

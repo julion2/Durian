@@ -11,10 +11,9 @@ import (
 
 	"github.com/emersion/go-imap"
 
+	"github.com/durian-dev/durian/cli/internal/auth"
 	"github.com/durian-dev/durian/cli/internal/config"
 	imapClient "github.com/durian-dev/durian/cli/internal/imap"
-	"github.com/durian-dev/durian/cli/internal/keychain"
-	"github.com/durian-dev/durian/cli/internal/oauth"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 	"github.com/spf13/cobra"
 )
@@ -228,7 +227,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get authentication
-	auth, err := getAuth(account)
+	smtpAuth, err := auth.GetSMTPAuth(account)
 	if err != nil {
 		return err
 	}
@@ -236,7 +235,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	// Send
 	fmt.Fprintf(os.Stderr, "Connecting to %s:%d...\n", account.SMTP.Host, account.SMTP.Port)
 
-	client := smtp.NewClient(account.SMTP.Host, account.SMTP.Port, auth)
+	client := smtp.NewClient(account.SMTP.Host, account.SMTP.Port, smtpAuth)
 	if err := client.Send(msg); err != nil {
 		return fmt.Errorf("failed to send email: %w", err)
 	}
@@ -282,58 +281,6 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "✓ Saved to %s\n", sentMailbox)
 	return nil
-}
-
-// getAuth returns the appropriate auth method for the account
-func getAuth(account *config.AccountConfig) (smtp.Auth, error) {
-	switch account.SMTP.Auth {
-	case "oauth2":
-		// Get OAuth token
-		if account.OAuth.Provider == "" {
-			return nil, fmt.Errorf("OAuth provider not configured for %s", account.Email)
-		}
-
-		token, err := oauth.GetValidToken(account.Email, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
-		if err != nil {
-			if errors.Is(err, oauth.ErrTokenNotFound) {
-				return nil, fmt.Errorf("not authenticated\nRun: durian auth login %s", account.Email)
-			}
-			if errors.Is(err, oauth.ErrTokenExpired) {
-				return nil, fmt.Errorf("authentication expired\nRun: durian auth login %s", account.Email)
-			}
-			return nil, fmt.Errorf("failed to get OAuth token: %w", err)
-		}
-
-		fmt.Fprintf(os.Stderr, "Using OAuth2 authentication for %s\n", account.Email)
-		return &smtp.OAuth2Auth{
-			Email:       account.Email,
-			AccessToken: token.AccessToken,
-		}, nil
-
-	case "password":
-		// Get password from keychain (unified durian-password service)
-		password, err := keychain.GetPassword(PasswordKeychainService, account.Email)
-		if err != nil {
-			if errors.Is(err, keychain.ErrNotFound) {
-				return nil, fmt.Errorf("no password stored for %s\nRun: durian auth login %s", account.Email, account.Email)
-			}
-			return nil, fmt.Errorf("failed to get password from keychain: %w", err)
-		}
-
-		username := account.Auth.Username
-		if username == "" {
-			username = account.Email
-		}
-
-		fmt.Fprintf(os.Stderr, "Using password authentication for %s\n", account.Email)
-		return &smtp.PasswordAuth{
-			Username: username,
-			Password: password,
-		}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported auth method: %s\nUse 'oauth2' or 'password'", account.SMTP.Auth)
-	}
 }
 
 // prompt displays a prompt and reads a line of input

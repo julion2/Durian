@@ -166,6 +166,64 @@ paths:
           description: Invalid request body
         '503':
           description: Contacts database not available
+  /outbox/send:
+    post:
+      summary: Enqueue an email to the outbox for background sending
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OutboxDraft'
+      responses:
+        '200':
+          description: Email enqueued successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  id:
+                    type: integer
+                    format: int64
+        '400':
+          description: Invalid request (missing fields)
+  /outbox:
+    get:
+      summary: List all outbox items
+      responses:
+        '200':
+          description: Outbox items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutboxEntry'
+  /outbox/{id}:
+    delete:
+      summary: Delete an outbox item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Item deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '404':
+          description: Item not found
   /threads/{thread_id}/tags:
     post:
       summary: Add or remove tags from an email thread
@@ -346,6 +404,88 @@ components:
             type: string
       required:
         - emails
+    OutboxDraft:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: array
+          items:
+            type: string
+        cc:
+          type: array
+          items:
+            type: string
+        bcc:
+          type: array
+          items:
+            type: string
+        subject:
+          type: string
+        body:
+          type: string
+        is_html:
+          type: boolean
+        in_reply_to:
+          type: string
+        references:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/OutboxAttachment'
+      required:
+        - from
+        - to
+        - subject
+        - body
+    OutboxAttachment:
+      type: object
+      properties:
+        filename:
+          type: string
+        mime_type:
+          type: string
+        data_base64:
+          type: string
+      required:
+        - filename
+        - mime_type
+        - data_base64
+    OutboxEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        subject:
+          type: string
+        to:
+          type: string
+        attempts:
+          type: integer
+        last_error:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+    OutboxUpdateEvent:
+      type: object
+      description: SSE event broadcast when an outbox item changes status
+      properties:
+        item_id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [sent, failed, queued]
+        error:
+          type: string
+        subject:
+          type: string
+        to:
+          type: string
     AttachmentInfo:
       type: object
       properties:

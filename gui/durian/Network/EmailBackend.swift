@@ -36,6 +36,38 @@ struct ContactResponse: Decodable, Identifiable, Hashable {
 /// Dummy type for POST endpoints that return no JSON body
 private struct EmptyResponse: Decodable {}
 
+// MARK: - Outbox Models
+
+/// Payload for POST /api/v1/outbox/send
+struct OutboxPayload: Encodable {
+    let from: String
+    let to: [String]
+    let cc: [String]
+    let bcc: [String]
+    let subject: String
+    let body: String
+    let is_html: Bool
+    let in_reply_to: String?
+    let references: String?
+    let attachments: [OutboxAttachmentPayload]
+}
+
+struct OutboxAttachmentPayload: Encodable {
+    let filename: String
+    let mime_type: String
+    let data_base64: String
+}
+
+/// Entry returned by GET /api/v1/outbox
+struct OutboxEntry: Decodable, Identifiable {
+    let id: Int64
+    let subject: String
+    let to: String
+    let attempts: Int
+    let last_error: String?
+    let created_at: Int64
+}
+
 struct MessageBodyResponse: Decodable {
     let body: String
     let html: String?
@@ -526,6 +558,45 @@ class EmailBackend: ObservableObject {
         }
 
         return (data, filename)
+    }
+
+    // MARK: - Outbox API
+
+    /// Enqueue an email draft to the outbox for background sending.
+    /// Returns (ok, id, error) where id is the outbox item ID on success.
+    func enqueueOutbox(_ payload: OutboxPayload) async -> (ok: Bool, id: Int64?, error: String?) {
+        struct EnqueueResponse: Decodable {
+            let ok: Bool
+            let id: Int64?
+            let error: String?
+        }
+
+        let response: EnqueueResponse? = await request(
+            endpoint: "/outbox/send",
+            method: "POST",
+            body: payload
+        )
+
+        if let response, response.ok {
+            return (true, response.id, nil)
+        }
+        return (false, nil, response?.error ?? "Failed to enqueue email")
+    }
+
+    /// List all outbox items.
+    func listOutbox() async -> [OutboxEntry] {
+        let results: [OutboxEntry]? = await request(endpoint: "/outbox")
+        return results ?? []
+    }
+
+    /// Delete an outbox item by ID.
+    func deleteOutboxItem(id: Int64) async -> Bool {
+        struct DeleteResponse: Decodable { let ok: Bool }
+        let response: DeleteResponse? = await request(
+            endpoint: "/outbox/\(id)",
+            method: "DELETE"
+        )
+        return response?.ok == true
     }
 
     // MARK: - Contacts API
