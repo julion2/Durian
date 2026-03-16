@@ -63,17 +63,26 @@ struct EditableWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
 
-        // Only reload if signature changed (not on every text edit)
+        // Update signature via JS instead of reloading (preserves user formatting)
         if context.coordinator.lastLoadedSignature != htmlSignature {
             context.coordinator.lastLoadedSignature = htmlSignature
-            let html = buildEditableHTML(
-                plainText: plainText,
-                signature: htmlSignature,
-                font: font,
-                textColor: textColor,
-                placeholder: placeholderText
-            )
-            webView.loadHTMLString(html, baseURL: nil)
+            if context.coordinator.initialLoadDone {
+                let escaped = (htmlSignature ?? "")
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "'", with: "\\'")
+                    .replacingOccurrences(of: "\n", with: "\\n")
+                    .replacingOccurrences(of: "\r", with: "")
+                webView.evaluateJavaScript("updateSignature('\(escaped)')")
+            } else {
+                let html = buildEditableHTML(
+                    plainText: plainText,
+                    signature: htmlSignature,
+                    font: font,
+                    textColor: textColor,
+                    placeholder: placeholderText
+                )
+                webView.loadHTMLString(html, baseURL: nil)
+            }
         }
 
         // Execute formatting command if requested
@@ -343,7 +352,10 @@ struct EditableWebView: NSViewRepresentable {
                         range.setEndBefore(sig);
                         const container = document.createElement('div');
                         container.appendChild(range.cloneContents());
-                        return container.innerHTML;
+                        // Strip trailing <br> (visual separator before signature, not user content)
+                        let html = container.innerHTML;
+                        html = html.replace(/<br\\s*\\/?>$/i, '');
+                        return html;
                     }
                     return editor.innerHTML;
                 }
@@ -512,6 +524,31 @@ struct EditableWebView: NSViewRepresentable {
                     notifyFormatState();
                 }).observe(editor, { childList: true, subtree: true, characterData: true, attributes: true });
 
+                // Update signature without reloading (preserves user formatting)
+                function updateSignature(html) {
+                    const sig = document.getElementById('sig');
+                    if (html && html.length > 0) {
+                        if (sig) {
+                            sig.innerHTML = html;
+                        } else {
+                            const br = document.createElement('br');
+                            const span = document.createElement('span');
+                            span.id = 'sig';
+                            span.innerHTML = html;
+                            editor.appendChild(br);
+                            editor.appendChild(span);
+                        }
+                    } else {
+                        if (sig) {
+                            // Remove the <br> before sig too
+                            const prev = sig.previousSibling;
+                            if (prev && prev.nodeName === 'BR') prev.remove();
+                            sig.remove();
+                        }
+                    }
+                    setTimeout(notifyHeight, 10);
+                }
+
                 // Initial height
                 setTimeout(notifyHeight, 50);
             </script>
@@ -528,6 +565,7 @@ struct EditableWebView: NSViewRepresentable {
         weak var webView: WKWebView?
         var parent: EditableWebView?
         var lastLoadedSignature: String?
+        var initialLoadDone = false
         private var isUpdating = false
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -571,6 +609,7 @@ struct EditableWebView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            initialLoadDone = true
             // Measure initial height
             webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, _ in
                 if let height = result as? CGFloat, height > 0 {

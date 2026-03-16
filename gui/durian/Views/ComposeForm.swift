@@ -584,12 +584,10 @@ struct ComposeForm: View {
             } else {
                 // Plain text — embed in body as before
                 draft.htmlSignature = nil
-                draft.htmlBody = nil
                 newBody += "\n\n" + signatureText
             }
         } else {
             draft.htmlSignature = nil
-            draft.htmlBody = nil
         }
 
         if !sections.quotedContent.isEmpty {
