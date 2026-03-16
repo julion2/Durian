@@ -74,7 +74,7 @@ func (h *Handler) EnqueueOutboxHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("Enqueued outbox item", "module", "OUTBOX", "id", id, "to", draft.To, "subject", draft.Subject)
+	slog.Info("Enqueued outbox item", "module", "OUTBOX", "id", id, "to", draft.To, "subject", draft.Subject, "is_html", draft.IsHTML, "body_len", len(draft.Body))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": id})
 }

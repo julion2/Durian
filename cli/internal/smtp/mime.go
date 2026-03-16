@@ -250,8 +250,17 @@ func ParseAddress(s string) (string, error) {
 
 	addr, err := mail.ParseAddress(s)
 	if err != nil {
+		// net/mail can't parse "email <email>" — extract from angle brackets
+		if idx := strings.LastIndex(s, "<"); idx != -1 {
+			if end := strings.LastIndex(s, ">"); end > idx {
+				email := strings.TrimSpace(s[idx+1 : end])
+				if strings.Contains(email, "@") {
+					return email, nil
+				}
+			}
+		}
 		// Try as plain email
-		if strings.Contains(s, "@") {
+		if strings.Contains(s, "@") && !strings.Contains(s, " ") {
 			return s, nil
 		}
 		return "", fmt.Errorf("invalid email address: %s", s)
