@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -247,6 +249,13 @@ func (w *OutboxWorker) sendItem(item *store.OutboxItem) {
 	slog.Info("Sending outbox item", "module", "OUTBOX", "id", item.ID, "to", draft.To)
 	client := smtp.NewClient(account.SMTP.Host, account.SMTP.Port, smtpAuth)
 	if err := client.Send(msg); err != nil {
+		// Distinguish network errors (offline/timeout) from SMTP errors (server rejected)
+		if isNetworkError(err) {
+			// Network error — don't count as an attempt, will retry silently
+			slog.Warn("Network error, will retry later", "module", "OUTBOX", "id", item.ID, "err", err)
+			return
+		}
+
 		smtpErr := smtp.ParseSMTPError(err)
 		slog.Error("SMTP send failed", "module", "OUTBOX", "id", item.ID, "err", err)
 
@@ -327,6 +336,21 @@ func (w *OutboxWorker) appendToSent(account *config.AccountConfig, msg *smtp.Mes
 	}
 
 	slog.Info("Saved to Sent folder", "module", "OUTBOX", "mailbox", sentMailbox)
+}
+
+// isNetworkError returns true if the error is a connection/DNS/timeout failure
+// (i.e. we never reached the SMTP server). These should not count as send attempts.
+func isNetworkError(err error) bool {
+	// net.Error covers dial timeouts, connection refused, DNS failures
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	// Also catch wrapped connection errors from smtp.Client.Send
+	msg := err.Error()
+	return strings.Contains(msg, "failed to connect") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "network is unreachable")
 }
 
 // broadcastStatus sends an outbox_update SSE event.
