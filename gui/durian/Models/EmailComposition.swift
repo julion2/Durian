@@ -335,23 +335,38 @@ extension EmailDraft {
     /// - Returns: A new EmailDraft configured as a forward
     static func createForward(from message: MailMessage, fromAccount: String) -> EmailDraft {
         // Build subject with Fwd: prefix
-        let subject = message.subject.hasPrefix("Fwd:") 
-            ? message.subject 
+        let subject = message.subject.hasPrefix("Fwd:")
+            ? message.subject
             : "Fwd: \(message.subject)"
-        
-        // Check if original was HTML
+
+        // Forward all messages in the thread (oldest first)
+        if let threadMessages = message.threadMessages, !threadMessages.isEmpty {
+            let anyHTML = threadMessages.contains { $0.html != nil && !($0.html!.isEmpty) }
+            let forwardedBody = anyHTML
+                ? buildForwardThreadHTML(threadMessages)
+                : buildForwardThread(threadMessages)
+
+            return EmailDraft(
+                from: fromAccount,
+                to: [],
+                subject: subject,
+                body: "",
+                quotedContent: forwardedBody,
+                quotedIsHTML: anyHTML
+            )
+        }
+
+        // Fallback: single message (no thread loaded)
         let hasHTML = message.htmlBody != nil && !message.htmlBody!.isEmpty
-        
-        // Build forwarded message body (HTML or plain text)
-        let forwardedBody = hasHTML 
-            ? buildForwardBodyHTML(message) 
+        let forwardedBody = hasHTML
+            ? buildForwardBodyHTML(message)
             : buildForwardBody(message)
-        
+
         return EmailDraft(
             from: fromAccount,
             to: [],
             subject: subject,
-            body: "",  // User writes here
+            body: "",
             quotedContent: forwardedBody,
             quotedIsHTML: hasHTML
         )
@@ -514,6 +529,46 @@ extension EmailDraft {
         """
     }
     
+    /// Build forwarded thread body (plain text, all messages oldest-first)
+    private static func buildForwardThread(_ messages: [ThreadMessage]) -> String {
+        // Thread messages are newest-first from API, reverse for chronological order
+        let chronological = messages.reversed()
+        return chronological.map { msg in
+            var part = "---------- Forwarded message ----------\n"
+            part += "From: \(msg.from)\n"
+            if let to = msg.to { part += "To: \(to)\n" }
+            part += "Date: \(msg.date)\n"
+            part += "\n"
+            part += msg.body
+            return part
+        }.joined(separator: "\n\n")
+    }
+
+    /// Build forwarded thread body (HTML, all messages oldest-first)
+    private static func buildForwardThreadHTML(_ messages: [ThreadMessage]) -> String {
+        let chronological = messages.reversed()
+        let parts = chronological.map { msg -> String in
+            var html = """
+            <div style="color: #666; margin-bottom: 16px;">
+            <p style="font-size: 12px; color: #888; margin-bottom: 8px;">---------- Forwarded message ----------</p>
+            <p style="font-size: 12px; margin-bottom: 8px;">
+            <b>From:</b> \(escapeHTML(msg.from))<br>
+            """
+            if let to = msg.to {
+                html += "<b>To:</b> \(escapeHTML(to))<br>"
+            }
+            html += """
+            <b>Date:</b> \(escapeHTML(msg.date))
+            </p>
+            <hr style="border: none; border-top: 1px solid #ccc; margin: 8px 0;">
+            \(msg.html ?? msg.body)
+            </div>
+            """
+            return html
+        }
+        return parts.joined(separator: "\n")
+    }
+
     /// Build forwarded message body with original headers (plain text)
     private static func buildForwardBody(_ message: MailMessage) -> String {
         var body = "---------- Forwarded message ----------\n"
