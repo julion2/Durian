@@ -200,6 +200,11 @@ class AccountManager: ObservableObject {
         syncFromBackend()
     }
 
+    /// Optimistically remove emails from the local list without touching the backend.
+    func removeLocally(ids: Set<String>) {
+        mailMessages.removeAll { ids.contains($0.id) }
+    }
+
     // MARK: - Batch Operations (Multi-Selection)
 
     func deleteMessages(ids: Set<String>) async {

@@ -547,15 +547,13 @@ struct ContentView: View {
     
     private func deleteSelectedEmails() {
         guard !markedEmails.isEmpty else { return }
-        Task {
-            await accountManager.deleteMessages(ids: markedEmails)
-            await MainActor.run {
-                markedEmails = []
-                visualModeAnchor = nil
-                detailMode = .empty
-                keymapHandler.engine.exitVisualMode()
-            }
-        }
+        let ids = markedEmails
+        let next = nextEmailId(after: ids)
+        accountManager.removeLocally(ids: ids)
+        visualModeAnchor = nil
+        keymapHandler.engine.exitVisualMode()
+        advanceCursor(to: next)
+        Task { await accountManager.deleteMessages(ids: ids) }
     }
     
     private func togglePin() {
@@ -655,6 +653,35 @@ struct ContentView: View {
     
     // MARK: - Navigation Helpers
     
+    /// Advance cursor and selection to the given email, or clear if nil.
+    private func advanceCursor(to emailId: String?) {
+        if let emailId = emailId {
+            cursorEmailId = emailId
+            markedEmails = [emailId]
+            detailMode = .emailDetail(emailId: emailId)
+        } else {
+            cursorEmailId = nil
+            markedEmails = []
+            detailMode = .empty
+        }
+    }
+
+    /// Compute the next email to select after removing the given IDs from the list.
+    /// Picks the email just below the lowest removed index, or the one above if at the end.
+    private func nextEmailId(after removedIds: Set<String>) -> String? {
+        let ids = sortedEmailIds
+        guard let firstRemovedIndex = ids.firstIndex(where: { removedIds.contains($0) }) else { return nil }
+        // Try the email just after the last contiguous removed item
+        var nextIndex = firstRemovedIndex
+        while nextIndex < ids.count && removedIds.contains(ids[nextIndex]) {
+            nextIndex += 1
+        }
+        if nextIndex < ids.count { return ids[nextIndex] }
+        // All removed items were at the end — pick the one above
+        let prevIndex = firstRemovedIndex - 1
+        return prevIndex >= 0 ? ids[prevIndex] : nil
+    }
+
     /// Get sorted email IDs (by timestamp, newest first)
     private var sortedEmailIds: [String] {
         displayEmails
@@ -849,6 +876,9 @@ struct ContentView: View {
             await MainActor.run {
                 let ids = markedEmails
                 guard !ids.isEmpty else { return }
+                let next = nextEmailId(after: ids)
+                accountManager.removeLocally(ids: ids)
+                advanceCursor(to: next)
                 Task {
                     for id in ids {
                         await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
