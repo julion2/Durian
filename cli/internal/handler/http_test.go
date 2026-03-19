@@ -19,6 +19,7 @@ import (
 func newTestRouter(h *Handler, hub *EventHub) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/v1/search", h.SearchHandler).Methods("GET")
+	r.HandleFunc("/api/v1/search/count", h.SearchCountHandler).Methods("GET")
 	r.HandleFunc("/api/v1/tags", h.ListTagsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}", h.ShowThreadHandler).Methods("GET")
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
@@ -108,6 +109,41 @@ func TestSearchHandler_InvalidLimit(t *testing.T) {
 	r := newTestRouter(h, nil)
 
 	req := httptest.NewRequest("GET", "/api/v1/search?query=test&limit=abc", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestSearchCountHandler_OK(t *testing.T) {
+	db := newTestStore(t)
+	seedStoreData(t, db)
+	h := New(db, nil)
+	r := newTestRouter(h, nil)
+
+	req := httptest.NewRequest("GET", "/api/v1/search/count?query=tag:inbox", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+
+	var resp map[string]int
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp["count"] == 0 {
+		t.Error("expected non-zero count for tag:inbox")
+	}
+}
+
+func TestSearchCountHandler_MissingQuery(t *testing.T) {
+	db := newTestStore(t)
+	h := New(db, nil)
+	r := newTestRouter(h, nil)
+
+	req := httptest.NewRequest("GET", "/api/v1/search/count", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 

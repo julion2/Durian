@@ -50,6 +50,25 @@ func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, response)
 }
 
+// SearchCountHandler handles GET /api/v1/search/count?query=...
+// Returns {"count": N} for the number of matching threads.
+func (h *Handler) SearchCountHandler(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		http.Error(w, "Missing required 'query' parameter", http.StatusBadRequest)
+		return
+	}
+
+	count, err := h.store.SearchCount(query)
+	if err != nil {
+		slog.Error("Search count failed", "module", "HANDLER", "query", query, "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, map[string]int{"count": count})
+}
+
 func (h *Handler) ShowThreadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	threadID := vars["thread_id"]

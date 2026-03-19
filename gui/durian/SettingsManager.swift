@@ -78,16 +78,16 @@ struct AppSettings: Codable {
     var notificationsEnabled: Bool = true
     var theme: String = "system"
     var loadRemoteImages: Bool = false  // Security: block tracking pixels by default
-    
+
     enum CodingKeys: String, CodingKey {
         case notificationsEnabled = "notifications_enabled"
         case theme
         case loadRemoteImages = "load_remote_images"
     }
-    
+
     // Default initializer
     init() {}
-    
+
     // Custom decoder that handles missing keys gracefully
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)

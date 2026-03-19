@@ -209,8 +209,21 @@ struct ContentView: View {
                 List(selection: $selectedTagID) {
                     Section("Tags") {
                         ForEach(accountManager.mailFolders) { folder in
-                            Label(folder.displayName, systemImage: folder.icon)
-                                .tag(folder.name)
+                            Label {
+                                HStack {
+                                    Text(folder.displayName)
+                                    Spacer()
+                                    if let count = accountManager.folderUnreadCounts[folder.name], count > 0 {
+                                        Text("\(count)")
+                                            .font(.caption2)
+                                            .fontWeight(.medium)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            } icon: {
+                                Image(systemName: folder.icon)
+                            }
+                            .tag(folder.name)
                         }
                     }
                 }
@@ -559,18 +572,22 @@ struct ContentView: View {
         visualModeAnchor = nil
         keymapHandler.engine.exitVisualMode()
         advanceCursor(to: next)
-        Task { await accountManager.deleteMessages(ids: ids) }
+        Task {
+            await accountManager.deleteMessages(ids: ids)
+            await accountManager.refreshFolderCounts()
+        }
     }
-    
+
     private func togglePin() {
         guard let emailId = markedEmails.first else { return }
         Task { await accountManager.togglePin(id: emailId) }
     }
-    
+
     private func toggleRead() {
         guard !markedEmails.isEmpty else { return }
         Task {
             await accountManager.toggleReadForMessages(ids: markedEmails)
+            await accountManager.refreshFolderCounts()
             await MainActor.run {
                 // Exit visual mode after batch action
                 if keymapHandler.engine.isVisualMode {
@@ -889,6 +906,7 @@ struct ContentView: View {
                     for id in ids {
                         await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
                     }
+                    await accountManager.refreshFolderCounts()
                 }
             }
         }

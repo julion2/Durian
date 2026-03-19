@@ -413,6 +413,7 @@ class SyncManager: ObservableObject {
             Task { @MainActor in
                 guard let backend = AccountManager.shared.emailBackend else { return }
                 await backend.reload()
+                await AccountManager.shared.refreshFolderCounts()
                 self?.lastSyncTime = Date()
             }
         }
