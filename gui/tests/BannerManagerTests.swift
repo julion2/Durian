@@ -15,7 +15,7 @@ final class BannerManagerTests: XCTestCase {
         manager.show(banner)
 
         // show() uses Task with 300ms delay
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.title, "Fail")
@@ -27,7 +27,7 @@ final class BannerManagerTests: XCTestCase {
         let banner = BannerMessage(title: "Warn", message: "Heads up", severity: .warning)
         manager.show(banner)
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.title, "Warn")
@@ -38,7 +38,7 @@ final class BannerManagerTests: XCTestCase {
         let banner = BannerMessage(title: "Error", message: "msg", severity: .critical)
         manager.show(banner)
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
         XCTAssertNotNil(manager.currentBanner)
 
         manager.dismiss()
@@ -51,9 +51,9 @@ final class BannerManagerTests: XCTestCase {
         let second = BannerMessage(title: "Second", message: "2", severity: .critical)
 
         manager.show(first)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
         manager.show(second)
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertEqual(manager.currentBanner?.title, "Second")
     }
@@ -62,7 +62,7 @@ final class BannerManagerTests: XCTestCase {
         let manager = makeManager()
         manager.showWarning(title: "Net", message: "Offline")
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.severity, .warning)
@@ -72,7 +72,7 @@ final class BannerManagerTests: XCTestCase {
         let manager = makeManager()
         manager.showCritical(title: "Fatal", message: "Crash")
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.severity, .critical)
@@ -83,7 +83,7 @@ final class BannerManagerTests: XCTestCase {
         let manager = BannerManager()
         manager.showWarning(title: "Suppressed", message: "Should not appear")
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNil(manager.currentBanner)
     }
@@ -92,7 +92,7 @@ final class BannerManagerTests: XCTestCase {
         let manager = makeManager()
         manager.showSuccess(title: "Done", message: "All good")
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.title, "Done")
@@ -103,7 +103,7 @@ final class BannerManagerTests: XCTestCase {
         let manager = makeManager()
         manager.showInfo(title: "FYI", message: "Just so you know")
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
+        try? await Task.sleep(nanoseconds: 800_000_000)
 
         XCTAssertNotNil(manager.currentBanner)
         XCTAssertEqual(manager.currentBanner?.title, "FYI")

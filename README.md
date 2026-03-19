@@ -49,9 +49,15 @@ bazel build -c opt //gui:Durian  # GUI only (release)
 ## Test
 ```bash
 bazel test //cli/...              # CLI tests
-bazel test //gui/...              # GUI tests
+bazel test //gui/...              # GUI tests (requires Xcode 26)
 bazel test //...                  # all tests
 ```
+
+## CI
+
+GitHub Actions runs on every push to `main` and on PRs:
+- **CLI** — `ubuntu-latest`, runs `bazel test //cli/...` + build
+- **GUI** — `macos-15` (Xcode 16), runs `ci_*` test targets via `durian_core` (models/managers only, no Views)
 
 ## Logs
 
