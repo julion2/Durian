@@ -285,6 +285,17 @@ class EmailBackend: ObservableObject {
         }
     }
 
+    /// Returns the CLI backend version info.
+    func fetchVersion() async -> (version: String, commit: String)? {
+        struct VersionResponse: Decodable {
+            let version: String
+            let commit: String
+        }
+        let response: VersionResponse? = await request(endpoint: "/version")
+        guard let r = response else { return nil }
+        return (r.version, r.commit)
+    }
+
     /// Returns the number of threads matching a query.
     func searchCount(query: String) async -> Int {
         struct CountResponse: Decodable { let count: Int }

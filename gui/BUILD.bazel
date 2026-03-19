@@ -125,6 +125,21 @@ swift_test(
     deps = [":durian_core"],
 )
 
+genrule(
+    name = "StampedInfoPlist",
+    srcs = ["Info.plist"],
+    outs = ["Info-stamped.plist"],
+    cmd = """
+        VERSION=$$(grep STABLE_VERSION bazel-out/stable-status.txt | cut -d' ' -f2)
+        BUILD_NUM=$$(grep STABLE_BUILD_NUMBER bazel-out/stable-status.txt | cut -d' ' -f2)
+        /usr/libexec/PlistBuddy -c "Clear dict" $@
+        /usr/libexec/PlistBuddy -c "Merge $(location Info.plist)" $@
+        /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $$VERSION" $@
+        /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $$BUILD_NUM" $@
+    """,
+    stamp = True,
+)
+
 macos_application(
     name = "Durian",
     app_icons = select({
@@ -140,7 +155,7 @@ macos_application(
         "//conditions:default": "DurianNightly",
     }),
     entitlements = "durian/Durian.entitlements",
-    infoplists = [":Info.plist"],
+    infoplists = [":StampedInfoPlist"],
     minimum_os_version = "26.0",
     deps = [":durian_lib"],
 )
