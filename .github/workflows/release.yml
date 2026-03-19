@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build CLI (darwin-arm64)
+        run: |
+          mkdir -p dist
+          bazel build //cli/cmd/durian
+          cp bazel-bin/cli/cmd/durian/durian_/durian dist/durian-darwin-arm64
+
+      - name: Build CLI (darwin-amd64)
+        run: |
+          bazel build //cli/cmd/durian --platforms=@rules_go//go/toolchain:darwin_amd64
+          cp bazel-bin/cli/cmd/durian/durian_/durian dist/durian-darwin-amd64
+
+      - name: Build GUI
+        run: |
+          bazel build -c opt //gui:Durian
+          cp bazel-bin/gui/Durian.zip dist/Durian-${{ steps.version.outputs.version }}.zip
+
+      - name: Package
+        run: |
+          cd dist
+          tar -czf durian-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz durian-darwin-arm64
+          tar -czf durian-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz durian-darwin-amd64
+          shasum -a 256 *.tar.gz *.zip > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            dist/durian-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz \
+            dist/durian-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz \
+            dist/Durian-${{ steps.version.outputs.version }}.zip \
+            dist/checksums.txt \
+            --title "Durian ${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA_ARM64=$(shasum -a 256 dist/durian-${VERSION}-darwin-arm64.tar.gz | cut -d' ' -f1)
+          SHA_AMD64=$(shasum -a 256 dist/durian-${VERSION}-darwin-amd64.tar.gz | cut -d' ' -f1)
+          SHA_GUI=$(shasum -a 256 dist/Durian-${VERSION}.zip | cut -d' ' -f1)
+
+          git clone https://x-access-token:${GH_TOKEN}@github.com/julion2/homebrew-tap.git /tmp/tap
+          cd /tmp/tap
+
+          # Update Formula
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Formula/durian.rb
+          sed -i '' "s/sha256 \"PLACEHOLDER_ARM64\"/sha256 \"${SHA_ARM64}\"/" Formula/durian.rb
+          sed -i '' "s/sha256 \"PLACEHOLDER_AMD64\"/sha256 \"${SHA_AMD64}\"/" Formula/durian.rb
+          # Handle subsequent releases (replace old hashes)
+          sed -i '' "/arm64/s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_ARM64}\"/" Formula/durian.rb
+          sed -i '' "/amd64/s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_AMD64}\"/" Formula/durian.rb
+
+          # Update Cask
+          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/durian.rb
+          sed -i '' "s/sha256 \"PLACEHOLDER_GUI\"/sha256 \"${SHA_GUI}\"/" Casks/durian.rb
+          sed -i '' "s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_GUI}\"/" Casks/durian.rb
+
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "bump durian to ${VERSION}"
+          git push
