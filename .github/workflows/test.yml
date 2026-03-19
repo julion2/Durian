@@ -29,8 +29,6 @@ jobs:
   gui:
     name: GUI (Swift)
     runs-on: macos-15
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
@@ -42,4 +40,4 @@ jobs:
           restore-keys: bazel-gui-
 
       - name: Test
-        run: bazel test //gui:config_test //gui:profile_test //gui:banner_manager_test //gui:model_test --test_output=errors
+        run: bazel test //gui:ci_config_test //gui:ci_profile_test //gui:ci_banner_manager_test //gui:ci_model_test --test_output=errors

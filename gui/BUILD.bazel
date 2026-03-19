@@ -31,6 +31,27 @@ swift_library(
     deps = ["@toml_decoder//:TOMLDecoder"],
 )
 
+# Core library for CI tests — models, managers, utilities only (no Views).
+# Views use macOS 26 APIs (glassEffect) that require Xcode 26, but
+# rules_swift test_discoverer crashes on Xcode 26. This target compiles
+# on Xcode 16+ and is used by CI test targets.
+swift_library(
+    name = "durian_core",
+    testonly = True,
+    module_name = "durian_lib",
+    srcs = glob([
+        "durian/Models/**/*.swift",
+        "durian/Managers/**/*.swift",
+        "durian/Utilities/**/*.swift",
+        "durian/Network/**/*.swift",
+        "durian/Keymaps/**/*.swift",
+    ]) + [
+        "durian/SettingsManager.swift",
+        "durian/EmailHTMLParser.swift",
+    ],
+    deps = ["@toml_decoder//:TOMLDecoder"],
+)
+
 swift_test(
     name = "config_test",
     size = "small",
@@ -63,6 +84,45 @@ swift_test(
     size = "small",
     srcs = ["tests/ModelTests.swift"],
     deps = [":durian_testlib"],
+)
+
+# CI test targets — use durian_core (no Views) to avoid Xcode 26 requirement
+swift_test(
+    name = "ci_config_test",
+    size = "small",
+    srcs = ["tests/ConfigTests.swift"],
+    tags = ["ci"],
+    deps = [
+        ":durian_core",
+        "@toml_decoder//:TOMLDecoder",
+    ],
+)
+
+swift_test(
+    name = "ci_profile_test",
+    size = "small",
+    srcs = ["tests/ProfileTests.swift"],
+    tags = ["ci"],
+    deps = [
+        ":durian_core",
+        "@toml_decoder//:TOMLDecoder",
+    ],
+)
+
+swift_test(
+    name = "ci_banner_manager_test",
+    size = "small",
+    srcs = ["tests/BannerManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "ci_model_test",
+    size = "small",
+    srcs = ["tests/ModelTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
 )
 
 macos_application(
