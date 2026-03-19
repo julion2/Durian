@@ -1,0 +1,161 @@
+# Durian Keymaps Configuration
+# Copy to ~/.config/durian/keymaps.toml (or $XDG_CONFIG_HOME/durian/keymaps.toml)
+# These are the defaults. Only include keymaps you want to change.
+#
+# All vim-style keybindings are fully configurable.
+# sequence = true  → multi-key sequence (e.g. "gg", "dd", "gi")
+# supports_count   → accepts count prefix (e.g. "5j" = move down 5)
+# modifiers        → ["cmd"], ["ctrl"], ["shift"], or []
+
+[global_settings]
+keymaps_enabled = true
+show_keymap_hints = true
+sequence_timeout = 1.0            # seconds to wait for next key in sequence
+
+# ── Navigation ─────────────────────────────────────────────────────────
+
+[[keymaps]]
+action = "next_email"
+key = "j"
+description = "Next email"
+
+[[keymaps]]
+action = "prev_email"
+key = "k"
+description = "Previous email"
+
+[[keymaps]]
+action = "first_email"
+key = "gg"
+sequence = true
+description = "Jump to first email"
+
+[[keymaps]]
+action = "last_email"
+key = "G"
+description = "Jump to last email"
+
+[[keymaps]]
+action = "page_down"
+key = "d"
+modifiers = ["ctrl"]
+supports_count = true
+description = "Half-page down"
+
+[[keymaps]]
+action = "page_up"
+key = "u"
+modifiers = ["ctrl"]
+supports_count = true
+description = "Half-page up"
+
+# ── Actions ────────────────────────────────────────────────────────────
+
+[[keymaps]]
+action = "archive"
+key = "a"
+description = "Archive email"
+
+[[keymaps]]
+action = "delete"
+key = "dd"
+sequence = true
+description = "Delete email"
+
+[[keymaps]]
+action = "toggle_read"
+key = "u"
+description = "Toggle read/unread"
+
+[[keymaps]]
+action = "toggle_star"
+key = "s"
+description = "Toggle pin/star"
+
+[[keymaps]]
+action = "tag_picker"
+key = "t"
+description = "Open tag picker"
+
+# ── Compose ────────────────────────────────────────────────────────────
+
+[[keymaps]]
+action = "compose"
+key = "c"
+description = "Compose new email"
+
+[[keymaps]]
+action = "reply"
+key = "r"
+description = "Reply"
+
+[[keymaps]]
+action = "reply_all"
+key = "R"
+description = "Reply all"
+
+[[keymaps]]
+action = "forward"
+key = "f"
+description = "Forward"
+
+# ── Folder Navigation ──────────────────────────────────────────────────
+
+[[keymaps]]
+action = "go_inbox"
+key = "gi"
+sequence = true
+description = "Go to inbox"
+
+[[keymaps]]
+action = "go_sent"
+key = "gs"
+sequence = true
+description = "Go to sent"
+
+[[keymaps]]
+action = "go_drafts"
+key = "gd"
+sequence = true
+description = "Go to drafts"
+
+[[keymaps]]
+action = "go_archive"
+key = "ga"
+sequence = true
+description = "Go to archive"
+
+# ── Search & UI ────────────────────────────────────────────────────────
+
+[[keymaps]]
+action = "search"
+key = "/"
+description = "Search emails"
+
+[[keymaps]]
+action = "close_detail"
+key = "q"
+description = "Close/back"
+
+[[keymaps]]
+action = "reload_inbox"
+key = "r"
+modifiers = ["cmd"]
+description = "Reload inbox"
+
+# ── Selection (Visual Mode) ───────────────────────────────────────────
+
+[[keymaps]]
+action = "enter_visual_mode"
+key = "v"
+description = "Enter visual mode"
+
+[[keymaps]]
+action = "enter_toggle_mode"
+key = "V"
+description = "Enter toggle visual mode"
+
+[[keymaps]]
+action = "toggle_selection"
+key = " "
+description = "Toggle current email in selection"

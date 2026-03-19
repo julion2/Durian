@@ -1,0 +1,92 @@
+# Durian Profiles Configuration
+# Copy to ~/.config/durian/profiles.toml (or $XDG_CONFIG_HOME/durian/profiles.toml)
+# Adjust account names and folders to match your config.toml.
+#
+# Profiles group accounts and define sidebar folders.
+# Switch profiles via Cmd+1, Cmd+2, etc.
+# accounts = ["*"] matches all accounts.
+# Folder queries use the search syntax (tag:, from:, date:, path:).
+
+# ── All Accounts ───────────────────────────────────────────────────────
+
+[[profile]]
+name = "All"
+accounts = ["*"]
+default = true
+
+[[profile.folders]]
+name = "Inbox"
+icon = "tray"
+query = "tag:inbox AND NOT tag:sent AND NOT tag:draft"
+
+[[profile.folders]]
+name = "Unread"
+icon = "envelope.badge"
+query = "tag:unread"
+
+[[profile.folders]]
+name = "Sent"
+icon = "paperplane"
+query = "tag:sent"
+
+[[profile.folders]]
+name = "Drafts"
+icon = "doc.text"
+query = "tag:draft"
+
+[[profile.folders]]
+name = "Archive"
+icon = "archivebox"
+query = "tag:archive"
+
+[[profile.folders]]
+name = "Trash"
+icon = "trash"
+query = "tag:trash"
+
+# ── Work Profile (single account) ─────────────────────────────────────
+
+[[profile]]
+name = "Work"
+accounts = ["work"]
+
+[[profile.folders]]
+name = "Inbox"
+icon = "tray"
+query = "tag:inbox AND NOT tag:sent AND NOT tag:draft"
+
+[[profile.folders]]
+name = "Sent"
+icon = "paperplane"
+query = "tag:sent"
+
+[[profile.folders]]
+name = "Drafts"
+icon = "doc.text"
+query = "tag:draft"
+
+[[profile.folders]]
+name = "Archive"
+icon = "archivebox"
+query = "tag:archive"
+
+# ── Shared Mailboxes (multiple accounts, per-account inboxes) ─────────
+
+# [[profile]]
+# name = "Shared"
+# accounts = ["support", "info", "billing"]
+#
+# [[profile.folders]]
+# name = "Inbox"
+# icon = "tray"
+# query = "tag:inbox AND NOT tag:sent AND NOT tag:draft"
+#
+# [[profile.folders]]
+# name = "Support"
+# icon = "wrench.and.screwdriver"
+# query = "tag:inbox AND NOT tag:sent AND NOT tag:draft AND path:support/**"
+#
+# [[profile.folders]]
+# name = "Info"
+# icon = "info.circle"
+# query = "tag:inbox AND NOT tag:sent AND NOT tag:draft AND path:info/**"
