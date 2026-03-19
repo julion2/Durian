@@ -21,7 +21,10 @@ go_library(
 go_test(
     name = "store_test",
     srcs = [
+        "attachments_test.go",
+        "headers_test.go",
         "messages_test.go",
+        "outbox_test.go",
         "search_test.go",
         "store_test.go",
         "tags_test.go",

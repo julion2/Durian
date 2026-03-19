@@ -34,10 +34,15 @@ go_library(
 go_test(
     name = "handler_test",
     size = "small",
-    srcs = ["handler_test.go"],
+    srcs = [
+        "handler_test.go",
+        "http_test.go",
+    ],
     embed = [":handler"],
     deps = [
+        "//cli/internal/contacts",
         "//cli/internal/protocol",
         "//cli/internal/store",
+        "@com_github_gorilla_mux//:mux",
     ],
 )
