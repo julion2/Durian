@@ -266,6 +266,58 @@ func TestSearch_DateRange(t *testing.T) {
 	}
 }
 
+func TestSearch_DateRelativeKeywords(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now()
+
+	// Insert a message from today and one from 2 months ago
+	today := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, now.Location())
+	old := today.AddDate(0, -2, -5)
+
+	db.InsertMessage(&Message{
+		MessageID: "today@x", Subject: "Today msg", FromAddr: "a@x",
+		Date: today.Unix(), CreatedAt: today.Unix(), FetchedBody: true,
+	})
+	db.InsertMessage(&Message{
+		MessageID: "old@x", Subject: "Old msg", FromAddr: "a@x",
+		Date: old.Unix(), CreatedAt: old.Unix(), FetchedBody: true,
+	})
+
+	// date:today should match only today's message
+	results, err := db.Search("date:today", 10)
+	if err != nil {
+		t.Fatalf("date:today: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("date:today got %d results, want 1", len(results))
+	}
+
+	// date:week should match today's message
+	results, _ = db.Search("date:week", 10)
+	if len(results) != 1 {
+		t.Errorf("date:week got %d results, want 1", len(results))
+	}
+
+	// date:year should match both
+	results, _ = db.Search("date:year", 10)
+	if len(results) != 2 {
+		t.Errorf("date:year got %d results, want 2", len(results))
+	}
+
+	// date:month should match only today
+	results, _ = db.Search("date:month", 10)
+	if len(results) != 1 {
+		t.Errorf("date:month got %d results, want 1", len(results))
+	}
+}
+
+func TestResolveRelativeDate_Unknown(t *testing.T) {
+	_, _, err := resolveRelativeDate("invalid")
+	if err == nil {
+		t.Error("expected error for unknown keyword")
+	}
+}
+
 func TestSearch_AccountFilter(t *testing.T) {
 	db := newTestDB(t)
 	now := time.Now().Unix()
