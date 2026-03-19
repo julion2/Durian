@@ -132,36 +132,42 @@ struct ContentView: View {
                     currentTags: currentEmailTags,
                     allTags: allTags,
                     onToggleTag: { tag, isAdding in
-                        guard let emailId = cursorEmailId else { return }
+                        let ids = markedEmails
+                        guard !ids.isEmpty else { return }
                         // Optimistically add new tag to allTags so the UI updates instantly
                         if isAdding && !allTags.contains(tag) {
                             allTags.append(tag)
                             allTags.sort()
                         }
                         // Optimistically update search results so tag pills refresh immediately
-                        if isSearchMode, let idx = searchResults.firstIndex(where: { $0.id == emailId }) {
-                            var currentTags = (searchResults[idx].tags ?? "")
-                                .split(separator: ",")
-                                .map { $0.trimmingCharacters(in: .whitespaces) }
-                                .filter { !$0.isEmpty }
-                            if isAdding {
-                                if !currentTags.contains(tag) { currentTags.append(tag) }
-                            } else {
-                                currentTags.removeAll { $0 == tag }
+                        if isSearchMode {
+                            for emailId in ids {
+                                if let idx = searchResults.firstIndex(where: { $0.id == emailId }) {
+                                    var currentTags = (searchResults[idx].tags ?? "")
+                                        .split(separator: ",")
+                                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                                        .filter { !$0.isEmpty }
+                                    if isAdding {
+                                        if !currentTags.contains(tag) { currentTags.append(tag) }
+                                    } else {
+                                        currentTags.removeAll { $0 == tag }
+                                    }
+                                    searchResults[idx].tags = currentTags.joined(separator: ",")
+                                    let tagSet = Set(currentTags)
+                                    searchResults[idx].isRead = !tagSet.contains("unread")
+                                    searchResults[idx].isPinned = tagSet.contains("flagged")
+                                    searchResults[idx].hasAttachment = tagSet.contains("attachment")
+                                }
                             }
-                            searchResults[idx].tags = currentTags.joined(separator: ",")
-                            let tagSet = Set(currentTags)
-                            searchResults[idx].isRead = !tagSet.contains("unread")
-                            searchResults[idx].isPinned = tagSet.contains("flagged")
-                            searchResults[idx].hasAttachment = tagSet.contains("attachment")
                         }
                         Task {
-                            if isAdding {
-                                await accountManager.addTag(id: emailId, tag: tag)
-                            } else {
-                                await accountManager.removeTag(id: emailId, tag: tag)
+                            for id in ids {
+                                if isAdding {
+                                    await accountManager.addTag(id: id, tag: tag)
+                                } else {
+                                    await accountManager.removeTag(id: id, tag: tag)
+                                }
                             }
-                            // Refresh allTags from backend
                             allTags = await accountManager.fetchAllTags()
                         }
                     }
@@ -807,7 +813,7 @@ struct ContentView: View {
         // Tag Picker: t
         keymapHandler.registerSimpleHandler(for: .tagPicker) { [self] in
             await MainActor.run {
-                guard cursorEmailId != nil else { return }
+                guard !markedEmails.isEmpty else { return }
                 showTagPicker = true
                 Task { allTags = await accountManager.fetchAllTags() }
             }
