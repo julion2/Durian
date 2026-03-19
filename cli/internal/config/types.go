@@ -34,7 +34,8 @@ type AccountConfig struct {
 	Name             string      `toml:"name"`
 	DisplayName      string      `toml:"display_name"` // Full name for From header (e.g., "Julian Schenker")
 	Email            string      `toml:"email"`
-	Alias            string      `toml:"alias"` // Short alias for CLI (e.g., "gmx", "habric")
+	AuthEmail        string      `toml:"auth_email"` // Delegating user for shared mailbox OAuth (token owner)
+	Alias            string      `toml:"alias"`      // Short alias for CLI (e.g., "gmx", "habric")
 	Default          bool        `toml:"default"`
 	DefaultSignature string      `toml:"default_signature"`
 	Notifications    *bool       `toml:"notifications"` // Per-account notification override (nil = use global setting)
@@ -42,6 +43,15 @@ type AccountConfig struct {
 	IMAP             IMAPConfig  `toml:"imap"`
 	Auth             AuthConfig  `toml:"auth"`
 	OAuth            OAuthConfig `toml:"oauth"`
+}
+
+// GetAuthEmail returns the email used for OAuth token lookup.
+// For shared mailboxes, this is the delegating user; otherwise the account email.
+func (a *AccountConfig) GetAuthEmail() string {
+	if a.AuthEmail != "" {
+		return a.AuthEmail
+	}
+	return a.Email
 }
 
 // SMTPConfig contains SMTP server settings

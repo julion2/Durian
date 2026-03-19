@@ -128,9 +128,10 @@ func (c *Client) Authenticate() error {
 
 // authenticateOAuth2 authenticates using XOAUTH2
 func (c *Client) authenticateOAuth2() error {
-	// Get valid OAuth token (auto-refreshes if needed)
+	// Get valid OAuth token (auto-refreshes if needed).
+	// For shared mailboxes, the token belongs to the delegating user (AuthEmail).
 	token, err := oauth.GetValidToken(
-		c.account.Email,
+		c.account.GetAuthEmail(),
 		c.account.OAuth.ClientID,
 		c.account.OAuth.ClientSecret,
 		c.account.OAuth.Tenant,

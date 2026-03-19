@@ -62,6 +62,26 @@ max_messages = 5000
 provider = "microsoft"
 # client_id = "custom-azure-client-id"  # Optional, built-in default is used if omitted
 
+# Microsoft 365 Shared Mailbox (requires Full Access + Send As permissions)
+[[accounts]]
+name = "Support"
+email = "support@company.com"
+alias = "support"
+auth_email = "you@company.com"  # Delegating user (must have Full Access + Send As)
+
+[accounts.smtp]
+host = "smtp.office365.com"
+port = 587
+auth = "oauth2"
+
+[accounts.imap]
+host = "outlook.office365.com"
+port = 993
+auth = "oauth2"
+
+[accounts.oauth]
+provider = "microsoft"
+
 # Google OAuth
 [[accounts]]
 name = "Gmail"

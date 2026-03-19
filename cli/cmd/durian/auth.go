@@ -112,22 +112,34 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 
 // runOAuthLogin handles OAuth authentication
 func runOAuthLogin(account *config.AccountConfig) error {
+	authEmail := account.GetAuthEmail()
+
+	// Shared mailbox: reuse existing token from delegating user
+	if account.AuthEmail != "" {
+		if token, err := oauth.LoadToken(authEmail); err == nil && !token.IsExpired() {
+			fmt.Printf("✓ Reusing token from %s for shared mailbox %s\n", authEmail, account.Email)
+			fmt.Printf("✓ Token expires in %s\n", formatDuration(token.ExpiresIn()))
+			return nil
+		}
+		// Token missing or expired — fall through to OAuth flow for the delegating user
+	}
+
 	// Get provider
 	provider, err := oauth.GetProvider(account.OAuth.Provider, account.OAuth.Tenant)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Starting OAuth authentication for %s (%s)...\n\n", account.Email, account.OAuth.Provider)
+	fmt.Printf("Starting OAuth authentication for %s (%s)...\n\n", authEmail, account.OAuth.Provider)
 
-	// Run OAuth flow
-	token, err := oauth.Authenticate(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, account.Email)
+	// Run OAuth flow (authenticate as the delegating user for shared mailboxes)
+	token, err := oauth.Authenticate(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, authEmail)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 
-	// Save token to keychain
-	if err := oauth.SaveToken(account.Email, token); err != nil {
+	// Save token under the auth email (delegating user)
+	if err := oauth.SaveToken(authEmail, token); err != nil {
 		return fmt.Errorf("failed to save token: %w", err)
 	}
 
@@ -242,6 +254,13 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 
 	// Delete based on account type
 	if account.OAuth.Provider != "" {
+		// Shared mailbox: token belongs to the delegating user
+		if account.AuthEmail != "" {
+			fmt.Printf("Shared mailbox %s uses token from %s\n", account.Email, account.AuthEmail)
+			fmt.Printf("Run: durian auth logout %s\n", account.AuthEmail)
+			return nil
+		}
+
 		// OAuth account
 		_, err := oauth.LoadToken(account.Email)
 		if err != nil {
@@ -292,11 +311,14 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("%s uses password authentication (no refresh needed)", account.Email)
 	}
 
+	// For shared mailboxes, the token is stored under the delegating user
+	authEmail := account.GetAuthEmail()
+
 	// Load existing token
-	token, err := oauth.LoadToken(account.Email)
+	token, err := oauth.LoadToken(authEmail)
 	if err != nil {
 		if errors.Is(err, oauth.ErrTokenNotFound) {
-			return fmt.Errorf("no token found for %s\nRun: durian auth login %s", account.Email, account.GetAliasOrName())
+			return fmt.Errorf("no token found for %s\nRun: durian auth login %s", authEmail, account.GetAliasOrName())
 		}
 		return err
 	}
@@ -307,21 +329,21 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Refreshing token for %s...\n", account.Email)
+	fmt.Printf("Refreshing token for %s...\n", authEmail)
 
 	// Refresh token
 	newToken, err := oauth.RefreshAccessToken(provider, account.OAuth.ClientID, account.OAuth.ClientSecret, token)
 	if err != nil {
 		if errors.Is(err, oauth.ErrTokenExpired) {
 			// Delete invalid token
-			_ = oauth.DeleteToken(account.Email)
+			_ = oauth.DeleteToken(authEmail)
 			return fmt.Errorf("refresh token expired\nRun: durian auth login %s", account.GetAliasOrName())
 		}
 		return fmt.Errorf("refresh failed: %w", err)
 	}
 
 	// Save new token
-	if err := oauth.SaveToken(account.Email, newToken); err != nil {
+	if err := oauth.SaveToken(authEmail, newToken); err != nil {
 		return fmt.Errorf("failed to save token: %w", err)
 	}
 
@@ -334,7 +356,7 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 func getAccountStatus(account *config.AccountConfig) string {
 	// Check OAuth accounts
 	if account.OAuth.Provider != "" {
-		token, err := oauth.LoadToken(account.Email)
+		token, err := oauth.LoadToken(account.GetAuthEmail())
 		if err != nil {
 			if errors.Is(err, oauth.ErrTokenNotFound) {
 				return fmt.Sprintf("✗ Not authenticated\n%34sRun: durian auth login %s", "", account.Email)

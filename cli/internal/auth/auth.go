@@ -24,19 +24,23 @@ func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 			return nil, fmt.Errorf("OAuth provider not configured for %s", account.Email)
 		}
 
-		token, err := oauth.GetValidToken(account.Email, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
+		// For shared mailboxes, the token belongs to the delegating user (AuthEmail).
+		// SMTP also requires the SASL user to be the delegator — shared mailboxes
+		// cannot perform SMTP AUTH. MAIL FROM / From: header use account.Email downstream.
+		authEmail := account.GetAuthEmail()
+		token, err := oauth.GetValidToken(authEmail, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
 		if err != nil {
 			if errors.Is(err, oauth.ErrTokenNotFound) {
-				return nil, fmt.Errorf("not authenticated for %s", account.Email)
+				return nil, fmt.Errorf("not authenticated for %s", authEmail)
 			}
 			if errors.Is(err, oauth.ErrTokenExpired) {
-				return nil, fmt.Errorf("authentication expired for %s", account.Email)
+				return nil, fmt.Errorf("authentication expired for %s", authEmail)
 			}
 			return nil, fmt.Errorf("failed to get OAuth token: %w", err)
 		}
 
 		return &smtp.OAuth2Auth{
-			Email:       account.Email,
+			Email:       authEmail,
 			AccessToken: token.AccessToken,
 		}, nil
 
