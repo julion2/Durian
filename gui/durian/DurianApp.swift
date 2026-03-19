@@ -44,6 +44,7 @@ struct DurianApp: App {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var profileManager = ProfileManager.shared
     @StateObject private var accountManager = AccountManager.shared
+    @State private var cliVersion: String = ""
 
     private static let notificationDelegate = NotificationDelegate()
 
@@ -75,6 +76,12 @@ struct DurianApp: App {
             ContentView()
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Durian") {
+                    showAbout()
+                }
+            }
+
             CommandGroup(replacing: .appSettings) {
                 Button("Preferences...") {
                     openConfig()
@@ -132,6 +139,28 @@ struct DurianApp: App {
         .defaultSize(width: 650, height: 550)
     }
     
+    private func showAbout() {
+        Task {
+            if let backend = accountManager.emailBackend,
+               let info = await backend.fetchVersion() {
+                cliVersion = "\(info.version) (\(info.commit))"
+            }
+            await MainActor.run {
+                let guiVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+
+                let credits = NSMutableAttributedString()
+                let style: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11)]
+                let dimStyle: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]
+                credits.append(NSAttributedString(string: "CLI: \(cliVersion.isEmpty ? "not connected" : cliVersion)\n\n", attributes: style))
+                credits.append(NSAttributedString(string: "A macOS email client for power users.", attributes: dimStyle))
+                NSApp.orderFrontStandardAboutPanel(options: [
+                    .credits: credits,
+                    .applicationVersion: guiVersion,
+                ])
+            }
+        }
+    }
+
     private func openConfig() {
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
         let configURL = homeURL.appendingPathComponent(".config/durian/config.toml")

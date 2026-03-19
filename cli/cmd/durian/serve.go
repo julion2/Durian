@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -69,6 +70,13 @@ func runServe(cmd *cobra.Command, args []string) {
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
+	r.HandleFunc("/api/v1/version", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"version": version,
+			"commit":  gitCommit,
+		})
+	}).Methods("GET")
 	r.HandleFunc("/api/v1/search", h.SearchHandler).Methods("GET")
 	r.HandleFunc("/api/v1/search/count", h.SearchCountHandler).Methods("GET")
 	r.HandleFunc("/api/v1/tags", h.ListTagsHandler).Methods("GET")
