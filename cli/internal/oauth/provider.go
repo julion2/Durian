@@ -62,8 +62,8 @@ func Google() *Provider {
 			"https://mail.google.com/",
 		},
 		SASlMethod:          "OAUTHBEARER",
-		DefaultClientID:     "1006158396880-a77l3uc4r9m27q67bbtc71iktqerm5a0.apps.googleusercontent.com",
-		DefaultClientSecret: "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",
+		// No default credentials — users must configure their own Google OAuth app.
+		// See docs/OAUTH_SETUP.md for instructions.
 	}
 }
 

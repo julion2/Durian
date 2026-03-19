@@ -1,56 +1,64 @@
 # Durian Configuration Example
-# Copy to ~/.config/durian/config.toml
+# Copy to ~/.config/durian/config.toml (or $XDG_CONFIG_HOME/durian/config.toml)
+# Remove the example accounts below and add your own.
 
 [settings]
-theme = "light"
-notifications_enabled = true
-load_remote_images = false
+theme = "light"                   # "light", "dark", or "system"
+notifications_enabled = true      # Global notification toggle
+load_remote_images = false        # Block tracking pixels by default
 
 [sync]
-auto_fetch_enabled = true
-auto_fetch_interval = 120
+gui_auto_sync = true              # GUI auto-syncs on launch and periodically
+auto_fetch_interval = 120         # Quick sync interval in seconds (GUI)
+full_sync_interval = 7200         # Full sync interval in seconds (GUI)
 
 [signatures]
 default = "Best regards"
 work = "Best regards,\nYour Name\nCompany Inc."
 
-# Password auth (e.g. GMX, custom SMTP)
+# ── Password auth (e.g. GMX, Hostinger, LRZ) ──────────────────────────
+
 [[accounts]]
 name = "Personal"
 email = "you@example.com"
-alias = "personal"  # Short alias for CLI: durian sync personal
+display_name = "Your Name"        # Used in From header
+alias = "personal"                # Short alias for CLI: durian sync personal
+default_signature = "default"     # Signature key from [signatures]
 
 [accounts.smtp]
 host = "smtp.example.com"
-port = 587
+port = 587                        # 587 = STARTTLS, 465 = implicit TLS
 auth = "password"
-max_attachment_size = "20MB"  # GMX limit is 20MB
+max_attachment_size = "20MB"      # Optional, provider-specific limit
 
 [accounts.imap]
 host = "imap.example.com"
 port = 993
 auth = "password"
-max_messages = 5000  # Limit per mailbox, 0 = unlimited
-# mailboxes = ["INBOX", "Sent", "Drafts"]  # Optional, has smart defaults
+max_messages = 5000               # Max messages per mailbox, 0 = unlimited
+# batch_size = 100               # Download batch size (default: 100)
+# mailboxes = ["INBOX", "Sent"]  # Optional, auto-detected via SPECIAL-USE
 
 [accounts.auth]
-username = "you@example.com"
-password_keychain = "example-smtp"
+username = "you@example.com"       # IMAP/SMTP login username (if different from email)
+# password_keychain = "custom-key" # Optional Keychain entry name (default: email)
+# Then run: durian auth login personal
 
-# Microsoft 365 OAuth
+# ── Microsoft 365 OAuth ────────────────────────────────────────────────
+
 [[accounts]]
 name = "Work"
 email = "you@company.com"
-alias = "work"  # Short alias for CLI: durian sync work
-default = true
+display_name = "Your Name"
+alias = "work"
+default = true                    # Default account for compose
 default_signature = "work"
-notifications = true  # Per-account override (omit to use global setting)
+notifications = true              # Per-account notification override
 
 [accounts.smtp]
 host = "smtp.office365.com"
 port = 587
 auth = "oauth2"
-max_attachment_size = "25MB"  # Office 365 default, can be up to 150MB
 
 [accounts.imap]
 host = "outlook.office365.com"
@@ -60,14 +68,19 @@ max_messages = 5000
 
 [accounts.oauth]
 provider = "microsoft"
-# client_id = "custom-azure-client-id"  # Optional, built-in default is used if omitted
+# client_id = "your-azure-client-id"  # Optional, built-in default is used
+# tenant = "common"                   # Azure AD tenant (default: "common")
 
-# Microsoft 365 Shared Mailbox (requires Full Access + Send As permissions)
+# ── Microsoft 365 Shared Mailbox ───────────────────────────────────────
+
 [[accounts]]
 name = "Support"
 email = "support@company.com"
+display_name = "Company Support"
 alias = "support"
-auth_email = "you@company.com"  # Delegating user (must have Full Access + Send As)
+auth_email = "you@company.com"   # Delegating user (must have Full Access + Send As)
+default_signature = "work"
+notifications = false
 
 [accounts.smtp]
 host = "smtp.office365.com"
@@ -82,17 +95,17 @@ auth = "oauth2"
 [accounts.oauth]
 provider = "microsoft"
 
-# Google OAuth
+# ── Google OAuth ───────────────────────────────────────────────────────
+
 [[accounts]]
 name = "Gmail"
 email = "you@gmail.com"
-alias = "gmail"  # Short alias for CLI: durian auth login gmail
+alias = "gmail"
 
 [accounts.smtp]
 host = "smtp.gmail.com"
 port = 587
 auth = "oauth2"
-max_attachment_size = "25MB"  # Gmail limit is 25MB
 
 [accounts.imap]
 host = "imap.gmail.com"
@@ -102,6 +115,5 @@ max_messages = 5000
 
 [accounts.oauth]
 provider = "google"
-# client_id and client_secret are optional, built-in defaults are used if omitted
-# client_id = "custom-google-client-id"
-# client_secret = "custom-google-client-secret"
+client_id = "your-google-client-id"         # Required, see docs/OAUTH_SETUP.md
+client_secret = "your-google-client-secret"  # Required, see docs/OAUTH_SETUP.md

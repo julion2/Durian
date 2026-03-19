@@ -10,99 +10,73 @@
 
 ---
 
-## Structure
-```
-gui/    # Swift macOS app
-cli/    # Go backend (IMAP sync + SQLite store)
-specs/  # Feature specs
-agents/ # OpenCode agents
+> **Early Alpha** — Expect bugs and breaking changes. No security audit. Use at your own risk.
+
+---
+
+## Install
+
+```bash
+brew tap julion2/tap
+brew install durian             # CLI only
+brew install --cask durian      # GUI (macOS app)
 ```
 
-## Prerequisites
+## Build from Source
+
 ```bash
-brew install bazel
+brew install bazel              # prerequisite
+
+bazel build //cli/cmd/durian    # CLI
+bazel build //gui:Durian        # GUI (debug)
+bazel build -c opt //gui:Durian # GUI (release)
 ```
 
-## Build
 ```bash
-bazel build //...                # build everything
-bazel build //cli/...             # CLI only
-bazel build //gui:Durian         # GUI only (debug)
-bazel build -c opt //gui:Durian  # GUI only (release)
-```
-
-### Install CLI
-```bash
-./cli/install.sh                  # builds & copies to /usr/local/bin/durian
-```
-
-### Install GUI
-```bash
-./gui/install.sh                  # builds & copies to /Applications/Durian.app
-```
-
-### Run GUI (dev)
-```bash
-./gui/run.sh                      # builds debug, installs DurianNightly.app, runs with CLI logs
+./cli/install.sh                # build & install CLI to /usr/local/bin
+./gui/install.sh                # build & install GUI to /Applications
+./gui/run.sh                    # build & run debug GUI (DurianNightly.app)
 ```
 
 ## Test
+
 ```bash
-bazel test //cli/...              # CLI tests
-bazel test //gui/...              # GUI tests (requires Xcode 26)
-bazel test //...                  # all tests
+bazel test //cli/...            # CLI tests
+bazel test //gui/...            # GUI tests (requires Xcode 26)
 ```
 
-## CI
-
-GitHub Actions runs on every push to `main` and on PRs:
-- **CLI** — `ubuntu-latest`, runs `bazel test //cli/...` + build
-- **GUI** — `macos-15` (Xcode 16), runs `ci_*` test targets via `durian_core` (models/managers only, no Views)
-
-## Logs
-
-### GUI (Swift → os_log)
-```bash
-log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'  # nightly
-log stream --level debug --predicate 'subsystem == "org.js-lab.durian"'           # release
-log stream --level info  --predicate 'subsystem == "org.js-lab.durian.nightly"'  # info+ only
-```
-
-### CLI (Go → slog)
-```bash
-tail -f ~/.config/durian/serve.log        # server logs (Info+ by default)
-durian serve --debug                      # server logs with Debug+
-durian sync --debug                       # debug output on stderr
-```
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Next / Previous |
-| `gg` / `G` | First / Last |
-| `Ctrl+d` / `Ctrl+u` | Page down / up |
-| `s` | Toggle pin |
-| `u` | Toggle read |
-| `/` | Search |
-| `q` | Close |
-
-Custom keymaps: `~/.config/durian/keymaps.toml`
-
-## CLI
+## CLI Usage
 
 ```bash
-durian search "tag:inbox" --limit 10
-durian show <thread-id>
-durian tag "tag:inbox" +archived -unread
-durian auth login you@company.com
-durian auth status
+durian auth login work          # authenticate (OAuth or password)
+durian auth status              # show auth status for all accounts
+durian sync work                # sync an account
+durian search "tag:inbox" -l 10 # search emails
+durian search "date:today"      # relative date search
 ```
 
 ## Config
 
-`~/.config/durian/config.toml`
+All configuration lives in `~/.config/durian/` (or `$XDG_CONFIG_HOME/durian/`):
 
-- [docs/config-example.toml](docs/config-example.toml) – Full config example
-- [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) – OAuth setup for Gmail/Microsoft
-- [gui/docs/SYNC_SETUP.md](gui/docs/SYNC_SETUP.md) – IMAP sync setup
+| File | Purpose |
+|------|---------|
+| `config.toml` | Accounts, signatures, settings |
+| `profiles.toml` | Sidebar profiles (account groups, folders) |
+| `keymaps.toml` | Vim-style keyboard shortcuts |
+| `rules.toml` | Client-side filter rules |
+
+Examples:
+- [config-example.toml](docs/config-example.toml) — Accounts, signatures, settings
+- [profiles-example.toml](docs/profiles-example.toml) — Sidebar profiles and folders
+- [keymaps-example.toml](docs/keymaps-example.toml) — Keyboard shortcuts
+- [rules-example.toml](docs/rules-example.toml) — Filter rules
+
+## Docs
+
+- [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
+- [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
+
+## License
+
+[MIT](LICENSE)
