@@ -26,13 +26,20 @@ jobs:
       - name: Build
         run: bazel build //cli/cmd/durian
 
-  # GUI tests require Xcode 26 (glassEffect API) but rules_swift test_discoverer
-  # crashes on Xcode 26. Blocked until rules_swift supports Xcode 26.
-  # See: https://github.com/bazelbuild/rules_swift/issues
-  # gui:
-  #   name: GUI (Swift)
-  #   runs-on: macos-15
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Test
-  #       run: bazel test //gui:config_test //gui:profile_test //gui:banner_manager_test //gui:model_test --test_output=errors
+  gui:
+    name: GUI (Swift)
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mount Bazel cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel-disk
+          key: bazel-gui-${{ hashFiles('MODULE.bazel', 'gui/BUILD.bazel') }}
+          restore-keys: bazel-gui-
+
+      - name: Test
+        run: bazel test //gui:config_test //gui:profile_test //gui:banner_manager_test //gui:model_test --test_output=errors
