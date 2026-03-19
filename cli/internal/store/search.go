@@ -6,6 +6,25 @@ import (
 	"time"
 )
 
+// SearchCount returns the number of threads matching a query.
+func (d *DB) SearchCount(query string) (int, error) {
+	where, params, err := parseQuery(query)
+	if err != nil {
+		return 0, fmt.Errorf("parse query: %w", err)
+	}
+
+	q := "SELECT COUNT(DISTINCT m.thread_id) FROM messages m"
+	if where != "" {
+		q += " WHERE " + where
+	}
+
+	var count int
+	if err := d.db.QueryRow(q, params...).Scan(&count); err != nil {
+		return 0, fmt.Errorf("search count: %w", err)
+	}
+	return count, nil
+}
+
 // Search finds threads matching a search query string.
 // Results are grouped by thread and ordered by most recent message date descending.
 func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
