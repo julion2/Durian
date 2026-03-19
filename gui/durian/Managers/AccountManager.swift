@@ -22,6 +22,9 @@ class AccountManager: ObservableObject {
 
     /// Set by notification click handler; ContentView observes and navigates to this thread
     @Published var pendingNotificationThreadId: String?
+
+    /// Unread thread counts per folder name (for sidebar badges)
+    @Published var folderUnreadCounts: [String: Int] = [:]
     
     private var cancellables = Set<AnyCancellable>()
     
@@ -60,6 +63,30 @@ class AccountManager: ObservableObject {
         loadingProgress = backend.loadingProgress
     }
     
+    // MARK: - Folder Unread Counts & Dock Badge
+
+    /// Refresh unread counts for all sidebar folders and update dock badge.
+    func refreshFolderCounts() async {
+        guard let backend = emailBackend else { return }
+
+        var counts: [String: Int] = [:]
+        for folder in mailFolders {
+            let folderQuery = ProfileManager.shared.buildQuery(folderName: folder.displayName)
+            let unreadQuery = "(\(folderQuery)) AND tag:unread"
+            let count = await backend.searchCount(query: unreadQuery)
+            Log.debug("COUNTS", "\(folder.name): \(count) unread (query: \(unreadQuery))")
+            if count > 0 {
+                counts[folder.name] = count
+            }
+        }
+        folderUnreadCounts = counts
+
+        // Update dock badge with total inbox unread
+        let inboxCount = counts["inbox"] ?? 0
+        Log.debug("COUNTS", "Dock badge: \(inboxCount)")
+        NSApp.dockTile.badgeLabel = inboxCount > 0 ? "\(inboxCount)" : nil
+    }
+
     // MARK: - Connection
     
     func connectToAllAccounts() async {
@@ -70,6 +97,7 @@ class AccountManager: ObservableObject {
         }
         await backend.connect()
         syncFromBackend()
+        await refreshFolderCounts()
     }
     
     // MARK: - Folder/Tag Selection
@@ -80,6 +108,7 @@ class AccountManager: ObservableObject {
         mailMessages.removeAll()
         await backend.selectFolder(tag)
         syncFromBackend()
+        await refreshFolderCounts()
     }
     
     // MARK: - Profile Switching

@@ -285,6 +285,14 @@ class EmailBackend: ObservableObject {
         }
     }
 
+    /// Returns the number of threads matching a query.
+    func searchCount(query: String) async -> Int {
+        struct CountResponse: Decodable { let count: Int }
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let response: CountResponse? = await request(endpoint: "/search/count?query=\(encoded)")
+        return response?.count ?? 0
+    }
+
     private func performRequest<T: Decodable>(endpoint: String, method: String, bodyData: Data?) async -> T? {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             Log.error("BACKEND", "Invalid URL")

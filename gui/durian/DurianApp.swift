@@ -59,7 +59,7 @@ struct DurianApp: App {
     }
 
     private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if granted {
                 Log.info("NOTIFICATIONS", "Permission granted")
             } else if let error = error {
