@@ -410,9 +410,21 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 	}
 }
 
-// parseDateRange parses date:FROM..TO into a SQL BETWEEN clause.
-// Supports formats: 2024-01, 2024-01-15
+// parseDateRange parses date queries into a SQL BETWEEN clause.
+// Supports:
+//   - Relative keywords: date:today, date:yesterday, date:week, date:2week,
+//     date:month, date:2month, date:year, date:2year
+//   - Ranges: date:2024-01..2024-02, date:2024-01-15..2024-02-28
 func parseDateRange(value string) (string, []interface{}, error) {
+	// Try relative keyword first (no ".." separator)
+	if !strings.Contains(value, "..") {
+		from, to, err := resolveRelativeDate(value)
+		if err != nil {
+			return "", nil, err
+		}
+		return "m.date BETWEEN ? AND ?", []interface{}{from, to}, nil
+	}
+
 	parts := strings.SplitN(value, "..", 2)
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("date range must be FROM..TO, got %q", value)
@@ -428,6 +440,35 @@ func parseDateRange(value string) (string, []interface{}, error) {
 	}
 
 	return "m.date BETWEEN ? AND ?", []interface{}{from, to}, nil
+}
+
+// resolveRelativeDate converts a relative keyword to a (from, to) Unix timestamp pair.
+func resolveRelativeDate(keyword string) (int64, int64, error) {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	endOfDay := today.Add(24*time.Hour - time.Second)
+
+	switch strings.ToLower(keyword) {
+	case "today":
+		return today.Unix(), endOfDay.Unix(), nil
+	case "yesterday":
+		y := today.AddDate(0, 0, -1)
+		return y.Unix(), today.Add(-time.Second).Unix(), nil
+	case "week":
+		return today.AddDate(0, 0, -7).Unix(), endOfDay.Unix(), nil
+	case "2week":
+		return today.AddDate(0, 0, -14).Unix(), endOfDay.Unix(), nil
+	case "month":
+		return today.AddDate(0, -1, 0).Unix(), endOfDay.Unix(), nil
+	case "2month":
+		return today.AddDate(0, -2, 0).Unix(), endOfDay.Unix(), nil
+	case "year":
+		return today.AddDate(-1, 0, 0).Unix(), endOfDay.Unix(), nil
+	case "2year":
+		return today.AddDate(-2, 0, 0).Unix(), endOfDay.Unix(), nil
+	default:
+		return 0, 0, fmt.Errorf("unknown date keyword: %q (try: today, yesterday, week, 2week, month, 2month, year, 2year)", keyword)
+	}
 }
 
 // parseDate parses a date string into a Unix timestamp (start of day/month).
