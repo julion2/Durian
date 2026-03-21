@@ -106,7 +106,11 @@ func runAttachment(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	outPath := filepath.Join(attachOutput, att.Filename)
+	safeFilename := filepath.Base(att.Filename)
+	if safeFilename == "" || safeFilename == "." {
+		safeFilename = "attachment"
+	}
+	outPath := filepath.Join(attachOutput, safeFilename)
 	f, err := os.Create(outPath)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)

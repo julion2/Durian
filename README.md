@@ -96,6 +96,10 @@ durian sync --debug                   # debug output on stderr
 - [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
 - [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
 
+## Contributing
+
+Found a bug or have a feature request? [Open an issue](https://github.com/julion2/Durian/issues).
+
 ## License
 
 [MIT](LICENSE)
