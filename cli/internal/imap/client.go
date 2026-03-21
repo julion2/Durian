@@ -748,9 +748,9 @@ func (c *Client) FindMailboxByRole(role SpecialUseRole) (string, error) {
 	return "", fmt.Errorf("no mailbox found with role %s", role)
 }
 
-// GetSyncMailboxes returns ALL mailboxes to sync
-// Only excludes folders with \Noselect attribute (container folders, not real mailboxes)
-// This ensures complete sync for proper threading across all folders
+// GetSyncMailboxes returns mail-relevant mailboxes to sync.
+// Uses LIST and filters out \Noselect containers and non-mail Exchange folders
+// (calendar, contacts, tasks, etc.) via the ExcludedIMAPMailboxes blacklist.
 func (c *Client) GetSyncMailboxes() ([]string, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
@@ -771,9 +771,17 @@ func (c *Client) GetSyncMailboxes() ([]string, error) {
 				break
 			}
 		}
-		if !isNoselect {
-			result = append(result, mbox.Name)
+		if isNoselect {
+			continue
 		}
+
+		// Skip non-mail Exchange folders
+		if config.IsIMAPMailboxExcluded(mbox.Name) {
+			slog.Debug("Skipping excluded mailbox", "module", "IMAP", "mailbox", mbox.Name)
+			continue
+		}
+
+		result = append(result, mbox.Name)
 	}
 
 	slog.Debug("Sync mailboxes", "module", "IMAP", "count", len(result))

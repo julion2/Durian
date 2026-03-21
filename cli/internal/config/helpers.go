@@ -277,8 +277,31 @@ const (
 // DefaultIMAPMailboxes are the mailboxes synced by default if not configured
 var DefaultIMAPMailboxes = []string{"INBOX", "Sent", "Sent Items", "Sent Messages", "Drafts", "Archive"}
 
-// ExcludedIMAPMailboxes are excluded from sync by default
-var ExcludedIMAPMailboxes = []string{"Junk", "Spam", "Trash", "Deleted", "Deleted Items", "Deleted Messages"}
+// ExcludedIMAPMailboxes are excluded from sync by default.
+// Includes trash/spam and Exchange/M365 non-mail folders.
+var ExcludedIMAPMailboxes = []string{
+	// Trash/Spam
+	"Junk", "Spam", "Trash", "Deleted", "Deleted Items", "Deleted Messages",
+	"Junk-E-Mail", "Papierkorb", "Gelöschte Elemente",
+	// Exchange non-mail folders (contain Exchange objects, not emails)
+	"Calendar", "Kalender",
+	"Contacts", "Kontakte",
+	"Tasks", "Aufgaben",
+	"Journal", "Notes", "Notizen",
+	"Conversation History", "Unterhaltungsverlauf",
+	"Sync Issues",
+	// Exchange system folders
+	"RSS Feeds", "RSS-Feeds",
+	"Outbox", "Postausgang",
+	"Suggested Contacts", "Clutter",
+	"PersonMetadata", "Snoozed",
+	"ExternalContacts", "Recipient Cache",
+	"Yammer Root", "Files",
+	"Social Activity Notifications",
+	"Quick Step Settings", "Conversation Action Settings",
+	// Outlook reminder folder
+	"Erneut erinnern aktiviert",
+}
 
 // GetIMAPMaxMessages returns the max messages per mailbox, defaulting to 5000
 func (a *AccountConfig) GetIMAPMaxMessages() int {
