@@ -37,6 +37,8 @@ jobs:
           # Repack with correct timestamps (Bazel sets 1980-01-01 for reproducibility)
           cd /tmp && unzip -o $GITHUB_WORKSPACE/bazel-bin/gui/Durian.zip -d gui_repack
           find gui_repack -exec touch {} +
+          # Add CFBundleIconFile (not set when app_icons is empty in CI mode)
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" gui_repack/Durian.app/Contents/Info.plist 2>/dev/null || true
           cd gui_repack && zip -r $GITHUB_WORKSPACE/dist/Durian-${{ steps.version.outputs.version }}.zip Durian.app
 
       - name: Package
