@@ -31,7 +31,7 @@ var cfg *config.Config
 var rootCmd = &cobra.Command{
 	Use:   "durian",
 	Short: "Durian Mail CLI",
-	Long:  `Durian is a fast, terminal-based email client.`,
+	Long:  `Durian is a macOS email client. CLI backend for IMAP sync, SMTP send, and SQLite storage.`,
 	// Show help when called without subcommands
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
