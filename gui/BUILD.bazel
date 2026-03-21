@@ -8,7 +8,10 @@ config_setting(
 
 config_setting(
     name = "ci",
-    values = {"define": "ci=true"},
+    values = {
+        "define": "ci=true",
+        "compilation_mode": "opt",
+    },
 )
 
 # Full app library (includes @main entry point) — used by macos_application
