@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -211,6 +212,25 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	if jsonOutput {
+		type accountStatus struct {
+			Email    string `json:"email"`
+			Alias    string `json:"alias,omitempty"`
+			AuthType string `json:"auth_type"`
+			Status   string `json:"status"`
+		}
+		var statuses []accountStatus
+		for _, account := range cfg.Accounts {
+			statuses = append(statuses, accountStatus{
+				Email:    account.Email,
+				Alias:    account.Alias,
+				AuthType: getAuthType(&account),
+				Status:   getAccountStatusShort(&account),
+			})
+		}
+		return json.NewEncoder(os.Stdout).Encode(statuses)
+	}
+
 	fmt.Println("Authentication Status:")
 	fmt.Println()
 
@@ -351,6 +371,27 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✓ New token expires in %s\n", formatDuration(newToken.ExpiresIn()))
 
 	return nil
+}
+
+// getAccountStatusShort returns a machine-readable status for JSON output.
+func getAccountStatusShort(account *config.AccountConfig) string {
+	if account.OAuth.Provider != "" {
+		token, err := oauth.LoadToken(account.GetAuthEmail())
+		if err != nil {
+			return "not_authenticated"
+		}
+		if token.IsExpired() {
+			return "expired"
+		}
+		return "valid"
+	}
+	if account.SMTP.Auth == "password" || account.IMAP.Auth == "password" {
+		if keychain.Exists(PasswordKeychainService, account.Email) {
+			return "stored"
+		}
+		return "not_authenticated"
+	}
+	return "none"
 }
 
 func getAccountStatus(account *config.AccountConfig) string {

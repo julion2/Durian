@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -136,6 +137,38 @@ func runSync(cmd *cobra.Command, args []string) error {
 	results, err := imap.SyncAccounts(accounts, options)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		type syncJSON struct {
+			Account      string  `json:"account"`
+			New          int     `json:"new"`
+			Deleted      int     `json:"deleted"`
+			Dedup        int     `json:"deduplicated"`
+			FlagsUp      int     `json:"flags_uploaded"`
+			FlagsDown    int     `json:"flags_downloaded"`
+			Moved        int     `json:"moved"`
+			DurationSecs float64 `json:"duration_secs"`
+			Error        string  `json:"error,omitempty"`
+		}
+		var out []syncJSON
+		for _, r := range results {
+			s := syncJSON{
+				Account:      r.Account,
+				New:          r.TotalNew,
+				Deleted:      r.TotalDeleted,
+				Dedup:        r.TotalDeduplicated,
+				FlagsUp:      r.FlagsUploaded,
+				FlagsDown:    r.FlagsDownload,
+				Moved:        r.TotalMoved,
+				DurationSecs: r.Duration.Seconds(),
+			}
+			if r.Error != nil {
+				s.Error = r.Error.Error()
+			}
+			out = append(out, s)
+		}
+		json.NewEncoder(os.Stdout).Encode(out)
 	}
 
 	// Check for errors
