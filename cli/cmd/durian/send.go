@@ -62,7 +62,7 @@ Examples:
 
   # Specify sender account (by alias or email)
   durian send --from gmail --to "..." --subject "..." --body "..."
-  durian send --from julian@habric.com --to "..." --subject "..." --body "..."`,
+  durian send --from you@company.com --to "recipient@example.com" --subject "..." --body "..."`,
 	RunE: runSend,
 }
 

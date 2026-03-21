@@ -1211,7 +1211,7 @@ func (s *Syncer) downloadFlagChanges(messageID string, current, target FlagState
 	return nil
 }
 
-// accountName returns the account identifier (e.g. "habric") used as the
+// accountName returns the account identifier (e.g. "work") used as the
 // account column in the SQLite store.
 func (s *Syncer) accountName() string {
 	return s.account.AccountIdentifier()

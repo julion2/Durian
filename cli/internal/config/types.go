@@ -35,7 +35,7 @@ type AccountConfig struct {
 	DisplayName      string      `toml:"display_name"` // Full name for From header (e.g., "Julian Schenker")
 	Email            string      `toml:"email"`
 	AuthEmail        string      `toml:"auth_email"` // Delegating user for shared mailbox OAuth (token owner)
-	Alias            string      `toml:"alias"`      // Short alias for CLI (e.g., "gmx", "habric")
+	Alias            string      `toml:"alias"`      // Short alias for CLI (e.g., "work", "personal")
 	Default          bool        `toml:"default"`
 	DefaultSignature string      `toml:"default_signature"`
 	Notifications    *bool       `toml:"notifications"` // Per-account notification override (nil = use global setting)

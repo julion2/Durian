@@ -49,7 +49,7 @@ type WatcherManager struct {
 	log         *slog.Logger
 	locks       map[string]*sync.Mutex // per-account sync locks keyed by email
 	locksMu     sync.Mutex             // protects the locks map
-	watchers    map[string]*accountWatcher // keyed by account identifier (e.g. "habric")
+	watchers    map[string]*accountWatcher // keyed by account identifier (e.g. "work")
 	filterRules []config.RuleConfig        // user-defined filter rules applied at sync time
 }
 

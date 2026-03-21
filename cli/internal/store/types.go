@@ -21,7 +21,7 @@ type Message struct {
 	Size      int
 	// FetchedBody indicates whether the full body has been fetched (vs headers-only).
 	FetchedBody bool
-	// Account is the account identifier for this message (e.g. "habric").
+	// Account is the account identifier for this message (e.g. "work").
 	// Each account has its own row — UNIQUE(message_id, account).
 	Account string
 }
