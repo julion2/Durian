@@ -34,7 +34,10 @@ jobs:
       - name: Build GUI
         run: |
           bazel build -c opt --define ci=true //gui:Durian
-          cp bazel-bin/gui/Durian.zip dist/Durian-${{ steps.version.outputs.version }}.zip
+          # Repack with correct timestamps (Bazel sets 1980-01-01 for reproducibility)
+          cd /tmp && unzip -o $GITHUB_WORKSPACE/bazel-bin/gui/Durian.zip -d gui_repack
+          find gui_repack -exec touch {} +
+          cd gui_repack && zip -r $GITHUB_WORKSPACE/dist/Durian-${{ steps.version.outputs.version }}.zip Durian.app
 
       - name: Package
         run: |
@@ -68,21 +71,53 @@ jobs:
           git clone https://x-access-token:${GH_TOKEN}@github.com/julion2/homebrew-tap.git /tmp/tap
           cd /tmp/tap
 
-          # Update Formula
-          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Formula/durian.rb
-          sed -i '' "s/sha256 \"PLACEHOLDER_ARM64\"/sha256 \"${SHA_ARM64}\"/" Formula/durian.rb
-          sed -i '' "s/sha256 \"PLACEHOLDER_AMD64\"/sha256 \"${SHA_AMD64}\"/" Formula/durian.rb
-          # Handle subsequent releases (replace old hashes)
-          sed -i '' "/arm64/s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_ARM64}\"/" Formula/durian.rb
-          sed -i '' "/amd64/s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_AMD64}\"/" Formula/durian.rb
+          cat > Formula/durian.rb << FORMULA
+          class Durian < Formula
+            desc "Fast email client CLI - IMAP sync, SQLite store, HTTP API"
+            homepage "https://github.com/julion2/Durian"
+            version "${VERSION}"
+            license "MIT"
 
-          # Update Cask
-          sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/durian.rb
-          sed -i '' "s/sha256 \"PLACEHOLDER_GUI\"/sha256 \"${SHA_GUI}\"/" Casks/durian.rb
-          sed -i '' "s/sha256 \"[a-f0-9]\{64\}\"/sha256 \"${SHA_GUI}\"/" Casks/durian.rb
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/julion2/Durian/releases/download/v\#{version}/durian-\#{version}-darwin-arm64.tar.gz"
+                sha256 "${SHA_ARM64}"
+              else
+                url "https://github.com/julion2/Durian/releases/download/v\#{version}/durian-\#{version}-darwin-amd64.tar.gz"
+                sha256 "${SHA_AMD64}"
+              end
+            end
+
+            def install
+              if Hardware::CPU.arm?
+                bin.install "durian-darwin-arm64" => "durian"
+              else
+                bin.install "durian-darwin-amd64" => "durian"
+              end
+            end
+
+            test do
+              assert_match version.to_s, shell_output("\#{bin}/durian --version")
+            end
+          end
+          FORMULA
+
+          cat > Casks/durian.rb << CASK
+          cask "durian" do
+            version "${VERSION}"
+            sha256 "${SHA_GUI}"
+
+            url "https://github.com/julion2/Durian/releases/download/v\#{version}/Durian-\#{version}.zip"
+            name "Durian"
+            desc "macOS email client for power users"
+            homepage "https://github.com/julion2/Durian"
+
+            app "Durian.app"
+          end
+          CASK
 
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
-          git commit -m "bump durian to ${VERSION}"
+          git commit -m "bump durian to ${VERSION}" || true
           git push
