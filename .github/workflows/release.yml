@@ -33,7 +33,7 @@ jobs:
 
       - name: Build GUI
         run: |
-          bazel build -c opt //gui:Durian
+          bazel build --define ci=true //gui:Durian
           cp bazel-bin/gui/Durian.zip dist/Durian-${{ steps.version.outputs.version }}.zip
 
       - name: Package

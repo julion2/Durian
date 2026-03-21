@@ -6,6 +6,11 @@ config_setting(
     values = {"compilation_mode": "opt"},
 )
 
+config_setting(
+    name = "ci",
+    values = {"define": "ci=true"},
+)
+
 # Full app library (includes @main entry point) — used by macos_application
 swift_library(
     name = "durian_lib",
@@ -143,8 +148,13 @@ genrule(
 macos_application(
     name = "Durian",
     app_icons = select({
+        ":ci": [],
         ":release": glob(["durian/AppIcon.icon/**"]),
         "//conditions:default": glob(["durian/AppIcon-Debug.icon/**"]),
+    }),
+    resources = select({
+        ":ci": glob(["durian/CompiledIcons/release/**"]),
+        "//conditions:default": [],
     }),
     bundle_id = select({
         ":release": "org.js-lab.durian",
