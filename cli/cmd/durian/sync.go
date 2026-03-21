@@ -36,7 +36,7 @@ Examples:
 
   # Sync specific account (by alias or email)
   durian sync gmail
-  durian sync julian@habric.com
+  durian sync you@company.com
 
   # Sync specific mailbox
   durian sync gmail INBOX

@@ -22,7 +22,7 @@ struct FolderConfig: Hashable {
 struct Profile: Identifiable, Equatable, Hashable {
     let id = UUID()
     let name: String
-    let accounts: [String]  // ["habric", "gmx"] or ["*"] for all
+    let accounts: [String]  // ["work", "personal"] or ["*"] for all
     let isDefault: Bool
     let color: String?  // Hex color string, e.g. "#3B82F6"
     let folders: [FolderConfig]  // Folders with custom queries
@@ -163,7 +163,7 @@ class ProfileManager: ObservableObject {
             return baseQuery
         }
         
-        // Build path filter: (path:habric/** OR path:gmx/**)
+        // Build path filter: (path:work/** OR path:personal/**)
         let pathFilters = profile.accounts.map { "path:\($0)/**" }
         let pathQuery = pathFilters.joined(separator: " OR ")
         

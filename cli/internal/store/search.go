@@ -520,7 +520,7 @@ func parseDateEnd(s string) (int64, error) {
 }
 
 // extractAccountFromPath extracts the account folder name from a path pattern.
-// e.g. "habric/**" → "habric", "jsLab/INBOX" → "jsLab"
+// e.g. "work/**" → "work", "personal/INBOX" → "personal"
 func extractAccountFromPath(value string) string {
 	value = strings.TrimRight(value, "*")
 	value = strings.TrimRight(value, "/")

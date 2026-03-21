@@ -41,8 +41,8 @@ For password accounts:
 The account can be specified by email address, alias, or name.
 The account must be configured in your config.toml.`,
 	Example: `  durian auth login gmail       # Use alias
-  durian auth login habric      # Use alias  
-  durian auth login julian@habric.com  # Use full email`,
+  durian auth login work         # Use alias
+  durian auth login you@company.com  # Use full email`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAuthLogin,
 }
