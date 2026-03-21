@@ -8,11 +8,13 @@
   A macOS email client for power users. Vim-style navigation, IMAP + SQLite backend.
 </p>
 
----
+![Status](https://img.shields.io/badge/status-alpha-orange)
+![Maintained](https://img.shields.io/badge/maintained-yes-green)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
 > **Early Alpha** — Expect bugs and breaking changes. No security audit. Use at your own risk.
-
----
+>
+> This is a side project — features, improvements, and bug fixes happen as time allows.
 
 ## Install
 
