@@ -138,11 +138,6 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Print summary
-	if !syncQuiet {
-		printSyncSummary(results)
-	}
-
 	// Check for errors
 	for _, result := range results {
 		if result.Error != nil {
@@ -153,42 +148,3 @@ func runSync(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printSyncSummary(results []*imap.SyncResult) {
-	fmt.Fprintf(os.Stderr, "\n=== Sync Summary ===\n")
-
-	totalNew := 0
-	totalFlagsUp := 0
-	totalFlagsDown := 0
-	totalErrors := 0
-
-	for _, result := range results {
-		status := "✓"
-		if result.Error != nil {
-			status = "✗"
-			totalErrors++
-		}
-
-		// Build summary line
-		summary := fmt.Sprintf("%d new", result.TotalNew)
-		if result.FlagsUploaded > 0 || result.FlagsDownload > 0 {
-			summary += fmt.Sprintf(", %d⬆ %d⬇ flags", result.FlagsUploaded, result.FlagsDownload)
-		}
-
-		fmt.Fprintf(os.Stderr, "%s %s: %s (%.1fs)\n",
-			status, result.Account, summary, result.Duration.Seconds())
-
-		totalNew += result.TotalNew
-		totalFlagsUp += result.FlagsUploaded
-		totalFlagsDown += result.FlagsDownload
-	}
-
-	fmt.Fprintf(os.Stderr, "\nTotal: %d new messages", totalNew)
-	if totalFlagsUp > 0 || totalFlagsDown > 0 {
-		fmt.Fprintf(os.Stderr, ", %d flags uploaded, %d downloaded", totalFlagsUp, totalFlagsDown)
-	}
-	fmt.Fprintf(os.Stderr, " across %d account(s)\n", len(results))
-
-	if totalErrors > 0 {
-		fmt.Fprintf(os.Stderr, "Errors: %d account(s) failed\n", totalErrors)
-	}
-}
