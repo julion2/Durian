@@ -173,7 +173,6 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 
 	// Connect and authenticate (skip if caller owns the connection)
 	if s.ownsClient {
-		fmt.Fprintf(s.output, "  Connecting to %s:%d...\n", s.account.IMAP.Host, s.account.IMAP.Port)
 		if err := s.client.Connect(); err != nil {
 			return nil, err
 		}
@@ -182,12 +181,6 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		if err := s.client.Authenticate(); err != nil {
 			return nil, err
 		}
-
-		authMethod := "password"
-		if s.account.IMAP.Auth == "oauth2" {
-			authMethod = "OAuth2"
-		}
-		fmt.Fprintf(s.output, "  ✓ Authenticated with %s\n", authMethod)
 	}
 
 	// Get mailboxes to sync
@@ -465,8 +458,6 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	}
 	result.TotalMsgs = status.Messages
 
-	fmt.Fprintf(s.output, "  Syncing %s (%d messages)...\n", mailboxName, status.Messages)
-
 	// Get mailbox state
 	mboxState := s.state.GetMailboxState(mailboxName)
 
@@ -501,7 +492,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			// another folder (e.g. archived) and will reappear during that folder's sync.
 			tagMapping := s.getFolderTagMapping(mailboxName)
 
-			fmt.Fprintf(s.output, "    ✗ Removing %d messages from %s...\n", len(deletedUIDs), mailboxName)
+			fmt.Fprintf(s.output, "  ✗ %s: %d removed\n", mailboxName, len(deletedUIDs))
 			for _, uid := range deletedUIDs {
 				messageID, hasID := mboxState.GetMessageID(uid)
 				if hasID && messageID != "" {
@@ -531,9 +522,6 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	}
 
 	if len(unsyncedUIDs) == 0 {
-		if result.DeletedMsgs == 0 {
-			fmt.Fprintf(s.output, "    (up to date)\n")
-		}
 		// Still run flag sync even if no new messages
 		// Flag sync runs even in dry-run mode to show what would happen
 		if !s.options.NoFlags {
@@ -629,7 +617,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			}
 
 			if result.DeduplicatedMsgs > 0 {
-				fmt.Fprintf(s.output, "    ⚡ %d messages already exist (tags updated)\n", result.DeduplicatedMsgs)
+				fmt.Fprintf(s.output, "  ~ %s: %d deduplicated\n", mailboxName, result.DeduplicatedMsgs)
 			}
 		}
 	} else {
@@ -662,8 +650,8 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 		batch := toDownload[i:end]
 		batchNum := (i / batchSize) + 1
 
-		fmt.Fprintf(s.output, "    ↓ Batch %d/%d: Fetching messages %d-%d...\n",
-			batchNum, totalBatches, i+1, end)
+		fmt.Fprintf(s.output, "  ↓ %s: batch %d/%d (%d-%d)...\n",
+			mailboxName, batchNum, totalBatches, i+1, end)
 
 		if s.options.DryRun {
 			result.NewMsgs += len(batch)
@@ -723,7 +711,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	}
 
 	if result.NewMsgs > 0 {
-		fmt.Fprintf(s.output, "    ✓ %d new messages\n", result.NewMsgs)
+		fmt.Fprintf(s.output, "  ✓ %s: %d new\n", mailboxName, result.NewMsgs)
 	}
 
 	// Flag synchronization (after message download)
@@ -765,7 +753,6 @@ func (s *Syncer) ensureMessageIDMapping(mailboxName string, mboxState *MailboxSt
 	}
 
 	slog.Debug("Fetching Message-IDs for mapping", "module", "SYNC", "missing", len(missingUIDs), "total", len(allUIDs))
-	fmt.Fprintf(s.output, "    Building Message-ID mapping for %d messages...\n", len(missingUIDs))
 
 	// Fetch ENVELOPEs for missing UIDs (in batches)
 	envelopes, err := s.client.FetchEnvelopes(missingUIDs)
@@ -994,7 +981,7 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		}
 		if cleaned > 0 {
 			slog.Debug("Removed stale inbox tags", "module", "SYNC", "count", cleaned)
-			fmt.Fprintf(s.output, "    ✗ Removed stale inbox tag from %d messages\n", cleaned)
+			slog.Debug("Removed stale inbox tags", "module", "SYNC", "count", cleaned)
 		}
 	}
 
@@ -1374,13 +1361,34 @@ func SyncAccounts(accounts []*config.AccountConfig, options *SyncOptions) ([]*Sy
 		result, err := syncer.Sync()
 
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "  ✗ %v\n", err)
 			result = &SyncResult{
 				Account: account.Email,
 				Error:   err,
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "✓ Sync completed in %.1fs\n\n", result.Duration.Seconds())
+			// Compact summary
+			parts := []string{}
+			if result.TotalNew > 0 {
+				parts = append(parts, fmt.Sprintf("%d new", result.TotalNew))
+			}
+			if result.TotalDeleted > 0 {
+				parts = append(parts, fmt.Sprintf("%d deleted", result.TotalDeleted))
+			}
+			if result.TotalDeduplicated > 0 {
+				parts = append(parts, fmt.Sprintf("%d dedup", result.TotalDeduplicated))
+			}
+			if result.FlagsUploaded > 0 || result.FlagsDownload > 0 {
+				parts = append(parts, fmt.Sprintf("%d↑ %d↓ flags", result.FlagsUploaded, result.FlagsDownload))
+			}
+			if result.TotalMoved > 0 {
+				parts = append(parts, fmt.Sprintf("%d moved", result.TotalMoved))
+			}
+			summary := "up to date"
+			if len(parts) > 0 {
+				summary = strings.Join(parts, ", ")
+			}
+			fmt.Fprintf(os.Stderr, "✓ %s (%.1fs)\n", summary, result.Duration.Seconds())
 		}
 
 		results = append(results, result)
