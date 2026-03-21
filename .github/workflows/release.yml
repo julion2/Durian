@@ -69,53 +69,17 @@ jobs:
           SHA_GUI=$(shasum -a 256 dist/Durian-${VERSION}.zip | cut -d' ' -f1)
 
           git clone https://x-access-token:${GH_TOKEN}@github.com/julion2/homebrew-tap.git /tmp/tap
+
+          sed -e "s/__VERSION__/${VERSION}/g" \
+              -e "s/__SHA_ARM64__/${SHA_ARM64}/g" \
+              -e "s/__SHA_AMD64__/${SHA_AMD64}/g" \
+              tools/brew-formula.rb.tmpl > /tmp/tap/Formula/durian.rb
+
+          sed -e "s/__VERSION__/${VERSION}/g" \
+              -e "s/__SHA_GUI__/${SHA_GUI}/g" \
+              tools/brew-cask.rb.tmpl > /tmp/tap/Casks/durian.rb
+
           cd /tmp/tap
-
-          cat > Formula/durian.rb << FORMULA
-          class Durian < Formula
-            desc "Fast email client CLI - IMAP sync, SQLite store, HTTP API"
-            homepage "https://github.com/julion2/Durian"
-            version "${VERSION}"
-            license "MIT"
-
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/julion2/Durian/releases/download/v\#{version}/durian-\#{version}-darwin-arm64.tar.gz"
-                sha256 "${SHA_ARM64}"
-              else
-                url "https://github.com/julion2/Durian/releases/download/v\#{version}/durian-\#{version}-darwin-amd64.tar.gz"
-                sha256 "${SHA_AMD64}"
-              end
-            end
-
-            def install
-              if Hardware::CPU.arm?
-                bin.install "durian-darwin-arm64" => "durian"
-              else
-                bin.install "durian-darwin-amd64" => "durian"
-              end
-            end
-
-            test do
-              assert_match version.to_s, shell_output("\#{bin}/durian --version")
-            end
-          end
-          FORMULA
-
-          cat > Casks/durian.rb << CASK
-          cask "durian" do
-            version "${VERSION}"
-            sha256 "${SHA_GUI}"
-
-            url "https://github.com/julion2/Durian/releases/download/v\#{version}/Durian-\#{version}.zip"
-            name "Durian"
-            desc "macOS email client for power users"
-            homepage "https://github.com/julion2/Durian"
-
-            app "Durian.app"
-          end
-          CASK
-
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
