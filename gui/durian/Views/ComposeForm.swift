@@ -579,12 +579,16 @@ struct ComposeForm: View {
            let signatureText = signatures[signatureKey],
            !signatureText.isEmpty {
             if isHTMLSignature(signatureText) {
-                // HTML signature — keep separate, rendered in EditableWebView
+                // HTML signature — rendered in EditableWebView
                 draft.htmlSignature = signatureText
             } else {
-                // Plain text — embed in body as before
-                draft.htmlSignature = nil
-                newBody += "\n\n" + signatureText
+                // Plain text — convert to HTML for EditableWebView rendering
+                let htmlConverted = signatureText
+                    .replacingOccurrences(of: "&", with: "&amp;")
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                    .replacingOccurrences(of: "\n", with: "<br>")
+                draft.htmlSignature = htmlConverted
             }
         } else {
             draft.htmlSignature = nil
