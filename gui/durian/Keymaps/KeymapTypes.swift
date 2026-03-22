@@ -65,6 +65,7 @@ enum KeymapAction: String, CaseIterable {
     case selectPrev = "select_prev"
     case confirmSelection = "confirm_selection"
     case closePopup = "close_popup"
+    case exitInsert = "exit_insert"
 
     // Note: supportsCount is now defined in keymaps.toml per-action
     // Use SequenceMatcher.shared.supportsCount(action) to check

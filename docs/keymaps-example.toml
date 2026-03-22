@@ -222,3 +222,16 @@ key = "p"
 modifiers = ["ctrl"]
 context = "tag_picker"
 description = "Previous tag (alt)"
+
+# ── Compose Vim Mode (context = "compose_normal") ────────────────────
+# Configurable sequences to exit INSERT mode in the compose editor.
+# Escape always works. These are additional shortcuts.
+
+[[keymaps]]
+action = "exit_insert"
+key = "jk"
+sequence = true
+context = "compose_normal"
+description = "Exit insert mode"
+
+# To use "jj" instead, change key = "jj" or add another entry.

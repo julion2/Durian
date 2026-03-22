@@ -150,6 +150,8 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous tag (Ctrl+k)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
             KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next tag (Ctrl+n)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
             KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous tag (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
+            // Compose normal context
+            KeymapEntry(action: "exit_insert", key: "jk", modifiers: [], description: "Exit insert mode (jk)", enabled: true, sequence: true, supportsCount: false, context: "compose_normal"),
         ]
     }
     
@@ -359,6 +361,13 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
                        description: "Previous tag (Ctrl+p)", enabled: true,
                        sequence: false, supportsCount: false, context: "tag_picker"),
+
+            // ═══════════════════════════════════════════════════════════
+            // COMPOSE NORMAL CONTEXT
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "exit_insert", key: "jk", modifiers: [],
+                       description: "Exit insert mode (jk)", enabled: true,
+                       sequence: true, supportsCount: false, context: "compose_normal"),
         ]
 
         keymaps = config

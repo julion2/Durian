@@ -23,6 +23,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var htmlBody: String
     var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ strikethrough: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
     var onVimModeChange: ((_ mode: String) -> Void)?
+    var vimInsertExitKeys: [String] = []
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -241,6 +242,7 @@ struct EditableWebView: NSViewRepresentable {
     }
 
     private func buildEditableHTML(plainText: String, signature: String?, font: NSFont, textColor: NSColor, placeholder: String) -> String {
+        let exitKeysJS = "[" + vimInsertExitKeys.map { "\"\($0)\"" }.joined(separator: ",") + "]"
         let escapedText = plainText
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
@@ -500,6 +502,9 @@ struct EditableWebView: NSViewRepresentable {
                     register: '',
                     pending: '',
                     count: '',
+                    exitSeqs: \(exitKeysJS),
+                    insertPending: '',
+                    insertTimer: null,
 
                     setMode(m) {
                         this.mode = m;
@@ -723,10 +728,36 @@ struct EditableWebView: NSViewRepresentable {
                     // Insert mode: Escape enters normal mode
                     if (e.key === 'Escape') {
                         e.preventDefault();
+                        vim.insertPending = '';
+                        clearTimeout(vim.insertTimer);
                         vim.setMode('normal');
                         const sel = window.getSelection();
                         if (sel.rangeCount) sel.modify('move', 'backward', 'character');
                         return;
+                    }
+
+                    // Insert mode: configurable exit sequences (e.g. jk)
+                    if (vim.exitSeqs.length > 0 && e.key.length === 1) {
+                        const pending = vim.insertPending + e.key;
+                        if (vim.exitSeqs.indexOf(pending) !== -1) {
+                            e.preventDefault();
+                            clearTimeout(vim.insertTimer);
+                            vim.insertPending = '';
+                            for (let i = 0; i < pending.length - 1; i++) document.execCommand('delete');
+                            vim.setMode('normal');
+                            const esel = window.getSelection();
+                            if (esel.rangeCount) esel.modify('move', 'backward', 'character');
+                            return;
+                        }
+                        const hasPartial = vim.exitSeqs.some(function(s) { return s.startsWith(pending) && s !== pending; });
+                        if (hasPartial) {
+                            vim.insertPending = pending;
+                            clearTimeout(vim.insertTimer);
+                            vim.insertTimer = setTimeout(function() { vim.insertPending = ''; }, 200);
+                            return;
+                        }
+                        vim.insertPending = '';
+                        clearTimeout(vim.insertTimer);
                     }
 
                     // Insert mode: Tab handling

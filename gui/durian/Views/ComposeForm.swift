@@ -433,7 +433,10 @@ struct ComposeForm: View {
                         },
                         onVimModeChange: { mode in
                             vimMode = mode
-                        }
+                        },
+                        vimInsertExitKeys: KeymapsManager.shared.keymaps.keymaps
+                            .filter { $0.context == "compose_normal" && $0.action == "exit_insert" && $0.enabled }
+                            .map { $0.key }
                     )
                     .frame(height: editorHeight)
 
