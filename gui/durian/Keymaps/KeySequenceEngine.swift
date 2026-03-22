@@ -146,53 +146,40 @@ class KeySequenceEngine: ObservableObject {
     // MARK: - Private
     
     private func processKey(key: String, modifiers: Set<KeyModifier>) -> Bool {
-        // Create key event
         let keyEvent = KeyEvent(key: key, modifiers: modifiers)
-        
-        Log.debug("KEYSEQ", "Key pressed: '\(key)' modifiers: \(modifiers) normalized: '\(keyEvent.normalized)'")
-        
+
         // Add to buffer
         buffer.append(keyEvent)
-        currentSequence = buffer.displayString
-        
-        Log.debug("KEYSEQ", "Buffer = '\(buffer.asString)' (count: \(buffer.count))")
-        
+
         // Try to match
-        let result = matcher.match(buffer: buffer.asString)
-        
+        let bufferStr = buffer.asString
+        let result = matcher.match(buffer: bufferStr)
+
         switch result {
         case .match(let action, let count):
-            Log.debug("KEYSEQ", "Match! action=\(action.rawValue) count=\(count)")
             executeAction(action, count: count)
             buffer.clear()
             currentSequence = ""
             isWaitingForMore = false
             return true
-            
+
         case .partial:
-            Log.debug("KEYSEQ", "Partial match, waiting for more...")
+            currentSequence = buffer.displayString
             isWaitingForMore = true
+            buffer.startTimeout()
             return true
-            
+
         case .noMatch:
-            Log.debug("KEYSEQ", "No match, clearing buffer")
             buffer.clear()
             currentSequence = ""
             isWaitingForMore = false
             return false
         }
     }
-    
+
     private func executeAction(_ action: KeymapAction, count: Int) {
-        guard let handler = actionHandlers[action] else {
-            Log.debug("KEYSEQ", "No handler registered for \(action.rawValue)")
-            return
-        }
-        
-        Task {
-            // Pass count to handler - handler is responsible for repeating if needed
-            await handler(count)
-        }
+        guard let handler = actionHandlers[action] else { return }
+        Task { await handler(count) }
     }
     
     private func getModifiers(from event: NSEvent) -> Set<KeyModifier> {
