@@ -232,11 +232,19 @@ class KeymapHandler: ObservableObject {
     /// Check if a text input field is currently focused
     /// This prevents vim keymaps from interfering with typing in search, compose, etc.
     private func isTextInputFocused() -> Bool {
-        guard let firstResponder = NSApp.keyWindow?.firstResponder else {
+        guard let keyWindow = NSApp.keyWindow else { return false }
+
+        // Only process keymaps in the main window (first window).
+        // Compose and other secondary windows handle their own input.
+        if keyWindow != NSApp.windows.first {
+            return true
+        }
+
+        guard let firstResponder = keyWindow.firstResponder else {
             return false
         }
-        
-        // NSTextView is the editor for TextField, TextEditor, WebView input, etc.
+
+        // NSTextView is the editor for TextField, TextEditor, etc.
         if firstResponder is NSTextView {
             return true
         }
@@ -246,10 +254,6 @@ class KeymapHandler: ObservableObject {
            textField.isEditable {
             return true
         }
-
-        // WKWebView is not checked here — compose runs in a separate window
-        // and handles its own key events. The main window's read-only email
-        // WebView should not block keymaps.
 
         return false
     }

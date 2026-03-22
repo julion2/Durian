@@ -5,33 +5,45 @@
 <h1 align="center">Durian</h1>
 
 <p align="center">
-  A macOS email client for power users. Vim-style navigation, IMAP + SQLite backend.
+  A native macOS email client with vim-style navigation.
 </p>
 
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 ![Maintained](https://img.shields.io/badge/maintained-yes-green)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+<p align="center">
+  <img src="docs/screenshot-light.png" width="800" />
+</p>
+
+<details>
+<summary>Dark mode & compose</summary>
+
+<p align="center">
+  <img src="docs/screenshot-dark.png" width="800" />
+  <img src="docs/screenshot-compose.png" width="600" />
+</p>
+</details>
+
+Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Microsoft 365) and password auth. IMAP sync to a local SQLite store — fast offline search, no Maildir. Configurable keybindings, filter rules, and HTML signatures. All in a SwiftUI app backed by a Go CLI.
+
 > **Early Alpha** — Expect bugs and breaking changes. No security audit. Use at your own risk.
->
 > This is a side project — features, improvements, and bug fixes happen as time allows.
 
 ## Install
 
 ```bash
 brew tap julion2/tap
-brew install durian             # CLI only
 brew install --cask durian      # GUI (macOS app)
+brew install durian             # CLI only
 ```
 
 ## Build from Source
 
 ### Requirements
 
-- macOS 26+ (for GUI, SwiftUI)
-- [Bazelisk](https://github.com/bazelbuild/bazelisk) (`brew install bazelisk`) — manages Bazel version via `.bazelversion`
-- Xcode 26+ (for GUI builds)
-- Go 1.24+ (managed by Bazel, no manual install needed)
+- macOS 26+, Xcode 26+
+- [Bazelisk](https://github.com/bazelbuild/bazelisk) (`brew install bazelisk`)
 
 ### Build & Install
 
@@ -52,13 +64,13 @@ bazel test //cli/...            # CLI tests
 bazel test //gui/...            # GUI tests (requires Xcode 26)
 ```
 
-## CLI Usage
+## CLI
 
 ```bash
 durian auth login work          # authenticate (OAuth or password)
-durian auth status              # show auth status for all accounts
+durian auth status              # show auth status
 durian sync work                # sync an account
-durian search "tag:inbox" -l 10 # search emails
+durian search "tag:inbox" -l 10 # search
 durian search "date:today"      # relative date search
 ```
 
