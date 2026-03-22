@@ -40,6 +40,7 @@ struct ContentView: View {
     @State private var allTags: [String] = []
     @State private var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
     @State private var isSearchMode = false
+    @State private var bodyFetchTask: Task<Void, Never>?
     @State private var searchResults: [MailMessage] = []
     @State private var lastSearchQuery = ""
     @State private var focusedMessageIndex: Int = 0
@@ -533,26 +534,23 @@ struct ContentView: View {
     private func handleEmailSelection(_ emailId: String) {
         detailMode = .emailDetail(emailId: emailId)
 
-        // Auto-load body if not loaded or previously failed
-        if let email = displayEmails.first(where: { $0.id == emailId }) {
-            switch email.bodyState {
-            case .notLoaded, .failed:
-                Task {
-                    await accountManager.fetchEmailBody(id: emailId)
-                }
-            case .loading, .loaded:
-                break // Already loading or loaded
-            }
+        // Debounce body fetch — cancel previous request during rapid j/k navigation
+        bodyFetchTask?.cancel()
+        bodyFetchTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
 
-            // Mark as read
-            if !email.isRead {
-                Task {
+            if let email = displayEmails.first(where: { $0.id == emailId }) {
+                switch email.bodyState {
+                case .notLoaded, .failed:
+                    await accountManager.fetchEmailBody(id: emailId)
+                case .loading, .loaded:
+                    break
+                }
+                if !email.isRead {
                     await accountManager.markAsRead(id: emailId)
                 }
-            }
-        } else {
-            // Email not in current folder (e.g. opened from search) — fetch it
-            Task {
+            } else {
                 await accountManager.fetchEmailBody(id: emailId)
             }
         }
