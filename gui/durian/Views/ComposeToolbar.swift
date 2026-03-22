@@ -22,19 +22,36 @@ struct ComposeToolbar: View {
     var currentAlignment: String = "left"
     var vimMode: String = "insert"
 
+    private var vimModeLabel: String {
+        switch vimMode {
+        case "normal": return "NORMAL"
+        case "visual": return "VISUAL"
+        case "visual_line": return "V-LINE"
+        default: return "INSERT"
+        }
+    }
+
+    private var vimModeColor: Color {
+        switch vimMode {
+        case "normal": return Color(.systemOrange)
+        case "visual", "visual_line": return Color(.systemPurple)
+        default: return Color(.systemGreen)
+        }
+    }
+
     private let availableFonts = ["Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"]
     private let availableSizes = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32]
 
     var body: some View {
         HStack(spacing: 12) {
             // Vim Mode Indicator
-            Text(vimMode == "normal" ? "NORMAL" : "INSERT")
+            Text(vimModeLabel)
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(vimMode == "normal" ? Color(.systemOrange) : Color(.systemGreen))
+                .foregroundColor(vimModeColor)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
-                    (vimMode == "normal" ? Color(.systemOrange) : Color(.systemGreen)).opacity(0.12),
+                    vimModeColor.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 4)
                 )
 

@@ -503,6 +503,7 @@ struct EditableWebView: NSViewRepresentable {
                     mode: 'insert',
                     register: '',
                     registerIsLine: false,
+                    visual: '',
                     pending: '',
                     pendingCount: 0,
                     count: '',
@@ -510,12 +511,20 @@ struct EditableWebView: NSViewRepresentable {
                     insertPending: '',
                     insertTimer: null,
 
+                    notifyMode() {
+                        let m = this.mode;
+                        if (this.visual === 'char') m = 'visual';
+                        else if (this.visual === 'line') m = 'visual_line';
+                        window.webkit.messageHandlers.vimModeChanged.postMessage(m);
+                    },
+
                     setMode(m) {
                         this.mode = m;
+                        this.visual = '';
                         this.pending = '';
                         this.count = '';
                         editor.classList.toggle('vim-normal', m === 'normal');
-                        window.webkit.messageHandlers.vimModeChanged.postMessage(m);
+                        this.notifyMode();
                     },
 
                     getCurrentBlock() {
@@ -640,49 +649,78 @@ struct EditableWebView: NSViewRepresentable {
                             return;
                         }
 
+                        // Visual mode: operators apply on selection directly
+                        if (this.visual && (key === 'd' || key === 'c' || key === 'y')) {
+                            this.applyOperator(key);
+                            this.visual = '';
+                            this.notifyMode();
+                            return;
+                        }
+
+                        // Visual mode: motions extend selection
+                        const mot = this.visual ? 'extend' : 'move';
+
                         switch(key) {
-                            // Insert mode entries
-                            case 'i': this.setMode('insert'); break;
-                            case 'a': if (sel.rangeCount) sel.modify('move','forward','character'); this.setMode('insert'); break;
-                            case 'I': if (sel.rangeCount) sel.modify('move','backward','lineboundary'); this.setMode('insert'); break;
-                            case 'A': if (sel.rangeCount) sel.modify('move','forward','lineboundary'); this.setMode('insert'); break;
-                            case 'o': this.openLineBelow(); this.setMode('insert'); break;
-                            case 'O': this.openLineAbove(); this.setMode('insert'); break;
-                            // Navigation (custom w for move, standard for rest)
-                            case 'h': for(let i=0;i<n;i++) sel.modify('move','backward','character'); break;
-                            case 'l': for(let i=0;i<n;i++) sel.modify('move','forward','character'); break;
-                            case 'j': for(let i=0;i<n;i++) sel.modify('move','forward','line'); break;
-                            case 'k': for(let i=0;i<n;i++) sel.modify('move','backward','line'); break;
-                            case 'w': this.moveW(n); break;
-                            case 'b': for(let i=0;i<n;i++) sel.modify('move','backward','word'); break;
-                            case 'e': for(let i=0;i<n;i++) sel.modify('move','forward','word'); break;
-                            case '0': if (sel.rangeCount) sel.modify('move','backward','lineboundary'); break;
-                            case '$': if (sel.rangeCount) sel.modify('move','forward','lineboundary'); break;
-                            case 'G': this.goToBottom(); break;
+                            // Visual mode toggles
+                            case 'v':
+                                if (this.visual === 'char') {
+                                    this.visual = '';
+                                    sel.collapseToEnd();
+                                } else {
+                                    this.visual = 'char';
+                                    sel.modify('extend','forward','character');
+                                }
+                                this.notifyMode();
+                                break;
+                            case 'V':
+                                if (this.visual === 'line') {
+                                    this.visual = '';
+                                    sel.collapseToEnd();
+                                } else {
+                                    this.visual = 'line';
+                                    if (sel.rangeCount) {
+                                        sel.modify('move','backward','lineboundary');
+                                        sel.modify('extend','forward','lineboundary');
+                                    }
+                                }
+                                this.notifyMode();
+                                break;
+                            // Insert mode entries (not in visual)
+                            case 'i': if (!this.visual) this.setMode('insert'); break;
+                            case 'a': if (!this.visual) { if (sel.rangeCount) sel.modify('move','forward','character'); this.setMode('insert'); } break;
+                            case 'I': if (!this.visual) { if (sel.rangeCount) sel.modify('move','backward','lineboundary'); this.setMode('insert'); } break;
+                            case 'A': if (!this.visual) { if (sel.rangeCount) sel.modify('move','forward','lineboundary'); this.setMode('insert'); } break;
+                            case 'o': if (!this.visual) { this.openLineBelow(); this.setMode('insert'); } break;
+                            case 'O': if (!this.visual) { this.openLineAbove(); this.setMode('insert'); } break;
+                            // Navigation (extend in visual, move in normal)
+                            case 'h': for(let i=0;i<n;i++) sel.modify(mot,'backward','character'); break;
+                            case 'l': for(let i=0;i<n;i++) sel.modify(mot,'forward','character'); break;
+                            case 'j': for(let i=0;i<n;i++) sel.modify(mot,'forward','line'); break;
+                            case 'k': for(let i=0;i<n;i++) sel.modify(mot,'backward','line'); break;
+                            case 'w': if (this.visual) { for(let i=0;i<n;i++) sel.modify('extend','forward','word'); } else { this.moveW(n); } break;
+                            case 'b': for(let i=0;i<n;i++) sel.modify(mot,'backward','word'); break;
+                            case 'e': for(let i=0;i<n;i++) sel.modify(mot,'forward','word'); break;
+                            case '0': if (sel.rangeCount) sel.modify(mot,'backward','lineboundary'); break;
+                            case '$': if (sel.rangeCount) sel.modify(mot,'forward','lineboundary'); break;
+                            case 'G': if (this.visual) { sel.modify('extend','forward','documentboundary'); } else { this.goToBottom(); } break;
                             // Editing
-                            case 'x': this.deleteForward(n); break;
-                            case 'X': this.deleteBackward(n); break;
+                            case 'x': this.deleteForward(n); if (this.visual) { this.visual = ''; this.notifyMode(); } break;
+                            case 'X': this.deleteBackward(n); if (this.visual) { this.visual = ''; this.notifyMode(); } break;
                             case 'u': document.execCommand('undo'); break;
                             case 'p': this.pasteAfter(); break;
                             case 'P': this.pasteBefore(); break;
                             // Shortcuts: C = c$, D = d$
                             case 'C': if (sel.rangeCount) { sel.modify('extend','forward','lineboundary'); this.applyOperator('c'); } break;
                             case 'D': if (sel.rangeCount) { sel.modify('extend','forward','lineboundary'); this.applyOperator('d'); } break;
-                            // Operators (pending)
+                            // Operators (pending, not in visual — visual handled above)
                             case 'd': this.pending = 'd'; this.pendingCount = n; break;
                             case 'c': this.pending = 'c'; this.pendingCount = n; break;
-                            case 'y':
-                                if (!sel.isCollapsed) {
-                                    this.register = sel.toString();
-                                    this.registerIsLine = false;
-                                    window.webkit.messageHandlers.vimYank.postMessage(this.register);
-                                    sel.collapseToStart();
-                                } else {
-                                    this.pending = 'y'; this.pendingCount = n;
-                                }
-                                break;
+                            case 'y': this.pending = 'y'; this.pendingCount = n; break;
                             case 'g': this.pending = 'g'; this.pendingCount = n; break;
-                            case 'Escape': this.pending = ''; break;
+                            case 'Escape':
+                                if (this.visual) { this.visual = ''; sel.collapseToEnd(); this.notifyMode(); }
+                                this.pending = '';
+                                break;
                         }
                     },
 
