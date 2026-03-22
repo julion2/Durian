@@ -733,11 +733,11 @@ struct ContentView: View {
         return prevIndex >= 0 ? ids[prevIndex] : nil
     }
 
-    /// Get sorted email IDs (by timestamp, newest first)
+    /// Get sorted email IDs matching visual order (pinned first, then by timestamp)
     private var sortedEmailIds: [String] {
-        displayEmails
-            .sorted { $0.timestamp > $1.timestamp }
-            .map { $0.id }
+        let pinned = displayEmails.filter { $0.isPinned }.sorted { $0.timestamp > $1.timestamp }
+        let unpinned = displayEmails.filter { !$0.isPinned }.sorted { $0.timestamp > $1.timestamp }
+        return (pinned + unpinned).map { $0.id }
     }
     
     /// Get current email index in sorted list (based on cursor position)
@@ -752,7 +752,7 @@ struct ContentView: View {
         guard !sortedEmailIds.isEmpty else { return }
         let clampedIndex = max(0, min(index, sortedEmailIds.count - 1))
         let targetId = sortedEmailIds[clampedIndex]
-        
+
         // Always update cursor position
         cursorEmailId = targetId
         
