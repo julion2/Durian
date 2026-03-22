@@ -6,6 +6,7 @@
 # sequence = true  → multi-key sequence (e.g. "gg", "dd", "gi")
 # supports_count   → accepts count prefix (e.g. "5j" = move down 5)
 # modifiers        → ["cmd"], ["ctrl"], ["shift"], or []
+# context          → "list" (default), "search", "tag_picker", "thread"
 
 [global_settings]
 keymaps_enabled = true
@@ -159,3 +160,65 @@ description = "Enter toggle visual mode"
 action = "toggle_selection"
 key = " "
 description = "Toggle current email in selection"
+
+# ── Search Popup (context = "search") ────────────────────────────────
+# These bindings are only active when the search popup is open.
+# Arrow keys, Return, and Escape are always available (built-in).
+
+[[keymaps]]
+action = "select_next"
+key = "j"
+modifiers = ["ctrl"]
+context = "search"
+description = "Next search result"
+
+[[keymaps]]
+action = "select_prev"
+key = "k"
+modifiers = ["ctrl"]
+context = "search"
+description = "Previous search result"
+
+[[keymaps]]
+action = "select_next"
+key = "n"
+modifiers = ["ctrl"]
+context = "search"
+description = "Next search result (alt)"
+
+[[keymaps]]
+action = "select_prev"
+key = "p"
+modifiers = ["ctrl"]
+context = "search"
+description = "Previous search result (alt)"
+
+# ── Tag Picker (context = "tag_picker") ──────────────────────────────
+
+[[keymaps]]
+action = "select_next"
+key = "j"
+modifiers = ["ctrl"]
+context = "tag_picker"
+description = "Next tag"
+
+[[keymaps]]
+action = "select_prev"
+key = "k"
+modifiers = ["ctrl"]
+context = "tag_picker"
+description = "Previous tag"
+
+[[keymaps]]
+action = "select_next"
+key = "n"
+modifiers = ["ctrl"]
+context = "tag_picker"
+description = "Next tag (alt)"
+
+[[keymaps]]
+action = "select_prev"
+key = "p"
+modifiers = ["ctrl"]
+context = "tag_picker"
+description = "Previous tag (alt)"

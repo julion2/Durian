@@ -31,19 +31,22 @@ class KeySequenceEngine: ObservableObject {
     private let matcher = SequenceMatcher.shared
     
     // MARK: - State
-    
-    /// Registered action handlers
-    private var actionHandlers: [KeymapAction: (Int) async -> Void] = [:]
-    
+
+    /// Registered action handlers, scoped by context
+    private var actionHandlers: [KeymapContext: [KeymapAction: (Int) async -> Void]] = [:]
+
+    /// Active keymap context (determines which bindings are matched)
+    @Published private(set) var activeContext: KeymapContext = .list
+
     /// Current sequence being built (for UI display)
     @Published private(set) var currentSequence: String = ""
-    
+
     /// Whether engine is waiting for more keys
     @Published private(set) var isWaitingForMore: Bool = false
-    
+
     /// Current visual mode type (none, line, toggle)
     @Published private(set) var visualModeType: VisualModeType = .none
-    
+
     /// Convenience: whether any visual mode is active
     var isVisualMode: Bool { visualModeType != .none }
     
@@ -61,13 +64,25 @@ class KeySequenceEngine: ObservableObject {
     }
     
     // MARK: - Public API
-    
-    /// Register a handler for an action
+
+    /// Switch the active keymap context (clears buffer on change)
+    func setContext(_ context: KeymapContext) {
+        guard context != activeContext else { return }
+        clearBuffer()
+        activeContext = context
+        Log.debug("KEYSEQ", "Context switched to: \(context.rawValue)")
+    }
+
+    /// Register a handler for an action in a specific context
     /// - Parameters:
     ///   - action: The action to handle
+    ///   - context: The context this handler applies to (default .list)
     ///   - handler: Closure that executes the action (receives count)
-    func registerHandler(for action: KeymapAction, handler: @escaping (Int) async -> Void) {
-        actionHandlers[action] = handler
+    func registerHandler(for action: KeymapAction, context: KeymapContext = .list, handler: @escaping (Int) async -> Void) {
+        if actionHandlers[context] == nil {
+            actionHandlers[context] = [:]
+        }
+        actionHandlers[context]?[action] = handler
     }
     
     /// Process a key event
@@ -97,21 +112,33 @@ class KeySequenceEngine: ObservableObject {
                 Log.debug("KEYSEQ", "Escape - buffer cleared")
             }
 
+            // In popup contexts, dispatch closePopup
+            if activeContext == .search || activeContext == .tagPicker {
+                if let handler = actionHandlers[activeContext]?[.closePopup] {
+                    Task { await handler(1) }
+                }
+                return true
+            }
+
             if isVisualMode {
                 exitVisualMode()
             }
 
             // Always dispatch exitVisualMode handler so it can close
             // search popup, tag picker, detail view, etc.
-            if let handler = actionHandlers[.exitVisualMode] {
+            if let handler = actionHandlers[.list]?[.exitVisualMode] {
                 Task { await handler(1) }
             }
             return true
         }
-        
+
         // Commands with Cmd/Ctrl go through different path (non-sequence)
         if modifiers.contains(.cmd) || modifiers.contains(.ctrl) {
-            // But allow Ctrl+d, Ctrl+u for page navigation
+            // Allow Ctrl+key in popup contexts (search/tagPicker navigation)
+            if modifiers == [.ctrl] && (activeContext == .search || activeContext == .tagPicker) {
+                return processKey(key: key, modifiers: modifiers)
+            }
+            // Allow Ctrl+d, Ctrl+u for page navigation in list
             if modifiers == [.ctrl] && (key == "d" || key == "u") {
                 return processKey(key: key, modifiers: modifiers)
             }
@@ -151,9 +178,9 @@ class KeySequenceEngine: ObservableObject {
         // Add to buffer
         buffer.append(keyEvent)
 
-        // Try to match
+        // Try to match in active context
         let bufferStr = buffer.asString
-        let result = matcher.match(buffer: bufferStr)
+        let result = matcher.match(buffer: bufferStr, context: activeContext)
 
         switch result {
         case .match(let action, let count):
@@ -178,7 +205,7 @@ class KeySequenceEngine: ObservableObject {
     }
 
     private func executeAction(_ action: KeymapAction, count: Int) {
-        guard let handler = actionHandlers[action] else { return }
+        guard let handler = actionHandlers[activeContext]?[action] else { return }
         Task { await handler(count) }
     }
     
@@ -205,14 +232,14 @@ class KeySequenceEngine: ObservableObject {
 // MARK: - Handler Registration Helpers
 
 extension KeySequenceEngine {
-    
+
     /// Register a simple handler that ignores count
-    func registerSimpleHandler(for action: KeymapAction, handler: @escaping () async -> Void) {
-        registerHandler(for: action) { _ in
+    func registerSimpleHandler(for action: KeymapAction, context: KeymapContext = .list, handler: @escaping () async -> Void) {
+        registerHandler(for: action, context: context) { _ in
             await handler()
         }
     }
-    
+
     /// Register all navigation handlers at once
     func registerNavigationHandlers(
         onNext: @escaping (Int) async -> Void,

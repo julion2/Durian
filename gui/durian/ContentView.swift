@@ -8,6 +8,13 @@
 import SwiftUI
 import Combine
 
+// MARK: - Popup Navigation Notifications
+
+extension Notification.Name {
+    static let popupSelectNext = Notification.Name("popupSelectNext")
+    static let popupSelectPrev = Notification.Name("popupSelectPrev")
+}
+
 enum DetailViewMode: Equatable {
     case emailDetail(emailId: String)
     case empty
@@ -448,6 +455,12 @@ struct ContentView: View {
                 cursorEmailId = emailId
                 handleEmailSelection(emailId)
             }
+        }
+        .onChange(of: showSearchPopup) { _, isShowing in
+            keymapHandler.engine.setContext(isShowing ? .search : .list)
+        }
+        .onChange(of: showTagPicker) { _, isShowing in
+            keymapHandler.engine.setContext(isShowing ? .tagPicker : .list)
         }
         .onChange(of: accountManager.mailMessages) { _, newMessages in
             // Sync updated emails (e.g. body loaded) into search results
@@ -1017,6 +1030,25 @@ struct ContentView: View {
                     lastSearchQuery = ""
                 } else {
                     detailMode = .empty
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // POPUP CONTEXT HANDLERS (search, tag picker)
+        // ═══════════════════════════════════════════════════════════
+
+        for ctx in [KeymapContext.search, KeymapContext.tagPicker] {
+            keymapHandler.registerSimpleHandler(for: .selectNext, context: ctx) {
+                NotificationCenter.default.post(name: .popupSelectNext, object: nil)
+            }
+            keymapHandler.registerSimpleHandler(for: .selectPrev, context: ctx) {
+                NotificationCenter.default.post(name: .popupSelectPrev, object: nil)
+            }
+            keymapHandler.registerSimpleHandler(for: .closePopup, context: ctx) { [self] in
+                await MainActor.run {
+                    showSearchPopup = false
+                    showTagPicker = false
                 }
             }
         }

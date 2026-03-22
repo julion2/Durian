@@ -83,15 +83,15 @@ class KeymapsManager: ObservableObject {
     /// This ensures new keymaps are available after app updates
     private func mergeWithDefaults() {
         let defaultKeymaps = getDefaultKeymaps()
-        let existingActions = Set(keymaps.keymaps.map { $0.action + $0.key })
-        
+        let existingActions = Set(keymaps.keymaps.map { $0.context + ":" + $0.action + $0.key })
+
         var addedCount = 0
         for defaultEntry in defaultKeymaps {
-            let key = defaultEntry.action + defaultEntry.key
+            let key = defaultEntry.context + ":" + defaultEntry.action + defaultEntry.key
             if !existingActions.contains(key) {
                 keymaps.keymaps.append(defaultEntry)
                 addedCount += 1
-                Log.debug("KEYMAPS", "Added missing keymap: \(defaultEntry.action) -> \(defaultEntry.key)")
+                Log.debug("KEYMAPS", "Added missing keymap: \(defaultEntry.context):\(defaultEntry.action) -> \(defaultEntry.key)")
             }
         }
         
@@ -140,6 +140,16 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [], description: "Enter toggle visual mode (Shift+V)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "toggle_selection", key: " ", modifiers: [], description: "Toggle current email (only in toggle mode)", enabled: true, sequence: false, supportsCount: false),
             KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [], description: "Exit visual mode and clear selection", enabled: true, sequence: false, supportsCount: false),
+            // Search context
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next search result (Ctrl+j)", enabled: true, sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous search result (Ctrl+k)", enabled: true, sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next search result (Ctrl+n)", enabled: true, sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous search result (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "search"),
+            // Tag picker context
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next tag (Ctrl+j)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous tag (Ctrl+k)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next tag (Ctrl+n)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous tag (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
         ]
     }
     
@@ -164,7 +174,11 @@ class KeymapsManager: ObservableObject {
             toml += "description = \"\(entry.description)\"\n"
             toml += "enabled = \(entry.enabled)\n"
             toml += "sequence = \(entry.sequence)\n"
-            toml += "supports_count = \(entry.supportsCount)\n\n"
+            toml += "supports_count = \(entry.supportsCount)\n"
+            if entry.context != "list" {
+                toml += "context = \"\(entry.context)\"\n"
+            }
+            toml += "\n"
         }
         
         return toml
@@ -313,8 +327,40 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [],
                        description: "Exit visual mode and clear selection", enabled: true,
                        sequence: false, supportsCount: false),
+
+            // ═══════════════════════════════════════════════════════════
+            // SEARCH CONTEXT
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
+                       description: "Next search result (Ctrl+j)", enabled: true,
+                       sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
+                       description: "Previous search result (Ctrl+k)", enabled: true,
+                       sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
+                       description: "Next search result (Ctrl+n)", enabled: true,
+                       sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
+                       description: "Previous search result (Ctrl+p)", enabled: true,
+                       sequence: false, supportsCount: false, context: "search"),
+
+            // ═══════════════════════════════════════════════════════════
+            // TAG PICKER CONTEXT
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
+                       description: "Next tag (Ctrl+j)", enabled: true,
+                       sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
+                       description: "Previous tag (Ctrl+k)", enabled: true,
+                       sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
+                       description: "Next tag (Ctrl+n)", enabled: true,
+                       sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
+                       description: "Previous tag (Ctrl+p)", enabled: true,
+                       sequence: false, supportsCount: false, context: "tag_picker"),
         ]
-        
+
         keymaps = config
         saveKeymaps()
     }
@@ -395,7 +441,8 @@ struct KeymapEntry: Codable {
     var enabled: Bool
     var sequence: Bool
     var supportsCount: Bool
-    
+    var context: String
+
     enum CodingKeys: String, CodingKey {
         case action
         case key
@@ -404,8 +451,9 @@ struct KeymapEntry: Codable {
         case enabled
         case sequence
         case supportsCount = "supports_count"
+        case context
     }
-    
+
     // Custom init for backwards compatibility with old configs
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -417,10 +465,11 @@ struct KeymapEntry: Codable {
         // Defaults for old configs without these fields
         sequence = try container.decodeIfPresent(Bool.self, forKey: .sequence) ?? false
         supportsCount = try container.decodeIfPresent(Bool.self, forKey: .supportsCount) ?? false
+        context = try container.decodeIfPresent(String.self, forKey: .context) ?? "list"
     }
-    
+
     // Memberwise init for creating entries programmatically
-    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false) {
+    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false, context: String = "list") {
         self.action = action
         self.key = key
         self.modifiers = modifiers
@@ -428,6 +477,7 @@ struct KeymapEntry: Codable {
         self.enabled = enabled
         self.sequence = sequence
         self.supportsCount = supportsCount
+        self.context = context
     }
 }
 

@@ -57,17 +57,17 @@ class KeymapHandler: ObservableObject {
     }
     
     // MARK: - Public API
-    
-    /// Register a handler for a KeymapAction (goes through sequence engine)
-    func registerHandler(for action: KeymapAction, handler: @escaping (Int) async -> Void) {
-        sequenceEngine.registerHandler(for: action, handler: handler)
-        Log.debug("KEYMAPS", "Handler registered for action: \(action.rawValue)")
+
+    /// Register a handler for a KeymapAction in a specific context (goes through sequence engine)
+    func registerHandler(for action: KeymapAction, context: KeymapContext = .list, handler: @escaping (Int) async -> Void) {
+        sequenceEngine.registerHandler(for: action, context: context, handler: handler)
+        Log.debug("KEYMAPS", "Handler registered for action: \(action.rawValue) in context: \(context.rawValue)")
     }
-    
-    /// Register a simple handler (count ignored)
-    func registerSimpleHandler(for action: KeymapAction, handler: @escaping () async -> Void) {
-        sequenceEngine.registerSimpleHandler(for: action, handler: handler)
-        Log.debug("KEYMAPS", "Simple handler registered for action: \(action.rawValue)")
+
+    /// Register a simple handler (count ignored) in a specific context
+    func registerSimpleHandler(for action: KeymapAction, context: KeymapContext = .list, handler: @escaping () async -> Void) {
+        sequenceEngine.registerSimpleHandler(for: action, context: context, handler: handler)
+        Log.debug("KEYMAPS", "Simple handler registered for action: \(action.rawValue) in context: \(context.rawValue)")
     }
     
     /// Register a legacy handler for keymaps.toml defined shortcuts (Cmd+r, etc.)
@@ -151,8 +151,14 @@ class KeymapHandler: ObservableObject {
     }
     
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Skip if a text input field is focused (search, compose, etc.)
+        let isPopupContext = sequenceEngine.activeContext == .search || sequenceEngine.activeContext == .tagPicker
+
+        // When text input is focused: let Ctrl+ keys through to engine in popup contexts
+        // (for Ctrl+j/k/n/p navigation), but block plain keys (they go to the text field)
         if isTextInputFocused() {
+            if isPopupContext && event.modifierFlags.contains(.control) {
+                return sequenceEngine.handleKeyEvent(event)
+            }
             return false
         }
 
@@ -160,7 +166,7 @@ class KeymapHandler: ObservableObject {
         if attachmentSelected && (event.keyCode == 49 || event.keyCode == 53) {
             return false
         }
-        
+
         guard isAppInForeground,
               keymapsManager.keymaps.globalSettings.keymapsEnabled else {
             return false

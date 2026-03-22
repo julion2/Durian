@@ -15,18 +15,18 @@ class SequenceMatcher {
     static let shared = SequenceMatcher()
     
     // MARK: - Dynamic Sequence Storage
-    
-    /// All defined key sequences (loaded from config)
+
+    /// All defined key sequences (loaded from config), grouped by context
     private var sequences: [SequenceDefinition] = []
-    
-    /// Quick lookup by sequence string
-    private var sequenceLookup: [String: KeymapAction] = [:]
-    
-    /// All possible sequence prefixes for partial matching
-    private var allPrefixes: Set<String> = []
-    
-    /// Actions that support count prefix (from config)
-    private var countSupportedActions: Set<KeymapAction> = []
+
+    /// Per-context lookup by sequence string
+    private var contextSequenceLookup: [KeymapContext: [String: KeymapAction]] = [:]
+
+    /// Per-context prefixes for partial matching
+    private var contextPrefixes: [KeymapContext: Set<String>] = [:]
+
+    /// Per-context actions that support count prefix
+    private var contextCountSupported: [KeymapContext: Set<KeymapAction>] = [:]
     
     // MARK: - Init
     
@@ -55,8 +55,8 @@ class SequenceMatcher {
     /// Reload sequences from KeymapsManager config
     func reloadFromConfig() {
         let keymapEntries = KeymapsManager.shared.keymaps.keymaps
-        
-        // Build sequences from config
+
+        // Build sequences from config, tagged with context
         // Entries without modifiers use key directly (vim-style: "j", "gg", "gi")
         // Entries with ctrl modifier use normalized form ("ctrl+d", "ctrl+u")
         // Other modifier entries (Cmd+r, etc.) are handled by KeymapHandler.handleLegacyKeymap()
@@ -70,78 +70,88 @@ class SequenceMatcher {
                 let seqKey = entry.modifiers == ["ctrl"] ? "ctrl+\(entry.key.lowercased())" : entry.key
                 return SequenceDefinition(seqKey, action, entry.description)
             }
-        
-        // Build count-supported actions set from config
-        countSupportedActions = Set(
-            keymapEntries
-                .filter { $0.supportsCount && $0.enabled }
-                .compactMap { KeymapAction(rawValue: $0.action) }
-        )
-        
-        rebuildLookups()
-        
-        Log.debug("SEQMATCH", "Loaded \(sequences.count) sequences, \(countSupportedActions.count) with count support")
-    }
-    
-    private func rebuildLookups() {
-        // Quick lookup by sequence string
-        sequenceLookup = [:]
-        for seq in sequences {
-            sequenceLookup[seq.sequence] = seq.action
-        }
-        
-        // Build prefixes for partial matching (automatically from multi-char sequences)
-        allPrefixes = []
-        for seq in sequences where seq.sequence.count > 1 {
-            // Add each prefix of the sequence (e.g., "gg" -> "g", "gi" -> "g")
-            for i in 1..<seq.sequence.count {
-                let prefix = String(seq.sequence.prefix(i))
-                allPrefixes.insert(prefix)
+
+        // Group entries by context and build per-context lookups
+        contextSequenceLookup = [:]
+        contextPrefixes = [:]
+        contextCountSupported = [:]
+
+        for context in KeymapContext.allCases {
+            let contextEntries = keymapEntries.filter {
+                $0.enabled && ($0.modifiers.isEmpty || $0.modifiers == ["ctrl"])
+                && (KeymapContext(rawValue: $0.context) ?? .list) == context
             }
+
+            // Sequence lookup
+            var lookup: [String: KeymapAction] = [:]
+            for entry in contextEntries {
+                guard let action = KeymapAction(rawValue: entry.action) else { continue }
+                let seqKey = entry.modifiers == ["ctrl"] ? "ctrl+\(entry.key.lowercased())" : entry.key
+                lookup[seqKey] = action
+            }
+            contextSequenceLookup[context] = lookup
+
+            // Prefixes
+            var prefixes: Set<String> = []
+            for (seq, _) in lookup where seq.count > 1 {
+                for i in 1..<seq.count {
+                    prefixes.insert(String(seq.prefix(i)))
+                }
+            }
+            contextPrefixes[context] = prefixes
+
+            // Count support
+            contextCountSupported[context] = Set(
+                contextEntries
+                    .filter { $0.supportsCount }
+                    .compactMap { KeymapAction(rawValue: $0.action) }
+            )
         }
-        
-        Log.debug("SEQMATCH", "Prefixes for partial matching: \(allPrefixes.sorted())")
+
+        let totalSeqs = contextSequenceLookup.values.reduce(0) { $0 + $1.count }
+        Log.debug("SEQMATCH", "Loaded \(totalSeqs) sequences across \(contextSequenceLookup.count) contexts")
     }
     
     // MARK: - Public API
-    
-    /// Match buffer contents against known sequences
-    /// - Parameter buffer: Current key buffer contents
+
+    /// Match buffer contents against known sequences in the given context
+    /// - Parameters:
+    ///   - buffer: Current key buffer contents
+    ///   - context: Active keymap context (defaults to .list)
     /// - Returns: Match result
-    func match(buffer: String) -> SequenceMatchResult {
+    func match(buffer: String, context: KeymapContext = .list) -> SequenceMatchResult {
         // Empty buffer
         if buffer.isEmpty {
             return .noMatch
         }
-        
+
+        let lookup = contextSequenceLookup[context] ?? [:]
+        let prefixes = contextPrefixes[context] ?? []
+        let countSupported = contextCountSupported[context] ?? []
+
         // Parse count prefix if present (e.g., "5j" -> count=5, sequence="j")
         let (count, sequence) = parseCountAndSequence(buffer)
-        
+
         // If only digits, waiting for action
         if sequence.isEmpty && count != nil {
             return .partial
         }
-        
+
         // Check for exact match
-        if let action = sequenceLookup[sequence] {
+        if let action = lookup[sequence] {
             let finalCount = count ?? 1
             // Validate count support from config
-            if finalCount > 1 && !countSupportedActions.contains(action) {
+            if finalCount > 1 && !countSupported.contains(action) {
                 return .match(action: action, count: 1)
             }
             return .match(action: action, count: finalCount)
         }
-        
+
         // Check for partial match (could become a longer sequence)
-        if allPrefixes.contains(sequence) {
+        if prefixes.contains(sequence) {
             return .partial
         }
-        
-        // Check if sequence with count prefix could match
-        if count != nil && allPrefixes.contains(sequence) {
-            return .partial
-        }
-        
+
         return .noMatch
     }
     
@@ -160,9 +170,9 @@ class SequenceMatcher {
         sequences
     }
     
-    /// Check if an action supports count prefix
-    func supportsCount(_ action: KeymapAction) -> Bool {
-        countSupportedActions.contains(action)
+    /// Check if an action supports count prefix in a given context
+    func supportsCount(_ action: KeymapAction, context: KeymapContext = .list) -> Bool {
+        contextCountSupported[context]?.contains(action) ?? false
     }
     
     // MARK: - Private

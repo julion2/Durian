@@ -7,6 +7,16 @@
 
 import Foundation
 
+// MARK: - KeymapContext
+
+/// Context determines which keymap bindings are active
+enum KeymapContext: String, CaseIterable, Hashable {
+    case list = "list"
+    case search = "search"
+    case tagPicker = "tag_picker"
+    case thread = "thread"
+}
+
 // MARK: - KeymapAction Enum
 
 /// All available actions that can be triggered by keymaps
@@ -18,7 +28,7 @@ enum KeymapAction: String, CaseIterable {
     case lastEmail = "last_email"
     case pageDown = "page_down"
     case pageUp = "page_up"
-    
+
     // Email Actions
     case compose = "compose"
     case reply = "reply"
@@ -28,12 +38,12 @@ enum KeymapAction: String, CaseIterable {
     case archiveEmail = "archive"
     case toggleRead = "toggle_read"
     case toggleStar = "toggle_star"
-    
+
     // View Control
     case closeDetail = "close_detail"
     case reloadInbox = "reload_inbox"
     case search = "search"
-    
+
     // Tag Picker
     case tagPicker = "tag_picker"
 
@@ -42,13 +52,19 @@ enum KeymapAction: String, CaseIterable {
     case goSent = "go_sent"
     case goDrafts = "go_drafts"
     case goArchive = "go_archive"
-    
+
     // Visual Mode
     case enterVisualMode = "enter_visual_mode"           // v - line mode (range selection)
     case enterToggleMode = "enter_toggle_mode"           // V - toggle mode (individual selection)
     case toggleSelection = "toggle_selection"            // Space - toggle current (only in toggle mode)
     case exitVisualMode = "exit_visual_mode"             // Escape in visual mode
-    
+
+    // Popup Navigation (search, tag picker)
+    case selectNext = "select_next"
+    case selectPrev = "select_prev"
+    case confirmSelection = "confirm_selection"
+    case closePopup = "close_popup"
+
     // Note: supportsCount is now defined in keymaps.toml per-action
     // Use SequenceMatcher.shared.supportsCount(action) to check
 }

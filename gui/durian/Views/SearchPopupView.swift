@@ -80,19 +80,11 @@ struct SearchPopupView: View {
             if selectedIndex < searchManager.results.count - 1 { selectedIndex += 1 }
             return .handled
         }
-        .onKeyPress { press in
-            if press.modifiers.contains(.control) {
-                switch press.key {
-                case "j", KeyEquivalent("n"):
-                    if selectedIndex < searchManager.results.count - 1 { selectedIndex += 1 }
-                    return .handled
-                case "k", KeyEquivalent("p"):
-                    if selectedIndex > 0 { selectedIndex -= 1 }
-                    return .handled
-                default: break
-                }
-            }
-            return .ignored
+        .onReceive(NotificationCenter.default.publisher(for: .popupSelectNext)) { _ in
+            if selectedIndex < searchManager.results.count - 1 { selectedIndex += 1 }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .popupSelectPrev)) { _ in
+            if selectedIndex > 0 { selectedIndex -= 1 }
         }
         .onKeyPress(.escape) {
             close()
