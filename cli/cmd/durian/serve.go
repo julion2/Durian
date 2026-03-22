@@ -70,6 +70,17 @@ func runServe(cmd *cobra.Command, args []string) {
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			host := req.Host
+			if host != "localhost:9723" && host != "127.0.0.1:9723" &&
+				host != "localhost" && host != "127.0.0.1" {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, req)
+		})
+	})
 	r.HandleFunc("/api/v1/version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{

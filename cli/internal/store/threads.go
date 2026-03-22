@@ -84,5 +84,19 @@ func resolveThreadID(tx *sql.Tx, messageID, inReplyTo, references string) (strin
 	}
 
 	// No existing thread found — compute a new one
-	return computeThreadID(messageID, inReplyTo, references), nil
+	threadID := computeThreadID(messageID, inReplyTo, references)
+
+	// Check if any existing messages reference this message (child arrived before parent).
+	// If so, adopt their thread ID to keep the conversation together.
+	cleanedID := cleanMessageID(messageID)
+	var existingThreadID string
+	err := tx.QueryRow(
+		"SELECT thread_id FROM messages WHERE in_reply_to LIKE ? OR refs LIKE ? LIMIT 1",
+		"%"+cleanedID+"%", "%"+cleanedID+"%",
+	).Scan(&existingThreadID)
+	if err == nil && existingThreadID != "" {
+		return existingThreadID, nil
+	}
+
+	return threadID, nil
 }

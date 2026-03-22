@@ -1228,12 +1228,18 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 	content := s.parser.Parse(parsed)
 	messageID := strings.Trim(content.MessageID, "<>")
 	if messageID == "" {
-		return nil // Can't store without Message-ID
+		// Generate synthetic Message-ID from UID + account to avoid losing the message
+		messageID = fmt.Sprintf("durian-synthetic-%d-%s@%s", imapMsg.Uid, mailboxName, s.accountName())
+		slog.Warn("Message has no Message-ID, using synthetic ID", "module", "SYNC",
+			"uid", imapMsg.Uid, "mailbox", mailboxName, "synthetic_id", messageID)
 	}
 
 	var dateUnix int64
 	if t, err := mail.ParseDate(content.Date); err == nil {
 		dateUnix = t.Unix()
+	} else {
+		// Fallback to IMAP internal date
+		dateUnix = imapMsg.InternalDate.Unix()
 	}
 
 	storeMsg := &store.Message{

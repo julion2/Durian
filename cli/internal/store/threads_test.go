@@ -264,10 +264,11 @@ func TestResolveThreadID_CrossBatchSplit_DifferentRoot(t *testing.T) {
 	child, _ := db.GetByMessageID("child2@x")
 	parent, _ := db.GetByMessageID("parent2@x")
 
-	// child hashed grandparent2@x, parent hashed parent2@x → different thread IDs
-	if child.ThreadID == parent.ThreadID {
-		t.Errorf("expected split threads for cross-batch with different roots, but got same: %q",
-			child.ThreadID)
+	// Parent arrives after child — reverse-lookup finds the child referencing parent,
+	// so parent adopts child's thread ID. Conversation stays together.
+	if child.ThreadID != parent.ThreadID {
+		t.Errorf("expected same thread (parent adopted child's thread), got child=%q parent=%q",
+			child.ThreadID, parent.ThreadID)
 	}
 }
 

@@ -224,9 +224,12 @@ func lex(query string) []lexToken {
 //	unary    → "NOT" unary | primary
 //	primary  → "(" expr ")" | field:value | bare_word | "*"
 
+const maxParseDepth = 50
+
 type parser struct {
 	tokens []lexToken
 	pos    int
+	depth  int
 }
 
 func (p *parser) peek() lexToken {
@@ -319,8 +322,13 @@ func (p *parser) parsePrimary() (exprNode, error) {
 	tok := p.peek()
 	switch tok.kind {
 	case tokLParen:
+		p.depth++
+		if p.depth > maxParseDepth {
+			return nil, fmt.Errorf("query too deeply nested (max %d levels)", maxParseDepth)
+		}
 		p.next()
 		node, err := p.parseExpr()
+		p.depth--
 		if err != nil {
 			return nil, err
 		}
