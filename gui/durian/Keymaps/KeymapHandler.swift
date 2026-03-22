@@ -247,10 +247,9 @@ class KeymapHandler: ObservableObject {
             return true
         }
 
-        // WKWebView with contentEditable (e.g. EditableWebView in compose)
-        if firstResponder is WKWebView {
-            return true
-        }
+        // WKWebView is not checked here — compose runs in a separate window
+        // and handles its own key events. The main window's read-only email
+        // WebView should not block keymaps.
 
         return false
     }
