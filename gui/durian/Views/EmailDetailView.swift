@@ -23,22 +23,40 @@ struct EmailDetailView: View {
     var currentFolder: String? = nil
     var onAddTag: ((String) -> Void)? = nil
     var onRemoveTag: ((String) -> Void)? = nil
-    
+    @Binding var focusedMessageIndex: Int
+    var isThreadFocused: Bool = false
+
     // MARK: - State
-    
+
     @State private var messageHeights: [String: CGFloat] = [:]  // Use message ID as key
-    
+    @State private var detailScrollView: NSScrollView?
+
     // MARK: - Body
-    
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                headerSection
-                messageCards
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    ScrollViewFinder(scrollView: $detailScrollView)
+                        .frame(height: 0)
+                    headerSection
+                    messageCards
+                }
+            }
+            .onChange(of: focusedMessageIndex) { _, newIndex in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    proxy.scrollTo("msg-\(newIndex)", anchor: .top)
+                }
             }
         }
         .overlayScrollbars()
         .background(Color(NSColor.controlBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: .threadScrollDown)) { _ in
+            scrollBy(80)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .threadScrollUp)) { _ in
+            scrollBy(-80)
+        }
         .onAppear {
             // Auto-load body if not loaded
             switch email.bodyState {
@@ -51,6 +69,7 @@ struct EmailDetailView: View {
         // Reset state when email changes
         .onChange(of: email.id) {
             messageHeights = [:]
+            focusedMessageIndex = 0
         }
     }
     
@@ -71,12 +90,15 @@ struct EmailDetailView: View {
             // Use thread messages from CLI if available
             if let messages = email.threadMessages, !messages.isEmpty {
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    Color.clear.frame(height: 0)
+                        .id("msg-\(index)")
                     ThreadMessageCardView(
                         message: message,
                         isFirst: index == 0,
                         isLast: index == 0,  // Newest message (first) gets reply button
                         email: email,
                         contentHeight: bindingForMessageId(message.id),
+                        isFocused: isThreadFocused && index == focusedMessageIndex,
                         onReply: onReply,
                         onReplyAll: onReplyAll,
                         onForward: onForward,
@@ -153,6 +175,15 @@ struct EmailDetailView: View {
         .padding(.bottom, 32)
     }
     
+    private func scrollBy(_ delta: CGFloat) {
+        guard let sv = detailScrollView else { return }
+        let current = sv.contentView.bounds.origin
+        let maxY = max(sv.documentView!.frame.height - sv.contentView.bounds.height, 0)
+        let newY = min(max(current.y + delta, 0), maxY)
+        sv.contentView.setBoundsOrigin(NSPoint(x: current.x, y: newY))
+        sv.reflectScrolledClipView(sv.contentView)
+    }
+
     private func bindingForMessageId(_ id: String) -> Binding<CGFloat> {
         Binding(
             get: { messageHeights[id] ?? 100 },
@@ -343,6 +374,7 @@ struct ThreadMessageCardView: View {
     let isLast: Bool
     let email: MailMessage  // Parent email for expanded details
     @Binding var contentHeight: CGFloat
+    var isFocused: Bool = false
     let onReply: () -> Void
     let onReplyAll: () -> Void
     let onForward: () -> Void
@@ -401,6 +433,15 @@ struct ThreadMessageCardView: View {
         .padding(.bottom, 16)
         .background(Color.Detail.cardBackground)
         .cornerRadius(10)
+        .overlay(
+            HStack(spacing: 0) {
+                if isFocused {
+                    Color.accentColor.frame(width: 3)
+                }
+                Spacer()
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        )
         .shadow(color: Color.primary.opacity(0.1), radius: 3, x: 0, y: 1)
         .padding(.leading, isOwnMessage() ? 56 : 32)  // Indent own messages (24pt extra)
         .padding(.trailing, 32)

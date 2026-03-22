@@ -235,3 +235,47 @@ context = "compose_normal"
 description = "Exit insert mode"
 
 # To use "jj" instead, change key = "jj" or add another entry.
+
+# ── Thread View (context = "thread") ─────────────────────────────────
+# Active when thread/detail view is focused (enter with "l", exit with "h").
+
+[[keymaps]]
+action = "enter_thread"
+key = "l"
+description = "Enter thread view"
+
+[[keymaps]]
+action = "scroll_down"
+key = "j"
+context = "thread"
+description = "Scroll down"
+
+[[keymaps]]
+action = "scroll_up"
+key = "k"
+context = "thread"
+description = "Scroll up"
+
+[[keymaps]]
+action = "next_message"
+key = "n"
+context = "thread"
+description = "Next message in thread"
+
+[[keymaps]]
+action = "prev_message"
+key = "N"
+context = "thread"
+description = "Previous message in thread"
+
+[[keymaps]]
+action = "close_detail"
+key = "h"
+context = "thread"
+description = "Back to email list"
+
+[[keymaps]]
+action = "reply"
+key = "r"
+context = "thread"
+description = "Reply to email"

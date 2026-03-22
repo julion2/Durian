@@ -13,6 +13,8 @@ import Combine
 extension Notification.Name {
     static let popupSelectNext = Notification.Name("popupSelectNext")
     static let popupSelectPrev = Notification.Name("popupSelectPrev")
+    static let threadScrollDown = Notification.Name("threadScrollDown")
+    static let threadScrollUp = Notification.Name("threadScrollUp")
 }
 
 enum DetailViewMode: Equatable {
@@ -38,8 +40,11 @@ struct ContentView: View {
     @State private var allTags: [String] = []
     @State private var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
     @State private var isSearchMode = false
+    @State private var bodyFetchTask: Task<Void, Never>?
     @State private var searchResults: [MailMessage] = []
     @State private var lastSearchQuery = ""
+    @State private var focusedMessageIndex: Int = 0
+    @State private var isThreadFocused: Bool = false
 
     var body: some View {
         ZStack {
@@ -406,7 +411,9 @@ struct ContentView: View {
                         },
                         onRemoveTag: { tag in
                             Task { await accountManager.removeTag(id: email.id, tag: tag) }
-                        }
+                        },
+                        focusedMessageIndex: $focusedMessageIndex,
+                        isThreadFocused: isThreadFocused
                     )
                     .id(email.id)  // Force new View instance on email change to reset @State
                     
@@ -507,6 +514,15 @@ struct ContentView: View {
         }
     }
     
+    /// Number of thread messages for the currently focused email
+    private var currentThreadMessageCount: Int {
+        guard let emailId = cursorEmailId,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId })
+                          ?? searchResults.first(where: { $0.id == emailId }),
+              let messages = email.threadMessages else { return 1 }
+        return max(messages.count, 1)
+    }
+
     // MARK: - Display Emails (Search Mode vs Normal)
 
     private var displayEmails: [MailMessage] {
@@ -518,26 +534,23 @@ struct ContentView: View {
     private func handleEmailSelection(_ emailId: String) {
         detailMode = .emailDetail(emailId: emailId)
 
-        // Auto-load body if not loaded or previously failed
-        if let email = displayEmails.first(where: { $0.id == emailId }) {
-            switch email.bodyState {
-            case .notLoaded, .failed:
-                Task {
-                    await accountManager.fetchEmailBody(id: emailId)
-                }
-            case .loading, .loaded:
-                break // Already loading or loaded
-            }
+        // Debounce body fetch — cancel previous request during rapid j/k navigation
+        bodyFetchTask?.cancel()
+        bodyFetchTask = Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
 
-            // Mark as read
-            if !email.isRead {
-                Task {
+            if let email = displayEmails.first(where: { $0.id == emailId }) {
+                switch email.bodyState {
+                case .notLoaded, .failed:
+                    await accountManager.fetchEmailBody(id: emailId)
+                case .loading, .loaded:
+                    break
+                }
+                if !email.isRead {
                     await accountManager.markAsRead(id: emailId)
                 }
-            }
-        } else {
-            // Email not in current folder (e.g. opened from search) — fetch it
-            Task {
+            } else {
                 await accountManager.fetchEmailBody(id: emailId)
             }
         }
@@ -718,11 +731,11 @@ struct ContentView: View {
         return prevIndex >= 0 ? ids[prevIndex] : nil
     }
 
-    /// Get sorted email IDs (by timestamp, newest first)
+    /// Get sorted email IDs matching visual order (pinned first, then by timestamp)
     private var sortedEmailIds: [String] {
-        displayEmails
-            .sorted { $0.timestamp > $1.timestamp }
-            .map { $0.id }
+        let pinned = displayEmails.filter { $0.isPinned }.sorted { $0.timestamp > $1.timestamp }
+        let unpinned = displayEmails.filter { !$0.isPinned }.sorted { $0.timestamp > $1.timestamp }
+        return (pinned + unpinned).map { $0.id }
     }
     
     /// Get current email index in sorted list (based on cursor position)
@@ -737,7 +750,7 @@ struct ContentView: View {
         guard !sortedEmailIds.isEmpty else { return }
         let clampedIndex = max(0, min(index, sortedEmailIds.count - 1))
         let targetId = sortedEmailIds[clampedIndex]
-        
+
         // Always update cursor position
         cursorEmailId = targetId
         
@@ -1031,6 +1044,62 @@ struct ContentView: View {
                 } else {
                     detailMode = .empty
                 }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // THREAD CONTEXT HANDLERS
+        // ═══════════════════════════════════════════════════════════
+
+        // l - Enter thread view
+        keymapHandler.registerSimpleHandler(for: .enterThread) { [self] in
+            await MainActor.run {
+                guard cursorEmailId != nil else { return }
+                focusedMessageIndex = 0
+                isThreadFocused = true
+                keymapHandler.engine.setContext(.thread)
+            }
+        }
+
+        // j/k in thread - scroll
+        keymapHandler.registerSimpleHandler(for: .scrollDown, context: .thread) {
+            NotificationCenter.default.post(name: .threadScrollDown, object: nil)
+        }
+
+        keymapHandler.registerSimpleHandler(for: .scrollUp, context: .thread) {
+            NotificationCenter.default.post(name: .threadScrollUp, object: nil)
+        }
+
+        // n/N in thread - navigate messages
+        keymapHandler.registerSimpleHandler(for: .nextMessage, context: .thread) { [self] in
+            await MainActor.run {
+                let count = currentThreadMessageCount
+                if focusedMessageIndex < count - 1 {
+                    focusedMessageIndex += 1
+                }
+            }
+        }
+
+        keymapHandler.registerSimpleHandler(for: .prevMessage, context: .thread) { [self] in
+            await MainActor.run {
+                if focusedMessageIndex > 0 {
+                    focusedMessageIndex -= 1
+                }
+            }
+        }
+
+        // h/Escape in thread - back to list
+        keymapHandler.registerSimpleHandler(for: .closeDetail, context: .thread) { [self] in
+            await MainActor.run {
+                isThreadFocused = false
+                keymapHandler.engine.setContext(.list)
+            }
+        }
+
+        // r in thread - reply
+        keymapHandler.registerSimpleHandler(for: .reply, context: .thread) { [self] in
+            await MainActor.run {
+                replyToSelected()
             }
         }
 
