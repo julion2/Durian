@@ -40,6 +40,7 @@ struct ComposeForm: View {
     @State private var currentFontSize: Int = 13
     @State private var currentFontFamily: String = "Helvetica"
     @State private var currentAlignment: String = "left"
+    @State private var vimMode: String = "insert"
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -108,7 +109,8 @@ struct ComposeForm: View {
                 strikethroughActive: isStrikethrough,
                 currentFontSize: currentFontSize,
                 currentFontFamily: currentFontFamily,
-                currentAlignment: currentAlignment
+                currentAlignment: currentAlignment,
+                vimMode: vimMode
             )
             
             // Message Editor
@@ -428,6 +430,9 @@ struct ComposeForm: View {
                             currentFontSize = fontSize
                             currentFontFamily = fontFamily
                             currentAlignment = alignment
+                        },
+                        onVimModeChange: { mode in
+                            vimMode = mode
                         }
                     )
                     .frame(height: editorHeight)

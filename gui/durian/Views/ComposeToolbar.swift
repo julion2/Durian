@@ -20,12 +20,27 @@ struct ComposeToolbar: View {
     var currentFontSize: Int = 13
     var currentFontFamily: String = "Helvetica"
     var currentAlignment: String = "left"
+    var vimMode: String = "insert"
 
     private let availableFonts = ["Helvetica", "Arial", "Times New Roman", "Georgia", "Courier"]
     private let availableSizes = [9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32]
-    
+
     var body: some View {
         HStack(spacing: 12) {
+            // Vim Mode Indicator
+            Text(vimMode == "normal" ? "NORMAL" : "INSERT")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(vimMode == "normal" ? Color(.systemOrange) : Color(.systemGreen))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    (vimMode == "normal" ? Color(.systemOrange) : Color(.systemGreen)).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
+
+            Divider()
+                .frame(height: 20)
+
             // Font Picker
             fontPicker
             

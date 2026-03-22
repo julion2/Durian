@@ -6,7 +6,7 @@
 # sequence = true  → multi-key sequence (e.g. "gg", "dd", "gi")
 # supports_count   → accepts count prefix (e.g. "5j" = move down 5)
 # modifiers        → ["cmd"], ["ctrl"], ["shift"], or []
-# context          → "list" (default), "search", "tag_picker", "thread"
+# context          → "list" (default), "search", "tag_picker", "thread", "compose_normal"
 
 [global_settings]
 keymaps_enabled = true

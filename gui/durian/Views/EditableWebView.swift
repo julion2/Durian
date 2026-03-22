@@ -22,6 +22,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var fontFamilyCommand: String?
     @Binding var htmlBody: String
     var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ strikethrough: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
+    var onVimModeChange: ((_ mode: String) -> Void)?
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -34,6 +35,7 @@ struct EditableWebView: NSViewRepresentable {
         config.userContentController.add(handler, name: "htmlChanged")
         config.userContentController.add(handler, name: "heightChanged")
         config.userContentController.add(handler, name: "formatState")
+        config.userContentController.add(handler, name: "vimModeChanged")
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -492,11 +494,244 @@ struct EditableWebView: NSViewRepresentable {
                     notifyFormatState();
                 });
 
-                // Tab key: indent/outdent in lists, insert tab otherwise
+                // Vim modal editing engine
+                const vim = {
+                    mode: 'insert',
+                    register: '',
+                    pending: '',
+                    count: '',
+
+                    setMode(m) {
+                        this.mode = m;
+                        this.pending = '';
+                        this.count = '';
+                        editor.classList.toggle('vim-normal', m === 'normal');
+                        window.webkit.messageHandlers.vimModeChanged.postMessage(m);
+                    },
+
+                    getCurrentBlock() {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return null;
+                        let node = sel.anchorNode;
+                        if (node === editor) return editor.firstChild;
+                        while (node && node.parentNode !== editor) node = node.parentNode;
+                        return node;
+                    },
+
+                    handleNormal(e) {
+                        const key = e.key;
+                        if (e.ctrlKey && key === 'r') { document.execCommand('redo'); return; }
+
+                        if (/^[1-9]$/.test(key) || (this.count && /^[0-9]$/.test(key))) {
+                            this.count += key;
+                            return;
+                        }
+                        const n = parseInt(this.count) || 1;
+                        this.count = '';
+                        const sel = window.getSelection();
+
+                        if (this.pending) {
+                            const combo = this.pending + key;
+                            this.pending = '';
+                            if (combo === 'dd') { this.deleteLine(n); return; }
+                            if (combo === 'yy') { this.yankLine(n); return; }
+                            if (combo === 'gg') { this.goToTop(); return; }
+                            return;
+                        }
+
+                        switch(key) {
+                            case 'i': this.setMode('insert'); break;
+                            case 'a': if (sel.rangeCount) sel.modify('move','forward','character'); this.setMode('insert'); break;
+                            case 'I': if (sel.rangeCount) sel.modify('move','backward','lineboundary'); this.setMode('insert'); break;
+                            case 'A': if (sel.rangeCount) sel.modify('move','forward','lineboundary'); this.setMode('insert'); break;
+                            case 'o': this.openLineBelow(); this.setMode('insert'); break;
+                            case 'O': this.openLineAbove(); this.setMode('insert'); break;
+                            case 'h': for(let i=0;i<n;i++) sel.modify('move','backward','character'); break;
+                            case 'l': for(let i=0;i<n;i++) sel.modify('move','forward','character'); break;
+                            case 'j': for(let i=0;i<n;i++) sel.modify('move','forward','line'); break;
+                            case 'k': for(let i=0;i<n;i++) sel.modify('move','backward','line'); break;
+                            case 'w':
+                                for(let i=0;i<n;i++) {
+                                    const wn = sel.focusNode;
+                                    if (wn && wn.nodeType === 3) {
+                                        const wt = wn.textContent;
+                                        let wp = sel.focusOffset;
+                                        if (wp < wt.length && /\\w/.test(wt[wp])) {
+                                            while (wp < wt.length && /\\w/.test(wt[wp])) wp++;
+                                            while (wp < wt.length && !/\\w/.test(wt[wp])) wp++;
+                                        } else {
+                                            while (wp < wt.length && !/\\w/.test(wt[wp])) wp++;
+                                        }
+                                        if (wp > sel.focusOffset && wp <= wt.length) {
+                                            const wr = document.createRange();
+                                            wr.setStart(wn, wp);
+                                            wr.collapse(true);
+                                            sel.removeAllRanges();
+                                            sel.addRange(wr);
+                                        } else {
+                                            sel.modify('move','forward','word');
+                                        }
+                                    } else {
+                                        sel.modify('move','forward','word');
+                                    }
+                                }
+                                break;
+                            case 'b': for(let i=0;i<n;i++) sel.modify('move','backward','word'); break;
+                            case 'e': for(let i=0;i<n;i++) sel.modify('move','forward','word'); break;
+                            case '0': if (sel.rangeCount) sel.modify('move','backward','lineboundary'); break;
+                            case '$': if (sel.rangeCount) sel.modify('move','forward','lineboundary'); break;
+                            case 'G': this.goToBottom(); break;
+                            case 'x': this.deleteForward(n); break;
+                            case 'X': this.deleteBackward(n); break;
+                            case 'u': document.execCommand('undo'); break;
+                            case 'p': this.pasteAfter(); break;
+                            case 'P': this.pasteBefore(); break;
+                            case 'd': this.pending = 'd'; break;
+                            case 'y': this.pending = 'y'; break;
+                            case 'g': this.pending = 'g'; break;
+                            case 'Escape': this.pending = ''; break;
+                        }
+                    },
+
+                    deleteLine(n) {
+                        let block = this.getCurrentBlock();
+                        if (!block || block.id === 'sig') return;
+                        const sel = window.getSelection();
+                        let lines = [], next = null;
+                        for (let i = 0; i < n && block; i++) {
+                            if (block.id === 'sig') break;
+                            lines.push(block.textContent);
+                            next = block.nextElementSibling || block.nextSibling;
+                            block.remove();
+                            block = next;
+                        }
+                        this.register = lines.join('\\n');
+                        if (next) this.placeCursorAt(next);
+                        else if (editor.lastChild) this.placeCursorAt(editor.lastChild);
+                        else { editor.innerHTML = '<br>'; this.placeCursorAt(editor); }
+                        this.notifyTextChange();
+                    },
+
+                    yankLine(n) {
+                        let block = this.getCurrentBlock();
+                        if (!block) return;
+                        let lines = [];
+                        for (let i = 0; i < n && block; i++) {
+                            lines.push(block.textContent);
+                            block = block.nextElementSibling || block.nextSibling;
+                        }
+                        this.register = lines.join('\\n');
+                    },
+
+                    openLineBelow() {
+                        const block = this.getCurrentBlock();
+                        const div = document.createElement('div');
+                        div.innerHTML = '<br>';
+                        if (block && block.nextSibling) editor.insertBefore(div, block.nextSibling);
+                        else editor.appendChild(div);
+                        this.placeCursorAt(div);
+                        this.notifyTextChange();
+                    },
+
+                    openLineAbove() {
+                        const block = this.getCurrentBlock();
+                        const div = document.createElement('div');
+                        div.innerHTML = '<br>';
+                        if (block) editor.insertBefore(div, block);
+                        else editor.appendChild(div);
+                        this.placeCursorAt(div);
+                        this.notifyTextChange();
+                    },
+
+                    pasteAfter() {
+                        if (!this.register) return;
+                        const block = this.getCurrentBlock();
+                        const div = document.createElement('div');
+                        div.textContent = this.register;
+                        if (block && block.nextSibling) editor.insertBefore(div, block.nextSibling);
+                        else editor.appendChild(div);
+                        this.placeCursorAt(div);
+                        this.notifyTextChange();
+                    },
+
+                    pasteBefore() {
+                        if (!this.register) return;
+                        const block = this.getCurrentBlock();
+                        const div = document.createElement('div');
+                        div.textContent = this.register;
+                        if (block) editor.insertBefore(div, block);
+                        else editor.appendChild(div);
+                        this.placeCursorAt(div);
+                        this.notifyTextChange();
+                    },
+
+                    deleteForward(n) {
+                        for (let i = 0; i < n; i++) document.execCommand('forwardDelete');
+                    },
+
+                    deleteBackward(n) {
+                        for (let i = 0; i < n; i++) document.execCommand('delete');
+                    },
+
+                    goToTop() {
+                        const range = document.createRange();
+                        range.setStart(editor, 0);
+                        range.collapse(true);
+                        const sel = window.getSelection();
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    },
+
+                    goToBottom() {
+                        const sel = window.getSelection();
+                        const range = document.createRange();
+                        range.selectNodeContents(editor);
+                        range.collapse(false);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    },
+
+                    placeCursorAt(node) {
+                        const sel = window.getSelection();
+                        const range = document.createRange();
+                        if (node.childNodes.length > 0 && node.childNodes[0].nodeType === 3) {
+                            range.setStart(node.childNodes[0], 0);
+                        } else {
+                            range.setStart(node, 0);
+                        }
+                        range.collapse(true);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                    },
+
+                    notifyTextChange() {
+                        window.webkit.messageHandlers.textChanged.postMessage(getPlainText());
+                        setTimeout(notifyHeight, 10);
+                    }
+                };
+
+                // Unified keydown handler (vim + tab)
                 editor.addEventListener('keydown', function(e) {
+                    // Normal mode: vim handles everything
+                    if (vim.mode === 'normal') {
+                        if (e.metaKey) return;
+                        e.preventDefault();
+                        vim.handleNormal(e);
+                        return;
+                    }
+
+                    // Insert mode: Escape enters normal mode
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        vim.setMode('normal');
+                        const sel = window.getSelection();
+                        if (sel.rangeCount) sel.modify('move', 'backward', 'character');
+                        return;
+                    }
+
+                    // Insert mode: Tab handling
                     if (e.key === 'Tab') {
                         e.preventDefault();
-                        // Check if cursor is inside a list
                         let node = window.getSelection().anchorNode;
                         let inList = false;
                         while (node && node !== editor) {
@@ -504,11 +739,7 @@ struct EditableWebView: NSViewRepresentable {
                             node = node.parentNode;
                         }
                         if (inList) {
-                            if (e.shiftKey) {
-                                document.execCommand('outdent', false, null);
-                            } else {
-                                document.execCommand('indent', false, null);
-                            }
+                            document.execCommand(e.shiftKey ? 'outdent' : 'indent', false, null);
                         } else {
                             document.execCommand('insertText', false, '\\t');
                         }
@@ -601,6 +832,12 @@ struct EditableWebView: NSViewRepresentable {
                     let alignment = dict["alignment"] as? String ?? "left"
                     DispatchQueue.main.async {
                         self.parent?.onFormatStateChange?(bold, italic, underline, strikethrough, fontSize, fontFamily, alignment)
+                    }
+                }
+            case "vimModeChanged":
+                if let mode = message.body as? String {
+                    DispatchQueue.main.async {
+                        self.parent?.onVimModeChange?(mode)
                     }
                 }
             default:

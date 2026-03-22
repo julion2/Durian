@@ -15,6 +15,7 @@ enum KeymapContext: String, CaseIterable, Hashable {
     case search = "search"
     case tagPicker = "tag_picker"
     case thread = "thread"
+    case composeNormal = "compose_normal"
 }
 
 // MARK: - KeymapAction Enum
