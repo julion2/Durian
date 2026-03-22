@@ -34,8 +34,8 @@ Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Micr
 
 ```bash
 brew tap julion2/tap
-brew install --cask durian      # GUI (macOS app)
-brew install durian             # CLI only
+brew install durian             # CLI (required — the GUI uses it as backend)
+brew install --cask durian      # GUI
 ```
 
 ## Build from Source
