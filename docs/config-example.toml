@@ -14,7 +14,14 @@ full_sync_interval = 7200         # Full sync interval in seconds (GUI)
 
 [signatures]
 default = "Best regards"
-work = "Best regards,\nYour Name\nCompany Inc."
+work = """
+<b>Your Name</b><br>
+Position<br>
+<b>Company Inc.</b><br>
+<br>
+Phone: +1 234 567 890<br>
+Email: <a href="mailto:you@company.com">you@company.com</a><br>
+Web: <a href="https://company.com">company.com</a>"""
 
 # ── Password auth (e.g. GMX, Hostinger, LRZ) ──────────────────────────
 
