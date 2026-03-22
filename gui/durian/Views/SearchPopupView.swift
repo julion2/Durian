@@ -73,16 +73,26 @@ struct SearchPopupView: View {
             }
         }
         .onKeyPress(.upArrow) {
-            if selectedIndex > 0 {
-                selectedIndex -= 1
-            }
+            if selectedIndex > 0 { selectedIndex -= 1 }
             return .handled
         }
         .onKeyPress(.downArrow) {
-            if selectedIndex < searchManager.results.count - 1 {
-                selectedIndex += 1
-            }
+            if selectedIndex < searchManager.results.count - 1 { selectedIndex += 1 }
             return .handled
+        }
+        .onKeyPress { press in
+            if press.modifiers.contains(.control) {
+                switch press.key {
+                case "j", KeyEquivalent("n"):
+                    if selectedIndex < searchManager.results.count - 1 { selectedIndex += 1 }
+                    return .handled
+                case "k", KeyEquivalent("p"):
+                    if selectedIndex > 0 { selectedIndex -= 1 }
+                    return .handled
+                default: break
+                }
+            }
+            return .ignored
         }
         .onKeyPress(.escape) {
             close()
