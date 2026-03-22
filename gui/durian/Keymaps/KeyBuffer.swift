@@ -46,6 +46,10 @@ class KeyBuffer: ObservableObject {
     func append(_ event: KeyEvent) {
         buffer.append(event)
         updateDisplayString()
+    }
+
+    /// Start the sequence timeout (call only for partial matches)
+    func startTimeout() {
         resetTimeout()
     }
     
@@ -136,7 +140,6 @@ class KeyBuffer: ObservableObject {
     }
     
     private func handleTimeout() {
-        Log.debug("KEYBUFFER", "Timeout - clearing buffer '\(asString)'")
         clear()
         onTimeout?()
     }
