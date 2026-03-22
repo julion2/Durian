@@ -13,6 +13,8 @@ import Combine
 extension Notification.Name {
     static let popupSelectNext = Notification.Name("popupSelectNext")
     static let popupSelectPrev = Notification.Name("popupSelectPrev")
+    static let threadScrollDown = Notification.Name("threadScrollDown")
+    static let threadScrollUp = Notification.Name("threadScrollUp")
 }
 
 enum DetailViewMode: Equatable {
@@ -40,6 +42,8 @@ struct ContentView: View {
     @State private var isSearchMode = false
     @State private var searchResults: [MailMessage] = []
     @State private var lastSearchQuery = ""
+    @State private var focusedMessageIndex: Int = 0
+    @State private var isThreadFocused: Bool = false
 
     var body: some View {
         ZStack {
@@ -406,7 +410,9 @@ struct ContentView: View {
                         },
                         onRemoveTag: { tag in
                             Task { await accountManager.removeTag(id: email.id, tag: tag) }
-                        }
+                        },
+                        focusedMessageIndex: $focusedMessageIndex,
+                        isThreadFocused: isThreadFocused
                     )
                     .id(email.id)  // Force new View instance on email change to reset @State
                     
@@ -507,6 +513,15 @@ struct ContentView: View {
         }
     }
     
+    /// Number of thread messages for the currently focused email
+    private var currentThreadMessageCount: Int {
+        guard let emailId = cursorEmailId,
+              let email = accountManager.mailMessages.first(where: { $0.id == emailId })
+                          ?? searchResults.first(where: { $0.id == emailId }),
+              let messages = email.threadMessages else { return 1 }
+        return max(messages.count, 1)
+    }
+
     // MARK: - Display Emails (Search Mode vs Normal)
 
     private var displayEmails: [MailMessage] {
@@ -1031,6 +1046,62 @@ struct ContentView: View {
                 } else {
                     detailMode = .empty
                 }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // THREAD CONTEXT HANDLERS
+        // ═══════════════════════════════════════════════════════════
+
+        // l - Enter thread view
+        keymapHandler.registerSimpleHandler(for: .enterThread) { [self] in
+            await MainActor.run {
+                guard cursorEmailId != nil else { return }
+                focusedMessageIndex = 0
+                isThreadFocused = true
+                keymapHandler.engine.setContext(.thread)
+            }
+        }
+
+        // j/k in thread - scroll
+        keymapHandler.registerSimpleHandler(for: .scrollDown, context: .thread) {
+            NotificationCenter.default.post(name: .threadScrollDown, object: nil)
+        }
+
+        keymapHandler.registerSimpleHandler(for: .scrollUp, context: .thread) {
+            NotificationCenter.default.post(name: .threadScrollUp, object: nil)
+        }
+
+        // n/N in thread - navigate messages
+        keymapHandler.registerSimpleHandler(for: .nextMessage, context: .thread) { [self] in
+            await MainActor.run {
+                let count = currentThreadMessageCount
+                if focusedMessageIndex < count - 1 {
+                    focusedMessageIndex += 1
+                }
+            }
+        }
+
+        keymapHandler.registerSimpleHandler(for: .prevMessage, context: .thread) { [self] in
+            await MainActor.run {
+                if focusedMessageIndex > 0 {
+                    focusedMessageIndex -= 1
+                }
+            }
+        }
+
+        // h/Escape in thread - back to list
+        keymapHandler.registerSimpleHandler(for: .closeDetail, context: .thread) { [self] in
+            await MainActor.run {
+                isThreadFocused = false
+                keymapHandler.engine.setContext(.list)
+            }
+        }
+
+        // r in thread - reply
+        keymapHandler.registerSimpleHandler(for: .reply, context: .thread) { [self] in
+            await MainActor.run {
+                replyToSelected()
             }
         }
 

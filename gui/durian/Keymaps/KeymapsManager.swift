@@ -152,9 +152,19 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous tag (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
             // Compose normal context
             KeymapEntry(action: "exit_insert", key: "jk", modifiers: [], description: "Exit insert mode (jk)", enabled: true, sequence: true, supportsCount: false, context: "compose_normal"),
+            // List context: enter thread
+            KeymapEntry(action: "enter_thread", key: "l", modifiers: [], description: "Enter thread view (l)", enabled: true, sequence: false, supportsCount: false),
+            // Thread context
+            KeymapEntry(action: "scroll_down", key: "j", modifiers: [], description: "Scroll down in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "scroll_up", key: "k", modifiers: [], description: "Scroll up in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "next_message", key: "n", modifiers: [], description: "Next message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "prev_message", key: "N", modifiers: [], description: "Previous message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "h", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false, context: "thread"),
         ]
     }
-    
+
     private func generateTOML(from config: KeymapConfig) -> String {
         var toml = "# durian Keymaps Configuration\n"
         toml += "# All vim-style keybindings are configurable here\n"
@@ -368,6 +378,28 @@ class KeymapsManager: ObservableObject {
             KeymapEntry(action: "exit_insert", key: "jk", modifiers: [],
                        description: "Exit insert mode (jk)", enabled: true,
                        sequence: true, supportsCount: false, context: "compose_normal"),
+
+            // ═══════════════════════════════════════════════════════════
+            // THREAD CONTEXT
+            // ═══════════════════════════════════════════════════════════
+            KeymapEntry(action: "enter_thread", key: "l", modifiers: [],
+                       description: "Enter thread view (l)", enabled: true,
+                       sequence: false, supportsCount: false),
+            KeymapEntry(action: "next_message", key: "j", modifiers: [],
+                       description: "Next message in thread", enabled: true,
+                       sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "prev_message", key: "k", modifiers: [],
+                       description: "Previous message in thread", enabled: true,
+                       sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "h", modifiers: [],
+                       description: "Back to email list", enabled: true,
+                       sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
+                       description: "Back to email list", enabled: true,
+                       sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "reply", key: "r", modifiers: [],
+                       description: "Reply to email", enabled: true,
+                       sequence: false, supportsCount: false, context: "thread"),
         ]
 
         keymaps = config
