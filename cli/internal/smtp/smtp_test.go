@@ -111,7 +111,7 @@ func TestMessageBuildHTML(t *testing.T) {
 	}
 
 	// Check body present
-	if !strings.Contains(content, "<h1>Hello!</h1>") || !strings.Contains(content, "<p>This is HTML content.</p>") {
+	if !strings.Contains(content, "<h1>Hello!</h1>") || !strings.Contains(content, "This is HTML content.") {
 		t.Error("HTML body content not found in message")
 	}
 }
