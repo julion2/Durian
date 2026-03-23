@@ -2,6 +2,7 @@ package mail
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -11,6 +12,45 @@ import (
 	"github.com/durian-dev/durian/cli/internal/encoding"
 	"github.com/durian-dev/durian/cli/internal/sanitize"
 )
+
+// detectMagic returns MIME type and extension from file magic bytes.
+// data may be base64-encoded; transferEncoding is checked to decode first.
+func detectMagic(data []byte, transferEncoding string) (mimeType, ext string) {
+	if len(data) < 8 {
+		return "", ""
+	}
+	// Decode transfer encoding to get raw bytes for magic check
+	raw := data
+	if strings.Contains(strings.ToLower(transferEncoding), "base64") {
+		// Only need first few bytes — decode a small chunk
+		chunk := data
+		if len(chunk) > 64 {
+			chunk = chunk[:64]
+		}
+		if decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(chunk))); err == nil {
+			raw = decoded
+		}
+	}
+	if len(raw) < 4 {
+		return "", ""
+	}
+	switch {
+	case bytes.HasPrefix(raw, []byte("%PDF")):
+		return "application/pdf", ".pdf"
+	case bytes.HasPrefix(raw, []byte{0x89, 'P', 'N', 'G'}):
+		return "image/png", ".png"
+	case bytes.HasPrefix(raw, []byte{0xFF, 0xD8, 0xFF}):
+		return "image/jpeg", ".jpg"
+	case bytes.HasPrefix(raw, []byte("GIF8")):
+		return "image/gif", ".gif"
+	case bytes.HasPrefix(raw, []byte{0x50, 0x4B, 0x03, 0x04}):
+		return "application/zip", ".zip"
+	case bytes.HasPrefix(raw, []byte("<?xml")):
+		return "application/xml", ".xml"
+	default:
+		return "", ""
+	}
+}
 
 // Parser handles MIME parsing of email messages
 type Parser struct{}
@@ -94,14 +134,27 @@ func (p *Parser) extractMultipart(r io.Reader, boundary string) (string, string,
 
 		if strings.Contains(contentDisp, "attachment") || (part.FileName() != "" && !strings.HasPrefix(mediaType, "text/")) {
 			name := encoding.DecodeHeader(part.FileName())
-			if name == "" {
-				name = "unnamed"
-			}
 			disposition := "attachment"
 			if strings.Contains(contentDisp, "inline") {
 				disposition = "inline"
 			}
 			attBody, _ := io.ReadAll(part)
+
+			// Detect real type from magic bytes when Content-Type is generic
+			if mediaType == "application/octet-stream" || name == "" {
+				if detected, ext := detectMagic(attBody, transferEncoding); detected != "" {
+					if mediaType == "application/octet-stream" {
+						mediaType = detected
+					}
+					if name == "" {
+						name = "attachment" + ext
+					}
+				}
+			}
+			if name == "" {
+				name = "unnamed"
+			}
+
 			attachments = append(attachments, AttachmentInfo{
 				Filename:    name,
 				ContentType: mediaType,
