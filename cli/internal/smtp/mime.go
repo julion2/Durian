@@ -100,7 +100,7 @@ func (m *Message) Build() ([]byte, error) {
 
 	body := m.Body
 	if m.IsHTML {
-		body = normalizeParagraphs(body)
+		body = `<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px">` + normalizeParagraphs(body) + `</div>`
 	}
 
 	if len(m.Attachments) == 0 {

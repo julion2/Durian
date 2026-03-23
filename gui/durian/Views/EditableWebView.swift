@@ -358,9 +358,9 @@ struct EditableWebView: NSViewRepresentable {
                         range.setEndBefore(sig);
                         const container = document.createElement('div');
                         container.appendChild(range.cloneContents());
-                        // Strip trailing <br> (visual separator before signature, not user content)
+                        // Strip trailing empty blocks and <br> (visual separator before signature)
                         let html = container.innerHTML;
-                        html = html.replace(/<br\\s*\\/?>$/i, '');
+                        while (html !== (html = html.replace(/(<div><br\\s*\\/?><\\/div>|<div><\\/div>|<br\\s*\\/?>)\\s*$/i, ''))) {}
                         return html;
                     }
                     return editor.innerHTML;
