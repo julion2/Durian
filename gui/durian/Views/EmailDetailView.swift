@@ -39,13 +39,18 @@ struct EmailDetailView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     ScrollViewFinder(scrollView: $detailScrollView)
                         .frame(height: 0)
+                        .id("thread-top")
                     headerSection
                     messageCards
                 }
             }
             .onChange(of: focusedMessageIndex) { _, newIndex in
                 withAnimation(.easeInOut(duration: 0.15)) {
-                    proxy.scrollTo("msg-\(newIndex)", anchor: .top)
+                    if newIndex == 0 {
+                        proxy.scrollTo("thread-top", anchor: .top)
+                    } else {
+                        proxy.scrollTo("msg-\(newIndex)", anchor: .top)
+                    }
                 }
             }
         }
@@ -56,6 +61,17 @@ struct EmailDetailView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .threadScrollUp)) { _ in
             scrollBy(-80)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .threadScrollToTop)) { _ in
+            guard let sv = detailScrollView else { return }
+            sv.contentView.setBoundsOrigin(.zero)
+            sv.reflectScrolledClipView(sv.contentView)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .threadScrollToBottom)) { _ in
+            guard let sv = detailScrollView else { return }
+            let maxY = max(sv.documentView!.frame.height - sv.contentView.bounds.height, 0)
+            sv.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
+            sv.reflectScrolledClipView(sv.contentView)
         }
         .onAppear {
             // Auto-load body if not loaded

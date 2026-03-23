@@ -155,10 +155,14 @@ class KeymapsManager: ObservableObject {
             // List context: enter thread
             KeymapEntry(action: "enter_thread", key: "l", modifiers: [], description: "Enter thread view (l)", enabled: true, sequence: false, supportsCount: false),
             // Thread context
-            KeymapEntry(action: "scroll_down", key: "j", modifiers: [], description: "Scroll down in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "scroll_up", key: "k", modifiers: [], description: "Scroll up in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "next_message", key: "n", modifiers: [], description: "Next message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "prev_message", key: "N", modifiers: [], description: "Previous message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "scroll_down", key: "j", modifiers: [], description: "Scroll down in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "scroll_up", key: "k", modifiers: [], description: "Scroll up in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "next_message", key: "n", modifiers: [], description: "Next message in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "prev_message", key: "N", modifiers: [], description: "Previous message in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First message in thread", enabled: true, sequence: true, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "close_detail", key: "h", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false, context: "thread"),
