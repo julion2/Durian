@@ -98,12 +98,17 @@ func (m *Message) Build() ([]byte, error) {
 		contentType = "text/html"
 	}
 
+	body := m.Body
+	if m.IsHTML {
+		body = normalizeParagraphs(body)
+	}
+
 	if len(m.Attachments) == 0 {
 		// Simple message (plain text or HTML)
 		fmt.Fprintf(&buf, "Content-Type: %s; charset=UTF-8\r\n", contentType)
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
 		fmt.Fprintf(&buf, "\r\n")
-		buf.WriteString(toQuotedPrintable(m.Body))
+		buf.WriteString(toQuotedPrintable(body))
 	} else {
 		// Multipart message with attachments
 		boundary := generateBoundary()
@@ -115,7 +120,7 @@ func (m *Message) Build() ([]byte, error) {
 		fmt.Fprintf(&buf, "Content-Type: %s; charset=UTF-8\r\n", contentType)
 		fmt.Fprintf(&buf, "Content-Transfer-Encoding: quoted-printable\r\n")
 		fmt.Fprintf(&buf, "\r\n")
-		buf.WriteString(toQuotedPrintable(m.Body))
+		buf.WriteString(toQuotedPrintable(body))
 		fmt.Fprintf(&buf, "\r\n")
 
 		// Attachment parts
@@ -217,6 +222,18 @@ func toQuotedPrintable(s string) string {
 	}
 
 	return buf.String()
+}
+
+// normalizeParagraphs adds margin:0 to <p> tags so recipient email clients
+// don't add extra spacing. Matches the compose editor's margin-reset style.
+func normalizeParagraphs(html string) string {
+	// <p> → <p style="margin:0">
+	result := strings.ReplaceAll(html, "<p>", `<p style="margin:0">`)
+	// <p style="..."> → inject margin:0 at start of existing style
+	result = strings.ReplaceAll(result, `<p style="`, `<p style="margin:0; `)
+	// Clean up double margin:0 from the two replacements above
+	result = strings.ReplaceAll(result, "margin:0; margin:0", "margin:0")
+	return result
 }
 
 // ensureAngleBrackets wraps a Message-ID in <> if not already present.
