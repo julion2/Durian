@@ -635,8 +635,25 @@ struct EditableWebView: NSViewRepresentable {
                             this.pending = '';
                             this.pendingCount = 0;
 
+                            // r: replace char with next typed char
+                            if (op === 'r' && key.length === 1 && key !== 'Escape') {
+                                this.replaceChar(key, pn);
+                                this.recordAction(['r', key]);
+                                return;
+                            }
+                            if (op === 'r') return; // Escape cancels r
+
+                            // f/t/F/T: find char on line
+                            if ((op === 'f' || op === 't' || op === 'F' || op === 'T') && key.length === 1 && key !== 'Escape') {
+                                const dir = (op === 'f' || op === 't') ? 'forward' : 'backward';
+                                const till = (op === 't' || op === 'T');
+                                for (let i = 0; i < pn; i++) this.findChar(key, dir, till);
+                                return;
+                            }
+                            if (op === 'f' || op === 't' || op === 'F' || op === 'T') return;
+
                             // Line ops: dd, cc, yy, gg
-                            if (combo === 'dd') { this.deleteLine(pn); return; }
+                            if (combo === 'dd') { this.deleteLine(pn); this.recordAction(['dd']); return; }
                             if (combo === 'cc') { this.changeLine(pn); return; }
                             if (combo === 'yy') { this.yankLine(pn); return; }
                             if (combo === 'gg') { this.goToTop(); return; }
@@ -644,6 +661,7 @@ struct EditableWebView: NSViewRepresentable {
                             // Operator + motion (dw, cw, yw, d$, etc.)
                             if ((op === 'd' || op === 'c' || op === 'y') && this.execMotion(key, pn, 'extend')) {
                                 this.applyOperator(op);
+                                if (op === 'd') this.recordAction([op, key]);
                                 return;
                             }
                             return;
@@ -704,14 +722,27 @@ struct EditableWebView: NSViewRepresentable {
                             case '$': if (sel.rangeCount) sel.modify(mot,'forward','lineboundary'); break;
                             case 'G': if (this.visual) { sel.modify('extend','forward','documentboundary'); } else { this.goToBottom(); } break;
                             // Editing
-                            case 'x': this.deleteForward(n); if (this.visual) { this.visual = ''; this.notifyMode(); } break;
+                            case 'x': this.deleteForward(n); this.recordAction(['x']); if (this.visual) { this.visual = ''; this.notifyMode(); } break;
                             case 'X': this.deleteBackward(n); if (this.visual) { this.visual = ''; this.notifyMode(); } break;
                             case 'u': document.execCommand('undo'); break;
                             case 'p': this.pasteAfter(); break;
                             case 'P': this.pasteBefore(); break;
+                            // New: r (replace), ~ (toggle case), J (join)
+                            case 'r': this.pending = 'r'; this.pendingCount = n; break;
+                            case '~': this.toggleCase(n); this.recordAction(['~']); break;
+                            case 'J': this.joinLines(n); this.recordAction(['J']); break;
+                            // New: f/t/F/T (find char), ;/, (repeat find)
+                            case 'f': this.pending = 'f'; this.pendingCount = n; break;
+                            case 't': this.pending = 't'; this.pendingCount = n; break;
+                            case 'F': this.pending = 'F'; this.pendingCount = n; break;
+                            case 'T': this.pending = 'T'; this.pendingCount = n; break;
+                            case ';': this.repeatFind(false); break;
+                            case ',': this.repeatFind(true); break;
+                            // New: . (repeat last action)
+                            case '.': this.repeatLastAction(n); break;
                             // Shortcuts: C = c$, D = d$
                             case 'C': if (sel.rangeCount) { sel.modify('extend','forward','lineboundary'); this.applyOperator('c'); } break;
-                            case 'D': if (sel.rangeCount) { sel.modify('extend','forward','lineboundary'); this.applyOperator('d'); } break;
+                            case 'D': if (sel.rangeCount) { sel.modify('extend','forward','lineboundary'); this.applyOperator('d'); this.recordAction(['D']); } break;
                             // Operators (pending, not in visual — visual handled above)
                             case 'd': this.pending = 'd'; this.pendingCount = n; break;
                             case 'c': this.pending = 'c'; this.pendingCount = n; break;
@@ -856,6 +887,112 @@ struct EditableWebView: NSViewRepresentable {
                     notifyTextChange() {
                         window.webkit.messageHandlers.textChanged.postMessage(getPlainText());
                         setTimeout(notifyHeight, 10);
+                    },
+
+                    // r: replace char under cursor with next typed char
+                    replaceChar(ch, n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('extend', 'forward', 'character');
+                            document.execCommand('insertText', false, ch);
+                        }
+                        // Move cursor back to last replaced char
+                        sel.modify('move', 'backward', 'character');
+                        this.notifyTextChange();
+                    },
+
+                    // ~: toggle case of char under cursor
+                    toggleCase(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('extend', 'forward', 'character');
+                            const ch = sel.toString();
+                            if (!ch) break;
+                            const toggled = ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase();
+                            document.execCommand('insertText', false, toggled);
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    // J: join current line with next line
+                    joinLines(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('move', 'forward', 'lineboundary');
+                            // Delete the line break and any leading whitespace on next line
+                            sel.modify('extend', 'forward', 'character');
+                            const br = sel.toString();
+                            if (!br || br === '') break;
+                            document.execCommand('insertText', false, ' ');
+                            // Trim leading whitespace of the joined line
+                            while (true) {
+                                sel.modify('extend', 'forward', 'character');
+                                const c = sel.toString();
+                                if (c === ' ' || c === '\\t') {
+                                    document.execCommand('delete');
+                                } else {
+                                    sel.collapseToStart();
+                                    break;
+                                }
+                            }
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    // f/t/F/T: find char on current line
+                    lastFind: null,
+                    findChar(ch, direction, till) {
+                        this.lastFind = { ch, direction, till };
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        const node = sel.focusNode;
+                        if (!node || node.nodeType !== 3) return;
+                        const text = node.textContent;
+                        let pos = sel.focusOffset;
+                        if (direction === 'forward') {
+                            const idx = text.indexOf(ch, pos + 1);
+                            if (idx === -1) return;
+                            const target = till ? idx - 1 : idx;
+                            if (target <= pos) return;
+                            const mot = this.visual ? 'extend' : 'move';
+                            for (let i = 0; i < target - pos; i++) sel.modify(mot, 'forward', 'character');
+                        } else {
+                            const idx = text.lastIndexOf(ch, pos - 1);
+                            if (idx === -1) return;
+                            const target = till ? idx + 1 : idx;
+                            if (target >= pos) return;
+                            const mot = this.visual ? 'extend' : 'move';
+                            for (let i = 0; i < pos - target; i++) sel.modify(mot, 'backward', 'character');
+                        }
+                    },
+
+                    // ;/,: repeat last f/t/F/T
+                    repeatFind(reverse) {
+                        if (!this.lastFind) return;
+                        const { ch, direction, till } = this.lastFind;
+                        const dir = reverse ? (direction === 'forward' ? 'backward' : 'forward') : direction;
+                        this.findChar(ch, dir, till);
+                    },
+
+                    // . repeat: last editing action
+                    lastAction: null,
+
+                    recordAction(keys) {
+                        this.lastAction = keys;
+                    },
+
+                    repeatLastAction(n) {
+                        if (!this.lastAction) return;
+                        const saved = this.lastAction;
+                        this.lastAction = null; // prevent overwrite during replay
+                        if (n > 1) this.count = String(n);
+                        for (const k of saved) {
+                            this.handleNormal({ key: k, ctrlKey: false, preventDefault() {} });
+                        }
+                        this.lastAction = saved; // restore
                     }
                 };
 
