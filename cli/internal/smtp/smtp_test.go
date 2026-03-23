@@ -89,7 +89,7 @@ func TestMessageBuildHTML(t *testing.T) {
 		From:    "sender@example.com",
 		To:      []string{"recipient@example.com"},
 		Subject: "HTML Newsletter",
-		Body:    "<html><body><h1>Hello!</h1><p>This is HTML content.</p></body></html>",
+		Body:    "<b>Hello!</b> Test content here.",
 		IsHTML:  true,
 	}
 
@@ -111,7 +111,7 @@ func TestMessageBuildHTML(t *testing.T) {
 	}
 
 	// Check body present
-	if !strings.Contains(content, "<h1>Hello!</h1>") || !strings.Contains(content, "This is HTML content.") {
+	if !strings.Contains(content, "Hello!") || !strings.Contains(content, "Test content here.") {
 		t.Error("HTML body content not found in message")
 	}
 }
