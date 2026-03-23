@@ -65,19 +65,7 @@ struct EmailRowView: View {
                 }
 
                 if !visibleTags.isEmpty {
-                    HStack(spacing: 4) {
-                        ForEach(visibleTags, id: \.self) { tag in
-                            Text(tag)
-                                .font(.caption2)
-                                .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    (isSelected ? Color.white.opacity(0.15) : Color.gray.opacity(0.15)),
-                                    in: Capsule()
-                                )
-                        }
-                    }
+                    tagRow
                 }
             }
         }
@@ -128,6 +116,16 @@ struct EmailRowView: View {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+
+    // MARK: - Tag Row
+
+    @ViewBuilder
+    private var tagRow: some View {
+        GeometryReader { geo in
+            TruncatedTagsView(tags: visibleTags, availableWidth: geo.size.width, isSelected: isSelected)
+        }
+        .frame(height: 18)
     }
 
     /// Tags already represented by icons or implied by the current view
@@ -276,3 +274,64 @@ struct EmailRowView: View {
         return names.isEmpty ? Self.extractName(from: email.from) : names.joined(separator: ", ")
     }
 }
+
+// MARK: - Truncated Tags View
+
+/// Displays tag capsules that fit within the available width, hiding overflow with "+N".
+/// Uses character-count estimation instead of view measurement for reliable layout.
+private struct TruncatedTagsView: View {
+    let tags: [String]
+    let availableWidth: CGFloat
+    let isSelected: Bool
+
+    private let hPadding: CGFloat = 6
+    private let spacing: CGFloat = 4
+    private let indicatorWidth: CGFloat = 24
+
+    private func tagWidth(_ tag: String) -> CGFloat {
+        CGFloat(tag.count) * 6.5 + hPadding * 2
+    }
+
+    private var layout: (shown: [String], overflow: Int) {
+        var used: CGFloat = 0
+        var shown: [String] = []
+
+        for (i, tag) in tags.enumerated() {
+            let w = tagWidth(tag) + (shown.isEmpty ? 0 : spacing)
+            let needsIndicator = i < tags.count - 1
+            let reserved = needsIndicator ? indicatorWidth + spacing : 0
+
+            if used + w + reserved <= availableWidth {
+                used += w
+                shown.append(tag)
+            } else {
+                break
+            }
+        }
+        return (shown, tags.count - shown.count)
+    }
+
+    var body: some View {
+        let result = layout
+        HStack(spacing: spacing) {
+            ForEach(result.shown, id: \.self) { tag in
+                Text(tag)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .foregroundStyle(isSelected ? .white.opacity(0.7) : .secondary)
+                    .padding(.horizontal, hPadding)
+                    .padding(.vertical, 2)
+                    .background(
+                        (isSelected ? Color.white.opacity(0.15) : Color.gray.opacity(0.15)),
+                        in: Capsule()
+                    )
+            }
+            if result.overflow > 0 {
+                Text("+\(result.overflow)")
+                    .font(.caption2)
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.5) : Color.secondary)
+            }
+        }
+    }
+}
+
