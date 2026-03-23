@@ -385,6 +385,7 @@ struct ThreadMessageCardView: View {
     @State private var downloadStates: [Int: AttachmentDownloadState] = [:]
     @State private var selectedAttachmentId: Int? = nil
     @State private var spaceMonitor: AnyObject? = nil
+    @State private var resolvedHTML: String? = nil
 
     /// Non-inline attachments for this message
     private var displayAttachments: [AttachmentInfo] {
@@ -405,7 +406,7 @@ struct ThreadMessageCardView: View {
             }
 
             // Content: prefer HTML, fallback to plain text
-            if let html = message.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let html = resolvedHTML ?? message.html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 NonScrollingWebView(
                     html: html,
                     theme: SettingsManager.shared.settings.theme,
@@ -414,6 +415,9 @@ struct ThreadMessageCardView: View {
                     contentHeight: $contentHeight
                 )
                 .frame(height: max(contentHeight, 50))
+                .task(id: message.id) {
+                    await resolveInlineImages()
+                }
             } else if !message.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(message.body)
                     .font(.system(size: 14))
@@ -793,6 +797,42 @@ struct ThreadMessageCardView: View {
             Log.error("ATTACHMENT", "Download failed for \(attachment.filename): \(error)")
             scheduleErrorClear(attachment.partId)
             return nil
+        }
+    }
+
+    /// Resolve cid: references in HTML by fetching inline attachment data
+    private func resolveInlineImages() async {
+        guard let html = message.html else { return }
+
+        // Find inline attachments with content IDs
+        let inlineAttachments = (message.attachments ?? []).filter {
+            $0.disposition == "inline" && $0.contentId != nil && !$0.contentId!.isEmpty
+        }
+        guard !inlineAttachments.isEmpty else { return }
+
+        // Check if HTML actually contains cid: references
+        guard html.contains("cid:") else { return }
+
+        var resolved = html
+        for attachment in inlineAttachments {
+            guard let contentId = attachment.contentId else { continue }
+            // Content-ID can be with or without angle brackets
+            let cleanId = contentId.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+            guard resolved.contains("cid:\(cleanId)") else { continue }
+
+            // Fetch the attachment data
+            guard let data = await fetchAttachmentData(attachment) else { continue }
+            let base64 = data.base64EncodedString()
+            let dataURL = "data:\(attachment.contentType);base64,\(base64)"
+
+            resolved = resolved.replacingOccurrences(of: "cid:\(cleanId)", with: dataURL)
+        }
+
+        // Only update if we actually resolved something
+        if resolved != html {
+            await MainActor.run {
+                resolvedHTML = resolved
+            }
         }
     }
 
