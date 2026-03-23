@@ -76,9 +76,9 @@ func (m *Message) Build() ([]byte, error) {
 
 	// Write headers
 	fmt.Fprintf(&buf, "From: %s\r\n", m.From)
-	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(m.To, ", "))
+	fmt.Fprintf(&buf, "To: %s\r\n", formatAddressList(m.To))
 	if len(m.CC) > 0 {
-		fmt.Fprintf(&buf, "Cc: %s\r\n", strings.Join(m.CC, ", "))
+		fmt.Fprintf(&buf, "Cc: %s\r\n", formatAddressList(m.CC))
 	}
 	// Note: BCC is not included in headers (by design - recipients are added via RCPT TO only)
 	fmt.Fprintf(&buf, "Subject: %s\r\n", encodeHeader(m.Subject))
@@ -234,6 +234,25 @@ func normalizeParagraphs(html string) string {
 	// Clean up double margin:0 from the two replacements above
 	result = strings.ReplaceAll(result, "margin:0; margin:0", "margin:0")
 	return result
+}
+
+// formatAddressList quotes display names that contain commas for safe use in headers.
+// "Hammer, Timo Dr. <t@x.com>" → "\"Hammer, Timo Dr.\" <t@x.com>"
+func formatAddressList(addrs []string) string {
+	formatted := make([]string, len(addrs))
+	for i, addr := range addrs {
+		if idx := strings.LastIndex(addr, "<"); idx > 0 {
+			name := strings.TrimSpace(addr[:idx])
+			rest := addr[idx:]
+			if strings.Contains(name, ",") && !strings.HasPrefix(name, "\"") {
+				name = "\"" + strings.ReplaceAll(name, "\"", "\\\"") + "\""
+			}
+			formatted[i] = name + " " + rest
+		} else {
+			formatted[i] = addr
+		}
+	}
+	return strings.Join(formatted, ", ")
 }
 
 // ensureAngleBrackets wraps a Message-ID in <> if not already present.
