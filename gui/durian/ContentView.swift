@@ -15,6 +15,8 @@ extension Notification.Name {
     static let popupSelectPrev = Notification.Name("popupSelectPrev")
     static let threadScrollDown = Notification.Name("threadScrollDown")
     static let threadScrollUp = Notification.Name("threadScrollUp")
+    static let threadScrollToTop = Notification.Name("threadScrollToTop")
+    static let threadScrollToBottom = Notification.Name("threadScrollToBottom")
 }
 
 enum DetailViewMode: Equatable {
@@ -1061,30 +1063,64 @@ struct ContentView: View {
             }
         }
 
-        // j/k in thread - scroll
-        keymapHandler.registerSimpleHandler(for: .scrollDown, context: .thread) {
-            NotificationCenter.default.post(name: .threadScrollDown, object: nil)
-        }
-
-        keymapHandler.registerSimpleHandler(for: .scrollUp, context: .thread) {
-            NotificationCenter.default.post(name: .threadScrollUp, object: nil)
-        }
-
-        // n/N in thread - navigate messages
-        keymapHandler.registerSimpleHandler(for: .nextMessage, context: .thread) { [self] in
-            await MainActor.run {
-                let count = currentThreadMessageCount
-                if focusedMessageIndex < count - 1 {
-                    focusedMessageIndex += 1
-                }
+        // j/k in thread - scroll (supports count: 3j = scroll 3x)
+        keymapHandler.registerHandler(for: .scrollDown, context: .thread) { count in
+            for _ in 0..<count {
+                NotificationCenter.default.post(name: .threadScrollDown, object: nil)
             }
         }
 
-        keymapHandler.registerSimpleHandler(for: .prevMessage, context: .thread) { [self] in
+        keymapHandler.registerHandler(for: .scrollUp, context: .thread) { count in
+            for _ in 0..<count {
+                NotificationCenter.default.post(name: .threadScrollUp, object: nil)
+            }
+        }
+
+        // Ctrl+d/u in thread - half-page scroll
+        keymapHandler.registerHandler(for: .pageDown, context: .thread) { count in
+            let steps = 5 * count
+            for _ in 0..<steps {
+                NotificationCenter.default.post(name: .threadScrollDown, object: nil)
+            }
+        }
+
+        keymapHandler.registerHandler(for: .pageUp, context: .thread) { count in
+            let steps = 5 * count
+            for _ in 0..<steps {
+                NotificationCenter.default.post(name: .threadScrollUp, object: nil)
+            }
+        }
+
+        // n/N in thread - navigate messages (supports count: 3n = jump 3)
+        keymapHandler.registerHandler(for: .nextMessage, context: .thread) { [self] count in
             await MainActor.run {
-                if focusedMessageIndex > 0 {
-                    focusedMessageIndex -= 1
+                let max = currentThreadMessageCount - 1
+                focusedMessageIndex = min(focusedMessageIndex + count, max)
+            }
+        }
+
+        keymapHandler.registerHandler(for: .prevMessage, context: .thread) { [self] count in
+            await MainActor.run {
+                guard focusedMessageIndex > 0 else { return }
+                focusedMessageIndex = max(focusedMessageIndex - count, 0)
+            }
+        }
+
+        // gg/G in thread - first/last message
+        keymapHandler.registerSimpleHandler(for: .firstEmail, context: .thread) { [self] in
+            await MainActor.run {
+                guard focusedMessageIndex > 0 else { return }
+                focusedMessageIndex = 0
+            }
+        }
+
+        keymapHandler.registerSimpleHandler(for: .lastEmail, context: .thread) { [self] in
+            await MainActor.run {
+                let last = max(currentThreadMessageCount - 1, 0)
+                if focusedMessageIndex == last {
+                    NotificationCenter.default.post(name: .threadScrollToBottom, object: nil)
                 }
+                focusedMessageIndex = last
             }
         }
 

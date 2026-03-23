@@ -248,25 +248,45 @@ description = "Enter thread view"
 action = "scroll_down"
 key = "j"
 context = "thread"
-description = "Scroll down"
+supports_count = true
+description = "Scroll down (3j = 3x)"
 
 [[keymaps]]
 action = "scroll_up"
 key = "k"
 context = "thread"
-description = "Scroll up"
+supports_count = true
+description = "Scroll up (3k = 3x)"
+
+[[keymaps]]
+action = "page_down"
+key = "d"
+modifiers = ["ctrl"]
+context = "thread"
+supports_count = true
+description = "Half-page down in thread"
+
+[[keymaps]]
+action = "page_up"
+key = "u"
+modifiers = ["ctrl"]
+context = "thread"
+supports_count = true
+description = "Half-page up in thread"
 
 [[keymaps]]
 action = "next_message"
 key = "n"
 context = "thread"
-description = "Next message in thread"
+supports_count = true
+description = "Next message in thread (3n = jump 3)"
 
 [[keymaps]]
 action = "prev_message"
 key = "N"
 context = "thread"
-description = "Previous message in thread"
+supports_count = true
+description = "Previous message in thread (3N = jump 3)"
 
 [[keymaps]]
 action = "close_detail"
