@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/mail"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -590,8 +591,11 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 					slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
 
 					if tagMapping != nil {
-						if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), tagMapping.AddTags, tagMapping.RemoveTags); err != nil {
-							slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
+						addTags := s.filterConflictingTags(messageID, tagMapping.AddTags)
+						if len(addTags) > 0 || len(tagMapping.RemoveTags) > 0 {
+							if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, tagMapping.RemoveTags); err != nil {
+								slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
+							}
 						}
 					} else if !strings.EqualFold(mailboxName, "INBOX") {
 						// Custom folder with no special-use mapping — remove inbox tag
@@ -817,6 +821,33 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 	}
 
 	return nil
+}
+
+// filterConflictingTags removes tags from addTags that conflict with the
+// message's existing tags. For example, "inbox" should not be re-added to a
+// message that already has "archive", "trash", or "spam".
+func (s *Syncer) filterConflictingTags(messageID string, addTags []string) []string {
+	if len(addTags) == 0 {
+		return addTags
+	}
+	existing, err := s.store.GetTagsByMessageID(messageID)
+	if err != nil {
+		slog.Debug("Failed to get tags for conflict check", "module", "SYNC", "message_id", messageID, "err", err)
+		return addTags
+	}
+	// Tags that block re-adding "inbox"
+	inboxBlockers := []string{"archive", "trash", "spam"}
+	var filtered []string
+	for _, tag := range addTags {
+		if tag == "inbox" && slices.ContainsFunc(existing, func(t string) bool {
+			return slices.Contains(inboxBlockers, t)
+		}) {
+			slog.Debug("Skipping conflicting tag", "module", "SYNC", "message_id", messageID, "skipped", tag, "existing", existing)
+			continue
+		}
+		filtered = append(filtered, tag)
+	}
+	return filtered
 }
 
 // syncFlags synchronizes flags between local store and IMAP server.
