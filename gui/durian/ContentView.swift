@@ -600,7 +600,7 @@ struct ContentView: View {
         visualModeAnchor = nil
         keymapHandler.engine.exitVisualMode()
         advanceCursor(to: next)
-        Task {
+        Task { @MainActor in
             await accountManager.deleteMessages(ids: ids)
             await accountManager.refreshFolderCounts()
         }
@@ -924,26 +924,34 @@ struct ContentView: View {
         
         // Archive: a - add archive tag and remove inbox tag (works with multi-selection)
         keymapHandler.registerSimpleHandler(for: .archiveEmail) { [self] in
-            await MainActor.run {
+            let ids = await MainActor.run { () -> Set<String> in
                 let ids = markedEmails
-                guard !ids.isEmpty else { return }
+                guard !ids.isEmpty else { return [] }
                 let next = nextEmailId(after: ids)
                 accountManager.removeLocally(ids: ids)
                 advanceCursor(to: next)
-                Task {
-                    for id in ids {
-                        await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
-                    }
-                    await accountManager.refreshFolderCounts()
-                }
+                return ids
             }
+            for id in ids {
+                await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
+            }
+            await accountManager.refreshFolderCounts()
         }
 
         // Delete: dd - works with multi-selection
         keymapHandler.registerSimpleHandler(for: .deleteEmail) { [self] in
-            await MainActor.run {
-                deleteSelectedEmails()
+            let ids = await MainActor.run { () -> Set<String> in
+                guard !markedEmails.isEmpty else { return [] }
+                let ids = markedEmails
+                let next = nextEmailId(after: ids)
+                accountManager.removeLocally(ids: ids)
+                visualModeAnchor = nil
+                keymapHandler.engine.exitVisualMode()
+                advanceCursor(to: next)
+                return ids
             }
+            await accountManager.deleteMessages(ids: ids)
+            await accountManager.refreshFolderCounts()
         }
         
         // ═══════════════════════════════════════════════════════════
