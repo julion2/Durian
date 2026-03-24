@@ -98,11 +98,11 @@ func (d *DB) UpdateBody(messageID, bodyText, bodyHTML string) error {
 	return nil
 }
 
-// UpdateMailbox sets the mailbox for a message identified by message_id and account.
-func (d *DB) UpdateMailbox(messageID, account, mailbox string) error {
+// UpdateMailbox sets the mailbox and UID for a message identified by message_id and account.
+func (d *DB) UpdateMailbox(messageID, account, mailbox string, uid uint32) error {
 	_, err := d.db.Exec(
-		"UPDATE messages SET mailbox = ? WHERE message_id = ? AND account = ?",
-		mailbox, messageID, account)
+		"UPDATE messages SET mailbox = ?, uid = ? WHERE message_id = ? AND account = ?",
+		mailbox, uid, messageID, account)
 	if err != nil {
 		return fmt.Errorf("update mailbox: %w", err)
 	}
