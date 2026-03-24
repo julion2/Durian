@@ -28,6 +28,7 @@ class KeymapHandler: ObservableObject {
 
     /// When true, space key is passed through for attachment QuickLook preview.
     var attachmentSelected = false
+    var composeActive = false
     
     // Legacy action handlers (for keymaps.toml defined shortcuts with modifiers)
     private var legacyActionHandlers: [String: () async -> Void] = [:]
@@ -231,25 +232,22 @@ class KeymapHandler: ObservableObject {
     /// Check if a text input field is currently focused
     /// This prevents vim keymaps from interfering with typing in search, compose, etc.
     private func isTextInputFocused() -> Bool {
-        guard let keyWindow = NSApp.keyWindow else { return false }
-
-        // Only process keymaps in the main window (first window).
-        // Compose and other secondary windows handle their own input.
-        if keyWindow != NSApp.windows.first {
+        // Compose window active — all keys go to compose (JS vim engine handles them)
+        if composeActive {
             return true
         }
 
-        guard let firstResponder = keyWindow.firstResponder else {
+        guard let responder = NSApp.keyWindow?.firstResponder else {
             return false
         }
 
         // NSTextView is the editor for TextField, TextEditor, etc.
-        if firstResponder is NSTextView {
+        if responder is NSTextView {
             return true
         }
 
         // Directly editable NSTextField
-        if let textField = firstResponder as? NSTextField,
+        if let textField = responder as? NSTextField,
            textField.isEditable {
             return true
         }
