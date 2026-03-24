@@ -601,8 +601,8 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 						}
 					}
 
-					// Update mailbox to reflect the message's current server folder
-					if err := s.store.UpdateMailbox(messageID, s.accountName(), mailboxName); err != nil {
+					// Update mailbox and UID to reflect the message's current server folder
+					if err := s.store.UpdateMailbox(messageID, s.accountName(), mailboxName, uid); err != nil {
 						slog.Debug("Failed to update mailbox", "module", "SYNC", "message_id", messageID, "err", err)
 					}
 
