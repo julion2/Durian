@@ -213,6 +213,8 @@ struct ComposeWindow: View {
         }
         } // ZStack
         .background(WindowCloseGuard(allowClose: $allowClose, onCloseAttempt: { handleDismiss() }))
+        .onAppear { KeymapHandler.shared.composeActive = true }
+        .onDisappear { KeymapHandler.shared.composeActive = false }
     }
     
     // MARK: - Actions
