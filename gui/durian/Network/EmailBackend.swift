@@ -718,6 +718,7 @@ class EmailBackend: ObservableObject {
     func deleteMessage(id: String) async throws {
         try await tag(query: "thread:\(id)", tags: "+trash -inbox -unread")
         emails.removeAll { $0.id == id }
+        await reload()
     }
     
     func reload() async {

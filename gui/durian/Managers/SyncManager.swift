@@ -491,6 +491,11 @@ class SyncManager: ObservableObject {
                 let subject = event.subject ?? "Email"
                 BannerManager.shared.showSuccess(title: "Sent Successfully", message: "\(subject) has been delivered.")
             }
+            // Refresh email list so Sent folder shows the new message
+            Task {
+                await AccountManager.shared.emailBackend?.reload()
+                await AccountManager.shared.refreshFolderCounts()
+            }
         case "failed":
             let detail = event.error ?? "Unknown error"
             let subject = event.subject ?? "Email"
