@@ -53,7 +53,3 @@ func DeleteToken(email string) error {
 	return nil
 }
 
-// ListTokenAccounts returns all email addresses that have stored tokens
-func ListTokenAccounts() ([]string, error) {
-	return keychain.ListAccounts(KeychainService)
-}

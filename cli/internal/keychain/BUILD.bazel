@@ -2,7 +2,11 @@ load("@rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "keychain",
-    srcs = ["keychain.go"],
+    srcs = [
+        "keychain.go",
+        "keychain_darwin.go",
+        "keychain_linux.go",
+    ],
     importpath = "github.com/durian-dev/durian/cli/internal/keychain",
     visibility = ["//cli:__subpackages__"],
 )
