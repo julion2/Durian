@@ -22,14 +22,15 @@ struct EmailWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         
-        // SECURITY: Disable JavaScript completely
-        config.defaultWebpagePreferences.allowsContentJavaScript = false
+        // JavaScript is disabled in HTML via CSP (script-src 'none').
+        // evaluateJavaScript from Swift bypasses CSP for dark mode transform.
         
         // SECURITY: Disable auto-opening windows
         config.preferences.javaScriptCanOpenWindowsAutomatically = false
         
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
+        context.coordinator.parent = self
         return webView
     }
     
@@ -57,30 +58,17 @@ struct EmailWebView: NSViewRepresentable {
                 a { color: #0066cc; }
             """
         case "dark":
-            // Always invert for robust dark mode (handles inline styles)
             themeCSS = """
-                html {
-                    filter: invert(1) hue-rotate(180deg);
-                    background-color: #1e1e1e;
-                }
-                img, video, iframe, [style*="background-image"] {
-                    filter: invert(1) hue-rotate(180deg);
-                }
+                body { background-color: #2a2a2c; }
             """
         default: // "system" - follow system preference via @media query
             themeCSS = """
-                @media (prefers-color-scheme: dark) {
-                    html {
-                        filter: invert(1) hue-rotate(180deg);
-                        background-color: #1e1e1e;
-                    }
-                    img, video, iframe, [style*="background-image"] {
-                        filter: invert(1) hue-rotate(180deg);
-                    }
-                }
                 @media (prefers-color-scheme: light) {
                     body { background-color: #ffffff; color: #000000; }
                     a { color: #0066cc; }
+                }
+                @media (prefers-color-scheme: dark) {
+                    body { background-color: #2a2a2c; }
                 }
             """
         }
@@ -113,8 +101,18 @@ struct EmailWebView: NSViewRepresentable {
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-    
+
     class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: EmailWebView?
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            let isDark = parent?.theme == "dark" ||
+                (parent?.theme == "system" && NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
+            if isDark {
+                webView.evaluateJavaScript(DarkModeTransform.js)
+            }
+        }
+
         // Links open in default browser (not in WebView)
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             if navigationAction.navigationType == .linkActivated,
