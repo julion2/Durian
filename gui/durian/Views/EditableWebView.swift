@@ -23,6 +23,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var htmlBody: String
     var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ strikethrough: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
     var onVimModeChange: ((_ mode: String) -> Void)?
+    var onSearchRequest: (() -> Void)?
     var vimInsertExitKeys: [String] = []
 
     func makeNSView(context: Context) -> WKWebView {
@@ -39,8 +40,12 @@ struct EditableWebView: NSViewRepresentable {
         config.userContentController.add(handler, name: "vimModeChanged")
         config.userContentController.add(handler, name: "vimYank")
         config.userContentController.add(handler, name: "vimPaste")
+        config.userContentController.add(handler, name: "vimSearch")
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
+        #if DEBUG
+        webView.isInspectable = true
+        #endif
         webView.navigationDelegate = context.coordinator
         webView.wantsLayer = true
         webView.layer?.backgroundColor = NSColor.clear.cgColor
@@ -536,6 +541,110 @@ struct EditableWebView: NSViewRepresentable {
                         return node;
                     },
 
+                    // Select a text object (iw, aw, i", a", i(, a(, etc.)
+                    // inner=true for 'i' objects, false for 'a' objects
+                    // Get block text and cursor offset within it
+                    getBlockContext() {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return null;
+                        const block = this.getCurrentBlock();
+                        if (!block) return null;
+                        const text = block.textContent;
+                        // Calculate cursor offset within block
+                        const range = document.createRange();
+                        range.setStart(block, 0);
+                        range.setEnd(sel.focusNode, sel.focusOffset);
+                        const pos = range.toString().length;
+                        return { block, text, pos };
+                    },
+
+                    // Set selection by offset within a block element
+                    setBlockSelection(block, start, end) {
+                        const sel = window.getSelection();
+                        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                        let offset = 0;
+                        let startNode = null, startOff = 0, endNode = null, endOff = 0;
+                        while (walker.nextNode()) {
+                            const node = walker.currentNode;
+                            const len = node.textContent.length;
+                            if (!startNode && offset + len > start) {
+                                startNode = node;
+                                startOff = start - offset;
+                            }
+                            if (!endNode && offset + len >= end) {
+                                endNode = node;
+                                endOff = end - offset;
+                            }
+                            offset += len;
+                            if (startNode && endNode) break;
+                        }
+                        if (!startNode || !endNode) return false;
+                        const range = document.createRange();
+                        range.setStart(startNode, startOff);
+                        range.setEnd(endNode, endOff);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        return true;
+                    },
+
+                    selectTextObject(obj, inner) {
+                        const ctx = this.getBlockContext();
+                        if (!ctx) return false;
+                        const { block, text, pos } = ctx;
+
+                        if (obj === 'w' || obj === 'W') {
+                            const isWord = obj === 'w'
+                                ? (c) => /\\w/.test(c)
+                                : (c) => c !== ' ' && c !== '\\t' && c !== '\\n';
+                            let start = pos, end = pos;
+                            if (pos < text.length && isWord(text[pos])) {
+                                while (start > 0 && isWord(text[start - 1])) start--;
+                                while (end < text.length && isWord(text[end])) end++;
+                            } else {
+                                while (start > 0 && !isWord(text[start - 1])) start--;
+                                while (end < text.length && !isWord(text[end])) end++;
+                            }
+                            if (!inner) {
+                                while (end < text.length && text[end] === ' ') end++;
+                                if (end === pos) { while (start > 0 && text[start - 1] === ' ') start--; }
+                            }
+                            return this.setBlockSelection(block, start, end);
+                        }
+
+                        // Paired delimiters
+                        const pairs = { '(': ')', ')': ')', '{': '}', '}': '}', '[': ']', ']': ']', '<': '>', '>': '>' };
+                        const quotes = ['"', "'", '`'];
+
+                        if (quotes.includes(obj)) {
+                            let start = text.lastIndexOf(obj, pos - 1);
+                            let end = text.indexOf(obj, Math.max(pos, start + 1));
+                            if (start === -1 && pos < text.length && text[pos] === obj) { start = pos; end = text.indexOf(obj, start + 1); }
+                            if (start === -1 || end === -1) return false;
+                            return this.setBlockSelection(block, inner ? start + 1 : start, inner ? end : end + 1);
+                        }
+
+                        if (pairs[obj]) {
+                            const open = [')', '}', ']', '>'].includes(obj) ? Object.keys(pairs).find(k => pairs[k] === obj && k !== obj) : obj;
+                            const close = pairs[open];
+                            let depth = 0, start = -1;
+                            for (let i = pos; i >= 0; i--) {
+                                if (text[i] === close && i !== pos) depth++;
+                                if (text[i] === open) { if (depth === 0) { start = i; break; } depth--; }
+                            }
+                            if (start === -1) return false;
+                            depth = 0;
+                            let endPos = -1;
+                            for (let i = start + 1; i < text.length; i++) {
+                                if (text[i] === open) depth++;
+                                if (text[i] === close) { if (depth === 0) { endPos = i; break; } depth--; }
+                            }
+                            if (endPos === -1) return false;
+                            return this.setBlockSelection(block, inner ? start + 1 : start, inner ? endPos : endPos + 1);
+                        }
+
+                        return false;
+                    },
+
                     // Execute a motion in 'move' or 'extend' mode
                     execMotion(key, n, mode) {
                         const sel = window.getSelection();
@@ -617,6 +726,8 @@ struct EditableWebView: NSViewRepresentable {
 
                     handleNormal(e) {
                         const key = e.key;
+                        // Ignore bare modifier keys (Shift, Control, etc.)
+                        if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(key)) return;
                         if (e.ctrlKey && key === 'r') { document.execCommand('redo'); return; }
 
                         if (/^[1-9]$/.test(key) || (this.count && /^[0-9]$/.test(key))) {
@@ -652,11 +763,41 @@ struct EditableWebView: NSViewRepresentable {
                             }
                             if (op === 'f' || op === 't' || op === 'F' || op === 'T') return;
 
-                            // Line ops: dd, cc, yy, gg
+                            // Visual mode text objects: viw, vi", etc.
+                            if (op === 'visual_obj') {
+                                const inner = this.textObjInner;
+                                delete this.textObjInner;
+                                this.selectTextObject(key, inner);
+                                return;
+                            }
+
+                            // Line ops: dd, cc, yy, gg, >>, <<
                             if (combo === 'dd') { this.deleteLine(pn); this.recordAction(['dd']); return; }
                             if (combo === 'cc') { this.changeLine(pn); return; }
                             if (combo === 'yy') { this.yankLine(pn); return; }
                             if (combo === 'gg') { this.goToTop(); return; }
+                            if (combo === '>>') { this.indentLine(pn); this.recordAction(['>>']); return; }
+                            if (combo === '<<') { this.outdentLine(pn); this.recordAction(['<<']); return; }
+
+                            // Text objects: di, ci, yi + next key; da, ca, ya + next key
+                            if ((op === 'd' || op === 'c' || op === 'y') && (key === 'i' || key === 'a')) {
+                                this.pending = op;
+                                this.pendingCount = pn;
+                                this.textObjInner = (key === 'i');
+                                return;
+                            }
+
+                            // Resolve text object (e.g. diw, ci", ya()
+                            if ((op === 'd' || op === 'c' || op === 'y') && this.textObjInner !== undefined) {
+                                const inner = this.textObjInner;
+                                delete this.textObjInner;
+                                if (this.selectTextObject(key, inner)) {
+                                    this.applyOperator(op);
+                                    if (op === 'd') this.recordAction([op, inner ? 'i' : 'a', key]);
+                                    return;
+                                }
+                                return;
+                            }
 
                             // Operator + motion (dw, cw, yw, d$, etc.)
                             if ((op === 'd' || op === 'c' || op === 'y') && this.execMotion(key, pn, 'extend')) {
@@ -704,8 +845,14 @@ struct EditableWebView: NSViewRepresentable {
                                 this.notifyMode();
                                 break;
                             // Insert mode entries (not in visual)
-                            case 'i': if (!this.visual) this.setMode('insert'); break;
-                            case 'a': if (!this.visual) { if (sel.rangeCount) sel.modify('move','forward','character'); this.setMode('insert'); } break;
+                            case 'i':
+                                if (this.visual) { this.pending = 'visual_obj'; this.textObjInner = true; }
+                                else this.setMode('insert');
+                                break;
+                            case 'a':
+                                if (this.visual) { this.pending = 'visual_obj'; this.textObjInner = false; }
+                                else { if (sel.rangeCount) sel.modify('move','forward','character'); this.setMode('insert'); }
+                                break;
                             case 'I': if (!this.visual) { if (sel.rangeCount) sel.modify('move','backward','lineboundary'); this.setMode('insert'); } break;
                             case 'A': if (!this.visual) { if (sel.rangeCount) sel.modify('move','forward','lineboundary'); this.setMode('insert'); } break;
                             case 'o': if (!this.visual) { this.openLineBelow(); this.setMode('insert'); } break;
@@ -748,6 +895,12 @@ struct EditableWebView: NSViewRepresentable {
                             case 'c': this.pending = 'c'; this.pendingCount = n; break;
                             case 'y': this.pending = 'y'; this.pendingCount = n; break;
                             case 'g': this.pending = 'g'; this.pendingCount = n; break;
+                            case '>': this.pending = '>'; this.pendingCount = n; break;
+                            case '<': this.pending = '<'; this.pendingCount = n; break;
+                            case '%': this.matchBracket(); break;
+                            case '/': this.openSearch(); break;
+                            case 'n': this.searchNext(false); break;
+                            case 'N': this.searchNext(true); break;
                             case 'Escape':
                                 if (this.visual) { this.visual = ''; sel.collapseToEnd(); this.notifyMode(); }
                                 this.pending = '';
@@ -795,6 +948,140 @@ struct EditableWebView: NSViewRepresentable {
                         this.register = lines.join('\\n');
                         this.registerIsLine = true;
                         window.webkit.messageHandlers.vimYank.postMessage(this.register);
+                    },
+
+                    indentLine(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        const savedOffset = sel.focusOffset;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('move', 'backward', 'lineboundary');
+                            document.execCommand('insertText', false, '\\t');
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    outdentLine(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('move', 'backward', 'lineboundary');
+                            // Check leading whitespace via selection
+                            let removed = 0;
+                            while (removed < 4) {
+                                sel.modify('extend', 'forward', 'character');
+                                const ch = sel.toString();
+                                if (ch === ' ') {
+                                    document.execCommand('delete');
+                                    removed++;
+                                } else if (ch === '\\t' && removed === 0) {
+                                    document.execCommand('delete');
+                                    break;
+                                } else {
+                                    sel.collapseToStart();
+                                    break;
+                                }
+                            }
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    matchBracket() {
+                        const ctx = this.getBlockContext();
+                        if (!ctx) return;
+                        const { block, text, pos } = ctx;
+                        const pairs = { '(': ')', ')': '(', '{': '}', '}': '{', '[': ']', ']': '[', '<': '>', '>': '<' };
+                        const opens = new Set(['(', '{', '[', '<']);
+
+                        // Find a bracket at or after cursor on current line
+                        let bracketPos = -1;
+                        for (let i = pos; i < text.length; i++) {
+                            if (text[i] === '\\n') break;
+                            if (pairs[text[i]]) { bracketPos = i; break; }
+                        }
+                        // Also check at cursor
+                        if (bracketPos === -1 && pos < text.length && pairs[text[pos]]) bracketPos = pos;
+                        if (bracketPos === -1) return;
+
+                        const ch = text[bracketPos];
+                        const match = pairs[ch];
+                        const forward = opens.has(ch);
+                        let depth = 0;
+                        let targetPos = -1;
+
+                        if (forward) {
+                            for (let i = bracketPos + 1; i < text.length; i++) {
+                                if (text[i] === ch) depth++;
+                                if (text[i] === match) { if (depth === 0) { targetPos = i; break; } depth--; }
+                            }
+                        } else {
+                            for (let i = bracketPos - 1; i >= 0; i--) {
+                                if (text[i] === ch) depth++;
+                                if (text[i] === match) { if (depth === 0) { targetPos = i; break; } depth--; }
+                            }
+                        }
+                        if (targetPos === -1) return;
+
+                        // Move cursor to matched bracket
+                        const sel = window.getSelection();
+                        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                        let offset = 0;
+                        while (walker.nextNode()) {
+                            const node = walker.currentNode;
+                            const len = node.textContent.length;
+                            if (offset + len > targetPos) {
+                                const range = document.createRange();
+                                range.setStart(node, targetPos - offset);
+                                range.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(range);
+                                return;
+                            }
+                            offset += len;
+                        }
+                    },
+
+                    // / search
+                    lastSearch: '',
+
+                    openSearch() {
+                        window.webkit.messageHandlers.vimSearch.postMessage({});
+                    },
+
+                    doSearch(query) {
+                        console.log('[vimsearch] doSearch called:', query);
+                        if (query) {
+                            this.lastSearch = query;
+                            this.searchNext(false);
+                        }
+                        editor.focus();
+                    },
+
+                    searchNext(reverse) {
+                        console.log('[vimsearch] searchNext reverse=' + reverse, 'lastSearch=' + this.lastSearch);
+                        if (!this.lastSearch) return;
+                        const sel = window.getSelection();
+                        // Collapse to end of current selection to search forward
+                        if (!reverse && sel.rangeCount && !sel.isCollapsed) {
+                            sel.collapseToEnd();
+                        } else if (reverse && sel.rangeCount && !sel.isCollapsed) {
+                            sel.collapseToStart();
+                        }
+                        const found = window.find(this.lastSearch, false, reverse, true);
+                        if (!found) {
+                            // Wrap around: move to start/end and try again
+                            const range = document.createRange();
+                            if (reverse) {
+                                range.selectNodeContents(editor);
+                                range.collapse(false);
+                            } else {
+                                range.setStart(editor, 0);
+                                range.collapse(true);
+                            }
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                            window.find(this.lastSearch, false, reverse, true);
+                        }
                     },
 
                     openLineBelow() {
@@ -1110,6 +1397,24 @@ struct EditableWebView: NSViewRepresentable {
         var lastLoadedSignature: String?
         var initialLoadDone = false
         private var isUpdating = false
+        private var searchObserver: Any?
+
+        override init() {
+            super.init()
+            searchObserver = NotificationCenter.default.addObserver(
+                forName: .vimSearchSubmit, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let query = notification.object as? String else { return }
+                self?.webView?.window?.makeFirstResponder(self?.webView)
+                self?.webView?.evaluateJavaScript("vim.doSearch('\(query)')")
+            }
+        }
+
+        deinit {
+            if let observer = searchObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             switch message.name {
@@ -1166,6 +1471,14 @@ struct EditableWebView: NSViewRepresentable {
                     .replacingOccurrences(of: "\n", with: "\\n")
                     .replacingOccurrences(of: "\r", with: "")
                 webView?.evaluateJavaScript("vim.doPaste('\(escaped)', \(before))")
+            case "vimSearch":
+                DispatchQueue.main.async {
+                    self.parent?.onSearchRequest?()
+                }
+            case "vimSearchFocus":
+                DispatchQueue.main.async {
+                    self.webView?.window?.makeFirstResponder(self.webView)
+                }
             default:
                 break
             }
