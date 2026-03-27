@@ -516,17 +516,17 @@ struct ThreadMessageCardView: View {
     @ViewBuilder
     private var recipientsRow: some View {
         HStack(spacing: 4) {
-            // To recipients
-            if let to = message.to, !to.isEmpty {
+            // To recipients (from message, fallback to parent email)
+            if let to = message.to ?? email.to, !to.isEmpty {
                 Text("To:")
                     .foregroundColor(Color.Detail.textTertiary)
                 Text(extractRecipientNames(to).joined(separator: ", "))
                     .foregroundColor(Color.Detail.textSecondary)
                     .lineLimit(1)
             }
-            
+
             // Cc recipients (only if present)
-            if let cc = message.cc, !cc.isEmpty {
+            if let cc = message.cc ?? email.cc, !cc.isEmpty {
                 Text("Cc:")
                     .foregroundColor(Color.Detail.textTertiary)
                 Text(extractRecipientNames(cc).joined(separator: ", "))
@@ -571,7 +571,13 @@ struct ThreadMessageCardView: View {
                 return String(name[..<pipeRange.lowerBound]).trimmingCharacters(in: .whitespaces)
             }
             
-            return name.isEmpty ? nil : name
+            if !name.isEmpty { return name }
+            // Fallback: show local part of email
+            let email = AddressUtils.extractEmail(from: fullPart)
+            if let at = email.firstIndex(of: "@") {
+                return String(email[..<at])
+            }
+            return nil
         }
     }
     
