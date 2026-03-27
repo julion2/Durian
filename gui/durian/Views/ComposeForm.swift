@@ -8,6 +8,10 @@
 import SwiftUI
 import AppKit
 import Combine
+
+extension Notification.Name {
+    static let vimSearchSubmit = Notification.Name("vimSearchSubmit")
+}
 import UniformTypeIdentifiers
 
 struct ComposeForm: View {
@@ -41,6 +45,8 @@ struct ComposeForm: View {
     @State private var currentFontFamily: String = "Helvetica"
     @State private var currentAlignment: String = "left"
     @State private var vimMode: String = "insert"
+    @State private var showVimSearch: Bool = false
+    @State private var vimSearchText: String = ""
     @FocusState private var focusedField: ComposeField?  // Shared focus state
     
     // Contact suggestion popup state
@@ -155,6 +161,22 @@ struct ComposeForm: View {
             autoSaveCancellable?.cancel()
             removeKeyMonitor()
             currentDraft = nil
+        }
+        .overlay(alignment: .bottomLeading) {
+            if showVimSearch {
+                VimSearchPill(text: $vimSearchText, onSubmit: {
+                    let escaped = vimSearchText
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    NotificationCenter.default.post(name: .vimSearchSubmit, object: escaped)
+                    showVimSearch = false
+                }, onDismiss: {
+                    showVimSearch = false
+                    NotificationCenter.default.post(name: .vimSearchSubmit, object: "")
+                })
+                .padding(.leading, 20)
+                .padding(.bottom, 48)
+            }
         }
     }
     
@@ -433,6 +455,10 @@ struct ComposeForm: View {
                         },
                         onVimModeChange: { mode in
                             vimMode = mode
+                        },
+                        onSearchRequest: {
+                            vimSearchText = ""
+                            showVimSearch = true
                         },
                         vimInsertExitKeys: KeymapsManager.shared.keymaps.keymaps
                             .filter { $0.context == "compose_normal" && $0.action == "exit_insert" && $0.enabled }
@@ -913,6 +939,42 @@ struct AttachmentChip: View {
         .cornerRadius(8)
         .onTapGesture {
             onClick()
+        }
+    }
+}
+
+// MARK: - Vim Search Pill
+
+struct VimSearchPill: View {
+    @Binding var text: String
+    var onSubmit: () -> Void
+    var onDismiss: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text("/")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(Color.Detail.textTertiary)
+            TextField("", text: $text)
+                .font(.system(size: 12, design: .monospaced))
+                .textFieldStyle(.plain)
+                .frame(width: 180)
+                .focused($isFocused)
+                .onSubmit { onSubmit() }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.Detail.cardBackground)
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.Detail.border, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+        .onAppear { isFocused = true }
+        .onChange(of: isFocused) { _, focused in
+            if !focused { onDismiss() }
         }
     }
 }

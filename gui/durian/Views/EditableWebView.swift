@@ -23,6 +23,7 @@ struct EditableWebView: NSViewRepresentable {
     @Binding var htmlBody: String
     var onFormatStateChange: ((_ bold: Bool, _ italic: Bool, _ underline: Bool, _ strikethrough: Bool, _ fontSize: Int, _ fontFamily: String, _ alignment: String) -> Void)?
     var onVimModeChange: ((_ mode: String) -> Void)?
+    var onSearchRequest: (() -> Void)?
     var vimInsertExitKeys: [String] = []
 
     func makeNSView(context: Context) -> WKWebView {
@@ -39,6 +40,7 @@ struct EditableWebView: NSViewRepresentable {
         config.userContentController.add(handler, name: "vimModeChanged")
         config.userContentController.add(handler, name: "vimYank")
         config.userContentController.add(handler, name: "vimPaste")
+        config.userContentController.add(handler, name: "vimSearch")
 
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
         #if DEBUG
@@ -896,6 +898,9 @@ struct EditableWebView: NSViewRepresentable {
                             case '>': this.pending = '>'; this.pendingCount = n; break;
                             case '<': this.pending = '<'; this.pendingCount = n; break;
                             case '%': this.matchBracket(); break;
+                            case '/': this.openSearch(); break;
+                            case 'n': this.searchNext(false); break;
+                            case 'N': this.searchNext(true); break;
                             case 'Escape':
                                 if (this.visual) { this.visual = ''; sel.collapseToEnd(); this.notifyMode(); }
                                 this.pending = '';
@@ -1033,6 +1038,49 @@ struct EditableWebView: NSViewRepresentable {
                                 return;
                             }
                             offset += len;
+                        }
+                    },
+
+                    // / search
+                    lastSearch: '',
+
+                    openSearch() {
+                        window.webkit.messageHandlers.vimSearch.postMessage({});
+                    },
+
+                    doSearch(query) {
+                        console.log('[vimsearch] doSearch called:', query);
+                        if (query) {
+                            this.lastSearch = query;
+                            this.searchNext(false);
+                        }
+                        editor.focus();
+                    },
+
+                    searchNext(reverse) {
+                        console.log('[vimsearch] searchNext reverse=' + reverse, 'lastSearch=' + this.lastSearch);
+                        if (!this.lastSearch) return;
+                        const sel = window.getSelection();
+                        // Collapse to end of current selection to search forward
+                        if (!reverse && sel.rangeCount && !sel.isCollapsed) {
+                            sel.collapseToEnd();
+                        } else if (reverse && sel.rangeCount && !sel.isCollapsed) {
+                            sel.collapseToStart();
+                        }
+                        const found = window.find(this.lastSearch, false, reverse, true);
+                        if (!found) {
+                            // Wrap around: move to start/end and try again
+                            const range = document.createRange();
+                            if (reverse) {
+                                range.selectNodeContents(editor);
+                                range.collapse(false);
+                            } else {
+                                range.setStart(editor, 0);
+                                range.collapse(true);
+                            }
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                            window.find(this.lastSearch, false, reverse, true);
                         }
                     },
 
@@ -1349,6 +1397,24 @@ struct EditableWebView: NSViewRepresentable {
         var lastLoadedSignature: String?
         var initialLoadDone = false
         private var isUpdating = false
+        private var searchObserver: Any?
+
+        override init() {
+            super.init()
+            searchObserver = NotificationCenter.default.addObserver(
+                forName: .vimSearchSubmit, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let query = notification.object as? String else { return }
+                self?.webView?.window?.makeFirstResponder(self?.webView)
+                self?.webView?.evaluateJavaScript("vim.doSearch('\(query)')")
+            }
+        }
+
+        deinit {
+            if let observer = searchObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             switch message.name {
@@ -1405,6 +1471,14 @@ struct EditableWebView: NSViewRepresentable {
                     .replacingOccurrences(of: "\n", with: "\\n")
                     .replacingOccurrences(of: "\r", with: "")
                 webView?.evaluateJavaScript("vim.doPaste('\(escaped)', \(before))")
+            case "vimSearch":
+                DispatchQueue.main.async {
+                    self.parent?.onSearchRequest?()
+                }
+            case "vimSearchFocus":
+                DispatchQueue.main.async {
+                    self.webView?.window?.makeFirstResponder(self.webView)
+                }
             default:
                 break
             }
