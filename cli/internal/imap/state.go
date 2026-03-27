@@ -3,6 +3,7 @@ package imap
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -284,7 +285,9 @@ func (sm *StateManager) lockPath(email string) string {
 	return sm.statePath(email) + ".lock"
 }
 
-// acquireLock acquires an exclusive file lock for the account state
+// acquireLock acquires an exclusive file lock for the account state.
+// Uses non-blocking flock with retry to avoid hanging indefinitely
+// when another process (e.g. watcher) holds the lock.
 func (sm *StateManager) acquireLock(email string) (*os.File, error) {
 	if err := os.MkdirAll(sm.cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache dir: %w", err)
@@ -295,12 +298,29 @@ func (sm *StateManager) acquireLock(email string) (*os.File, error) {
 		return nil, fmt.Errorf("failed to open lock file: %w", err)
 	}
 
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
-		lockFile.Close()
-		return nil, fmt.Errorf("failed to acquire lock (another sync running?): %w", err)
+	// Try non-blocking first
+	err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err == nil {
+		return lockFile, nil
 	}
 
-	return lockFile, nil
+	// Lock is held — retry with backoff (max 30s)
+	slog.Debug("Lock busy, waiting", "module", "SYNC", "account", email)
+	deadline := time.Now().Add(5 * time.Second)
+	delay := 250 * time.Millisecond
+	for time.Now().Before(deadline) {
+		time.Sleep(delay)
+		err = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return lockFile, nil
+		}
+		if delay < 2*time.Second {
+			delay *= 2
+		}
+	}
+
+	lockFile.Close()
+	return nil, fmt.Errorf("sync lock timeout: another sync is running for %s", email)
 }
 
 // releaseLock releases the file lock
