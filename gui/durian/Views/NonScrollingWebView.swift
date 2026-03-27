@@ -49,9 +49,13 @@ struct NonScrollingWebView: NSViewRepresentable {
         
         // Use custom WebView that passes scroll events to parent
         let webView = ScrollPassthroughWebView(frame: .zero, configuration: config)
+        #if DEBUG
+        webView.isInspectable = true
+        #endif
         webView.navigationDelegate = context.coordinator
         
         // Transparent background (let parent handle background color)
+        webView.setValue(false, forKey: "drawsBackground")
         webView.wantsLayer = true
         webView.layer?.backgroundColor = NSColor.clear.cgColor
         
@@ -96,29 +100,14 @@ struct NonScrollingWebView: NSViewRepresentable {
                 a { color: #0066cc; }
             """
         case "dark":
-            themeCSS = """
-                html {
-                    filter: invert(1) hue-rotate(180deg);
-                    background-color: transparent;
-                }
-                img, video, iframe, [style*="background-image"] {
-                    filter: invert(1) hue-rotate(180deg);
-                }
-            """
+            themeCSS = ""
         default: // "system" - follow system preference via @media query
             themeCSS = """
-                @media (prefers-color-scheme: dark) {
-                    html {
-                        filter: invert(1) hue-rotate(180deg);
-                        background-color: transparent;
-                    }
-                    img, video, iframe, [style*="background-image"] {
-                        filter: invert(1) hue-rotate(180deg);
-                    }
-                }
                 @media (prefers-color-scheme: light) {
                     body { background-color: transparent; color: #000000; }
                     a { color: #0066cc; }
+                }
+                @media (prefers-color-scheme: dark) {
                 }
             """
         }
@@ -165,18 +154,35 @@ struct NonScrollingWebView: NSViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Capture email ID at callback time to detect stale callbacks
             let expectedEmailId = loadedForEmailId
-            
-            // Measure content height after page loads
-            webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, error in
-                if let height = result as? CGFloat, height > 0 {
-                    DispatchQueue.main.async {
-                        // Only update height if still showing the same email (prevents race conditions)
-                        guard self?.parent?.emailId == expectedEmailId else { return }
-                        self?.parent?.contentHeight = height
+
+            // Apply dark mode color transformation if needed
+            let isDark = parent?.theme == "dark" ||
+                (parent?.theme == "system" && NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
+            if isDark {
+                webView.evaluateJavaScript(DarkModeTransform.js) { _, _ in
+                    // Measure height after dark mode transform (colors may affect layout)
+                    webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, _ in
+                        if let height = result as? CGFloat, height > 0 {
+                            DispatchQueue.main.async {
+                                guard self?.parent?.emailId == expectedEmailId else { return }
+                                self?.parent?.contentHeight = height
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Light mode: just measure height
+                webView.evaluateJavaScript("document.body.scrollHeight") { [weak self] result, _ in
+                    if let height = result as? CGFloat, height > 0 {
+                        DispatchQueue.main.async {
+                            guard self?.parent?.emailId == expectedEmailId else { return }
+                            self?.parent?.contentHeight = height
+                        }
                     }
                 }
             }
         }
+
         
         // Links open in default browser
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
