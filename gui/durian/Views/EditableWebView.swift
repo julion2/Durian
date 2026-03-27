@@ -769,11 +769,13 @@ struct EditableWebView: NSViewRepresentable {
                                 return;
                             }
 
-                            // Line ops: dd, cc, yy, gg
+                            // Line ops: dd, cc, yy, gg, >>, <<
                             if (combo === 'dd') { this.deleteLine(pn); this.recordAction(['dd']); return; }
                             if (combo === 'cc') { this.changeLine(pn); return; }
                             if (combo === 'yy') { this.yankLine(pn); return; }
                             if (combo === 'gg') { this.goToTop(); return; }
+                            if (combo === '>>') { this.indentLine(pn); this.recordAction(['>>']); return; }
+                            if (combo === '<<') { this.outdentLine(pn); this.recordAction(['<<']); return; }
 
                             // Text objects: di, ci, yi + next key; da, ca, ya + next key
                             if ((op === 'd' || op === 'c' || op === 'y') && (key === 'i' || key === 'a')) {
@@ -891,6 +893,9 @@ struct EditableWebView: NSViewRepresentable {
                             case 'c': this.pending = 'c'; this.pendingCount = n; break;
                             case 'y': this.pending = 'y'; this.pendingCount = n; break;
                             case 'g': this.pending = 'g'; this.pendingCount = n; break;
+                            case '>': this.pending = '>'; this.pendingCount = n; break;
+                            case '<': this.pending = '<'; this.pendingCount = n; break;
+                            case '%': this.matchBracket(); break;
                             case 'Escape':
                                 if (this.visual) { this.visual = ''; sel.collapseToEnd(); this.notifyMode(); }
                                 this.pending = '';
@@ -938,6 +943,97 @@ struct EditableWebView: NSViewRepresentable {
                         this.register = lines.join('\\n');
                         this.registerIsLine = true;
                         window.webkit.messageHandlers.vimYank.postMessage(this.register);
+                    },
+
+                    indentLine(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        const savedOffset = sel.focusOffset;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('move', 'backward', 'lineboundary');
+                            document.execCommand('insertText', false, '\\t');
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    outdentLine(n) {
+                        const sel = window.getSelection();
+                        if (!sel.rangeCount) return;
+                        for (let i = 0; i < n; i++) {
+                            sel.modify('move', 'backward', 'lineboundary');
+                            // Check leading whitespace via selection
+                            let removed = 0;
+                            while (removed < 4) {
+                                sel.modify('extend', 'forward', 'character');
+                                const ch = sel.toString();
+                                if (ch === ' ') {
+                                    document.execCommand('delete');
+                                    removed++;
+                                } else if (ch === '\\t' && removed === 0) {
+                                    document.execCommand('delete');
+                                    break;
+                                } else {
+                                    sel.collapseToStart();
+                                    break;
+                                }
+                            }
+                        }
+                        this.notifyTextChange();
+                    },
+
+                    matchBracket() {
+                        const ctx = this.getBlockContext();
+                        if (!ctx) return;
+                        const { block, text, pos } = ctx;
+                        const pairs = { '(': ')', ')': '(', '{': '}', '}': '{', '[': ']', ']': '[', '<': '>', '>': '<' };
+                        const opens = new Set(['(', '{', '[', '<']);
+
+                        // Find a bracket at or after cursor on current line
+                        let bracketPos = -1;
+                        for (let i = pos; i < text.length; i++) {
+                            if (text[i] === '\\n') break;
+                            if (pairs[text[i]]) { bracketPos = i; break; }
+                        }
+                        // Also check at cursor
+                        if (bracketPos === -1 && pos < text.length && pairs[text[pos]]) bracketPos = pos;
+                        if (bracketPos === -1) return;
+
+                        const ch = text[bracketPos];
+                        const match = pairs[ch];
+                        const forward = opens.has(ch);
+                        let depth = 0;
+                        let targetPos = -1;
+
+                        if (forward) {
+                            for (let i = bracketPos + 1; i < text.length; i++) {
+                                if (text[i] === ch) depth++;
+                                if (text[i] === match) { if (depth === 0) { targetPos = i; break; } depth--; }
+                            }
+                        } else {
+                            for (let i = bracketPos - 1; i >= 0; i--) {
+                                if (text[i] === ch) depth++;
+                                if (text[i] === match) { if (depth === 0) { targetPos = i; break; } depth--; }
+                            }
+                        }
+                        if (targetPos === -1) return;
+
+                        // Move cursor to matched bracket
+                        const sel = window.getSelection();
+                        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+                        let offset = 0;
+                        while (walker.nextNode()) {
+                            const node = walker.currentNode;
+                            const len = node.textContent.length;
+                            if (offset + len > targetPos) {
+                                const range = document.createRange();
+                                range.setStart(node, targetPos - offset);
+                                range.collapse(true);
+                                sel.removeAllRanges();
+                                sel.addRange(range);
+                                return;
+                            }
+                            offset += len;
+                        }
                     },
 
                     openLineBelow() {
