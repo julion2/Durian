@@ -34,25 +34,32 @@ Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Micr
 
 ## Install
 
+### macOS (Homebrew)
+
 ```bash
 brew tap julion2/tap
 brew install durian             # CLI (required — the GUI uses it as backend)
 brew install --cask durian      # GUI
 ```
 
+### Linux
+
+CLI only — build from source (see below).
+
 ## Build from Source
 
 ### Requirements
 
-- macOS 26+, Xcode 26+
-- [Bazelisk](https://github.com/bazelbuild/bazelisk) (`brew install bazelisk`)
+- **macOS:** macOS 26+, Xcode 26+ (CLI + GUI)
+- **Linux:** Go 1.24+, `secret-tool` (libsecret) for credential storage (CLI only)
+- [Bazelisk](https://github.com/bazelbuild/bazelisk)
 
 ### Build & Install
 
 ```bash
-bazel build //cli/cmd/durian    # CLI
-bazel build //gui:Durian        # GUI (debug)
-bazel build -c opt //gui:Durian # GUI (release)
+bazel build //cli/cmd/durian    # CLI (macOS & Linux)
+bazel build //gui:Durian        # GUI (macOS only, debug)
+bazel build -c opt //gui:Durian # GUI (macOS only, release)
 
 ./cli/install.sh                # build & install CLI to /usr/local/bin
 ./gui/install.sh                # build & install GUI to /Applications
