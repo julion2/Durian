@@ -21,7 +21,6 @@
 
 <p align="center">
   <img src="docs/screenshot-dark.png" width="800" />
-  <em>Note: Dark mode email body rendering is a work in progress — some emails with inline styles may not display optimally. See <a href="https://github.com/julion2/Durian/issues/110">#110</a>.</em>
   <br><br>
   <img src="docs/screenshot-compose.png" width="600" />
 </p>
