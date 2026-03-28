@@ -20,6 +20,7 @@ go_library(
         "//cli/internal/auth",
         "//cli/internal/config",
         "//cli/internal/contacts",
+        "//cli/internal/encoding",
         "//cli/internal/imap",
         "//cli/internal/mail",
         "//cli/internal/protocol",

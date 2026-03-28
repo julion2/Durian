@@ -18,6 +18,7 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/auth"
 	"github.com/durian-dev/durian/cli/internal/config"
+	"github.com/durian-dev/durian/cli/internal/encoding"
 	imapClient "github.com/durian-dev/durian/cli/internal/imap"
 	"github.com/durian-dev/durian/cli/internal/smtp"
 	"github.com/durian-dev/durian/cli/internal/store"
@@ -278,6 +279,11 @@ func (w *OutboxWorker) sendItem(item *store.OutboxItem) {
 	// Success — delete from outbox
 	slog.Info("Outbox item sent successfully", "module", "OUTBOX", "id", item.ID)
 	w.store.DeleteOutboxItem(item.ID)
+
+	// Save to local SQLite store so Sent folder shows the email immediately
+	// (without waiting for next IMAP sync).
+	w.saveToLocalStore(account, msg, &draft)
+
 	w.broadcastStatus(item.ID, "sent", "", draft.Subject, strings.Join(draft.To, ", "))
 
 	// Append to IMAP Sent folder (best-effort, same logic as send.go)
@@ -302,6 +308,51 @@ func (w *OutboxWorker) findAccount(from string) *config.AccountConfig {
 		}
 	}
 	return nil
+}
+
+// saveToLocalStore inserts the sent email into SQLite so the GUI can show it
+// immediately without waiting for the next IMAP sync. Best-effort: errors are
+// logged but do not affect the send result.
+func (w *OutboxWorker) saveToLocalStore(account *config.AccountConfig, msg *smtp.Message, draft *OutboxDraft) {
+	messageID := strings.Trim(msg.GeneratedMessageID, "<>")
+	if messageID == "" {
+		slog.Warn("No Message-ID available, skipping local store insert", "module", "OUTBOX")
+		return
+	}
+
+	now := time.Now().Unix()
+	fromAddr := account.Email
+	if account.DisplayName != "" {
+		fromAddr = fmt.Sprintf("%s <%s>", account.DisplayName, account.Email)
+	}
+	storeMsg := &store.Message{
+		MessageID:   messageID,
+		Subject:     draft.Subject,
+		FromAddr:    fromAddr,
+		ToAddrs:     strings.Join(draft.To, ", "),
+		CCAddrs:     strings.Join(draft.CC, ", "),
+		InReplyTo:   draft.InReplyTo,
+		Refs:        draft.References,
+		Date:        now,
+		CreatedAt:   now,
+		Flags:       "Seen",
+		FetchedBody: true,
+		Account:     account.AccountIdentifier(),
+	}
+	if draft.IsHTML {
+		storeMsg.BodyHTML = draft.Body
+		storeMsg.BodyText = encoding.HTMLToText(draft.Body)
+	} else {
+		storeMsg.BodyText = draft.Body
+	}
+
+	if err := w.store.InsertMessage(storeMsg); err != nil {
+		slog.Warn("Failed to save sent email to local store", "module", "OUTBOX", "err", err)
+		return
+	}
+	if err := w.store.AddTag(storeMsg.ID, "sent"); err != nil {
+		slog.Warn("Failed to tag sent email", "module", "OUTBOX", "err", err)
+	}
 }
 
 // appendToSent saves a copy to the IMAP Sent folder (skip for providers that auto-save).
