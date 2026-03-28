@@ -105,6 +105,12 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/outbox", h.ListOutboxHandler).Methods("GET")
 	r.HandleFunc("/api/v1/outbox/{id}", h.DeleteOutboxHandler).Methods("DELETE")
 
+	// Local draft routes (crash-recovery, not IMAP)
+	r.HandleFunc("/api/v1/local-drafts", h.ListLocalDraftsHandler).Methods("GET")
+	r.HandleFunc("/api/v1/local-drafts/{id}", h.SaveLocalDraftHandler).Methods("PUT")
+	r.HandleFunc("/api/v1/local-drafts/{id}", h.GetLocalDraftHandler).Methods("GET")
+	r.HandleFunc("/api/v1/local-drafts/{id}", h.DeleteLocalDraftHandler).Methods("DELETE")
+
 	// Start IMAP IDLE watchers if accounts are configured
 	watcherCtx, watcherCancel := context.WithCancel(context.Background())
 	defer watcherCancel()

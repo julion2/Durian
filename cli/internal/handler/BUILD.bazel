@@ -4,6 +4,7 @@ go_library(
     name = "handler",
     srcs = [
         "contacts.go",
+        "drafts.go",
         "events.go",
         "handler.go",
         "http.go",
