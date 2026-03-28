@@ -56,16 +56,21 @@ var defaultRoleFallbacks = map[SpecialUseRole][]string{
 	},
 	RoleArchive: {
 		"Archive", "Archives", "INBOX.Archive",
-		"[Gmail]/All Mail", "[Gmail]/Alle Nachrichten",
 		"Archiv",
+	},
+	RoleAll: {
+		"[Gmail]/All Mail", "[Gmail]/Alle Nachrichten", "[Gmail]/Todos",
+		"[Gmail]/Tous les messages", "[Gmail]/Tutti i messaggi",
+		"All Mail",
 	},
 }
 
 // Client wraps an IMAP client connection
 type Client struct {
-	account *config.AccountConfig
-	conn    *client.Client
-	timeout time.Duration
+	account          *config.AccountConfig
+	conn             *client.Client
+	timeout          time.Duration
+	fetchGmailLabels bool // When true, include X-GM-LABELS in FETCH requests
 }
 
 // NewClient creates a new IMAP client for the given account
@@ -292,6 +297,9 @@ func (c *Client) FetchMessages(uids []uint32) ([]*imap.Message, error) {
 		imap.FetchInternalDate,
 		imap.FetchRFC822,
 	}
+	if c.fetchGmailLabels {
+		items = append(items, "X-GM-LABELS")
+	}
 
 	slog.Debug("Fetching messages", "module", "IMAP", "uids", len(uids), "items", items)
 
@@ -351,7 +359,8 @@ func (c *Client) Idle(stop <-chan struct{}, updates chan<- bool) error {
 	}
 }
 
-// FetchFlags fetches only flags for the given UIDs (faster than full fetch)
+// FetchFlags fetches only flags for the given UIDs (faster than full fetch).
+// When fetchGmailLabels is enabled, X-GM-LABELS is included automatically.
 func (c *Client) FetchFlags(uids []uint32) (map[uint32][]string, error) {
 	if c.conn == nil {
 		return nil, fmt.Errorf("not connected")
@@ -386,6 +395,66 @@ func (c *Client) FetchFlags(uids []uint32) (map[uint32][]string, error) {
 
 	if err := <-done; err != nil {
 		return nil, fmt.Errorf("failed to fetch flags: %w", err)
+	}
+
+	return result, nil
+}
+
+// FetchGmailLabels fetches X-GM-LABELS for the given UIDs in batches.
+// Returns map[UID] -> []label strings.
+func (c *Client) FetchGmailLabels(uids []uint32) (map[uint32][]string, error) {
+	if c.conn == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	if len(uids) == 0 {
+		return make(map[uint32][]string), nil
+	}
+
+	const batchSize = 500
+	result := make(map[uint32][]string)
+	items := []imap.FetchItem{imap.FetchUid, "X-GM-LABELS"}
+
+	for i := 0; i < len(uids); i += batchSize {
+		end := i + batchSize
+		if end > len(uids) {
+			end = len(uids)
+		}
+		batch := uids[i:end]
+
+		seqSet := new(imap.SeqSet)
+		for _, uid := range batch {
+			seqSet.AddNum(uid)
+		}
+
+		messages := make(chan *imap.Message, len(batch))
+		done := make(chan error, 1)
+
+		go func() {
+			done <- c.conn.UidFetch(seqSet, items, messages)
+		}()
+
+		for msg := range messages {
+			raw, ok := msg.Items["X-GM-LABELS"]
+			if !ok || raw == nil {
+				continue
+			}
+			labels, ok := raw.([]interface{})
+			if !ok {
+				continue
+			}
+			var strs []string
+			for _, l := range labels {
+				s := fmt.Sprintf("%v", l)
+				s = strings.Trim(s, "\"")
+				strs = append(strs, s)
+			}
+			result[msg.Uid] = strs
+		}
+
+		if err := <-done; err != nil {
+			return nil, fmt.Errorf("failed to fetch gmail labels: %w", err)
+		}
 	}
 
 	return result, nil
