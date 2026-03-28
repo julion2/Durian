@@ -204,6 +204,10 @@ class AccountManager: ObservableObject {
 
     func fetchAllTags() async -> [String] {
         guard let backend = emailBackend else { return [] }
+        let profile = ProfileManager.shared.currentProfile
+        if let profile, !profile.isAll {
+            return await backend.fetchTags(accounts: profile.accounts)
+        }
         return await backend.fetchAllTags()
     }
 

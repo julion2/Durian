@@ -77,8 +77,14 @@ func (h *Handler) ShowThreadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListTagsHandler(w http.ResponseWriter, r *http.Request) {
-	response := h.ListTags()
-	writeJSON(w, response)
+	account := r.URL.Query().Get("account")
+	if account != "" {
+		response := h.ListTagsForAccounts(strings.Split(account, ","))
+		writeJSON(w, response)
+	} else {
+		response := h.ListTags()
+		writeJSON(w, response)
+	}
 }
 
 func (h *Handler) ShowMessageBodyHandler(w http.ResponseWriter, r *http.Request) {

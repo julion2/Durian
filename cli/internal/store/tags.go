@@ -1,6 +1,10 @@
 package store
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+)
 
 // AddTag adds a tag to a message. No-op if the tag already exists.
 func (d *DB) AddTag(messageDBID int64, tag string) error {
@@ -100,8 +104,23 @@ func (d *DB) GetMessageTags(messageDBID int64) ([]string, error) {
 }
 
 // ListTags returns all distinct tags in the database.
-func (d *DB) ListTags() ([]string, error) {
-	rows, err := d.db.Query("SELECT DISTINCT tag FROM tags ORDER BY tag")
+// When accounts are provided, only tags from those accounts are included.
+func (d *DB) ListTags(accounts ...string) ([]string, error) {
+	var rows *sql.Rows
+	var err error
+	if len(accounts) > 0 {
+		placeholders := make([]string, len(accounts))
+		params := make([]interface{}, len(accounts))
+		for i, a := range accounts {
+			placeholders[i] = "?"
+			params[i] = a
+		}
+		rows, err = d.db.Query(
+			"SELECT DISTINCT t.tag FROM tags t JOIN messages m ON m.id = t.message_id WHERE m.account IN ("+
+				strings.Join(placeholders, ",")+") ORDER BY t.tag", params...)
+	} else {
+		rows, err = d.db.Query("SELECT DISTINCT tag FROM tags ORDER BY tag")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("list tags: %w", err)
 	}
