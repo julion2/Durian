@@ -82,9 +82,12 @@ func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 	}
 	rows.Close()
 
-	// Fetch tags for each thread now that the rows cursor is released
+	// Fetch tags for each thread now that the rows cursor is released.
+	// Scope to queried accounts so cross-account threads only show
+	// tags from the current profile's accounts.
+	accounts := extractAccounts(query)
 	for i := range results {
-		tags, err := d.getThreadTags(results[i].Thread)
+		tags, err := d.getThreadTags(results[i].Thread, accounts...)
 		if err != nil {
 			return nil, fmt.Errorf("get thread tags: %w", err)
 		}
@@ -94,13 +97,23 @@ func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 	return results, nil
 }
 
-// getThreadTags returns distinct tags for all messages in a thread.
-func (d *DB) getThreadTags(threadID string) ([]string, error) {
-	rows, err := d.db.Query(`
-		SELECT DISTINCT t.tag FROM tags t
+// getThreadTags returns distinct tags for messages in a thread.
+// When accounts are provided, only tags from those accounts are included.
+func (d *DB) getThreadTags(threadID string, accounts ...string) ([]string, error) {
+	q := `SELECT DISTINCT t.tag FROM tags t
 		JOIN messages m ON m.id = t.message_id
-		WHERE m.thread_id = ?
-		ORDER BY t.tag`, threadID)
+		WHERE m.thread_id = ?`
+	params := []interface{}{threadID}
+	if len(accounts) > 0 {
+		placeholders := make([]string, len(accounts))
+		for i, a := range accounts {
+			placeholders[i] = "?"
+			params = append(params, a)
+		}
+		q += " AND m.account IN (" + strings.Join(placeholders, ",") + ")"
+	}
+	q += " ORDER BY t.tag"
+	rows, err := d.db.Query(q, params...)
 	if err != nil {
 		return nil, err
 	}
@@ -525,6 +538,35 @@ func parseDateEnd(s string) (int64, error) {
 		}
 	}
 	return 0, fmt.Errorf("unsupported date format: %q", s)
+}
+
+// extractAccounts parses the query and collects account names from path: filters.
+func extractAccounts(query string) []string {
+	tokens := lex(query)
+	node, err := parse(tokens)
+	if err != nil {
+		return nil
+	}
+	var accounts []string
+	collectAccounts(node, &accounts)
+	return accounts
+}
+
+// collectAccounts walks the AST and extracts accounts from path: field expressions.
+func collectAccounts(node exprNode, accounts *[]string) {
+	switch n := node.(type) {
+	case *fieldExpr:
+		if n.field == "path" {
+			if a := extractAccountFromPath(n.value); a != "" {
+				*accounts = append(*accounts, a)
+			}
+		}
+	case *binaryExpr:
+		collectAccounts(n.left, accounts)
+		collectAccounts(n.right, accounts)
+	case *notExpr:
+		collectAccounts(n.child, accounts)
+	}
 }
 
 // extractAccountFromPath extracts the account folder name from a path pattern.
