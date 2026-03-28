@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "attachments.go",
         "headers.go",
+        "local_drafts.go",
         "messages.go",
         "outbox.go",
         "search.go",

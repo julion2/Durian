@@ -24,8 +24,8 @@ func TestOpenAndInit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 6 {
-		t.Errorf("version = %d, want 6", version)
+	if version != 7 {
+		t.Errorf("version = %d, want 7", version)
 	}
 }
 

@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/draft"
 	"github.com/durian-dev/durian/cli/internal/smtp"
+	"github.com/durian-dev/durian/cli/internal/store"
 	"github.com/spf13/cobra"
 )
 
@@ -193,6 +197,9 @@ func runDraftSave(cmd *cobra.Command, args []string) error {
 		return outputDraftError(fmt.Sprintf("failed to save draft: %v", err))
 	}
 
+	// Save to local SQLite store so Drafts folder shows it immediately
+	saveDraftToLocalStore(account, result.MessageID, msg)
+
 	// Output success
 	resp := draftResponse{
 		OK:        true,
@@ -230,6 +237,54 @@ func runDraftDelete(cmd *cobra.Command, args []string) error {
 	// Output success
 	resp := draftResponse{OK: true}
 	return outputJSON(resp)
+}
+
+// saveDraftToLocalStore inserts the draft into SQLite so the Drafts folder
+// shows it immediately without waiting for the next IMAP sync.
+func saveDraftToLocalStore(account *config.AccountConfig, messageID string, msg *smtp.Message) {
+	messageID = strings.Trim(messageID, "<>")
+	if messageID == "" {
+		return
+	}
+
+	db, err := store.Open(store.DefaultDBPath())
+	if err != nil {
+		slog.Debug("Could not open store for draft insert", "module", "DRAFT", "err", err)
+		return
+	}
+	defer db.Close()
+
+	now := time.Now().Unix()
+	fromAddr := account.Email
+	if account.DisplayName != "" {
+		fromAddr = fmt.Sprintf("%s <%s>", account.DisplayName, account.Email)
+	}
+
+	storeMsg := &store.Message{
+		MessageID:   messageID,
+		Subject:     msg.Subject,
+		FromAddr:    fromAddr,
+		ToAddrs:     strings.Join(msg.To, ", "),
+		CCAddrs:     strings.Join(msg.CC, ", "),
+		InReplyTo:   msg.InReplyTo,
+		Refs:        msg.References,
+		Date:        now,
+		CreatedAt:   now,
+		Flags:       "Draft,Seen",
+		FetchedBody: true,
+		Account:     account.AccountIdentifier(),
+	}
+	if msg.IsHTML {
+		storeMsg.BodyHTML = msg.Body
+	} else {
+		storeMsg.BodyText = msg.Body
+	}
+
+	if err := db.InsertMessage(storeMsg); err != nil {
+		slog.Debug("Failed to save draft to local store", "module", "DRAFT", "err", err)
+		return
+	}
+	_ = db.AddTag(storeMsg.ID, "draft")
 }
 
 func outputDraftError(message string) error {
