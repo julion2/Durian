@@ -35,13 +35,102 @@ paths:
   /tags:
     get:
       summary: List all known tags
+      parameters:
+        - name: account
+          in: query
+          description: Comma-separated account identifiers to scope tags (omit for all)
+          schema:
+            type: string
       responses:
         '200':
-          description: A list of all tags
+          description: A list of tags
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/TagsResponse'
+  /local-drafts:
+    get:
+      summary: List all local crash-recovery drafts
+      responses:
+        '200':
+          description: All local drafts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LocalDraft'
+  /local-drafts/{id}:
+    put:
+      summary: Save or update a local draft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                draft_json:
+                  type: object
+                  description: The full EmailDraft JSON blob
+              required:
+                - draft_json
+      responses:
+        '200':
+          description: Draft saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+    get:
+      summary: Get a local draft by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalDraft'
+        '404':
+          description: Draft not found
+    delete:
+      summary: Delete a local draft
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Draft deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        '404':
+          description: Draft not found
   /threads/{thread_id}:
     get:
       summary: Get a specific email thread
@@ -494,6 +583,21 @@ components:
           type: string
         to:
           type: string
+    LocalDraft:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        draft_json:
+          type: object
+          description: The full EmailDraft JSON blob
+        created_at:
+          type: integer
+          format: int64
+        modified_at:
+          type: integer
+          format: int64
     AttachmentInfo:
       type: object
       properties:

@@ -513,6 +513,13 @@ class EmailBackend: ObservableObject {
         return response?.tags ?? []
     }
 
+    func fetchTags(accounts: [String]) async -> [String] {
+        let param = accounts.joined(separator: ",")
+        let encoded = param.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? param
+        let response: DurianResponse? = await request(endpoint: "/tags?account=\(encoded)")
+        return response?.tags ?? []
+    }
+
     /// Fetch the full (unstripped) body of a single message for reply quoting.
     /// Unlike thread bodies, this preserves the quoted conversation chain.
     func fetchOriginalBody(messageId: String) async -> MessageBodyResponse? {
