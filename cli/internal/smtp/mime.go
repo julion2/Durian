@@ -27,6 +27,9 @@ type Message struct {
 	InReplyTo  string // Message-ID of the message being replied to
 	References string // Space-separated list of Message-IDs in the thread
 	Attachments []Attachment
+	// GeneratedMessageID is populated by Build() on first call and reused on
+	// subsequent calls so that SMTP send and IMAP append share the same ID.
+	GeneratedMessageID string
 }
 
 // Attachment represents a file attachment
@@ -60,16 +63,20 @@ func LoadAttachment(path string) (*Attachment, error) {
 func (m *Message) Build() ([]byte, error) {
 	var buf bytes.Buffer
 
-	// Generate Message-ID using sender's domain
-	domain := "localhost"
-	if at := strings.LastIndex(m.From, "@"); at != -1 {
-		d := strings.TrimSpace(m.From[at+1:])
-		d = strings.TrimRight(d, ">")
-		if d != "" {
-			domain = d
+	// Generate Message-ID using sender's domain (reuse on subsequent calls)
+	messageID := m.GeneratedMessageID
+	if messageID == "" {
+		domain := "localhost"
+		if at := strings.LastIndex(m.From, "@"); at != -1 {
+			d := strings.TrimSpace(m.From[at+1:])
+			d = strings.TrimRight(d, ">")
+			if d != "" {
+				domain = d
+			}
 		}
+		messageID = fmt.Sprintf("<%s@%s>", uuid.New().String(), domain)
+		m.GeneratedMessageID = messageID
 	}
-	messageID := fmt.Sprintf("<%s@%s>", uuid.New().String(), domain)
 
 	// Format date per RFC 5322
 	date := time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700")

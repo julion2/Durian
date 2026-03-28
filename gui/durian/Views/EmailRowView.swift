@@ -260,10 +260,14 @@ struct EmailRowView: View {
         }
         // All authors are own → sent message. Show recipients instead.
         if let to = email.to, !to.isEmpty {
-            let recipients = Self.parseAddressList(to)
-                .filter { !Self.isOwn($0) }
-            if !recipients.isEmpty {
-                return recipients.map { Self.participant(from: $0) }
+            let allRecipients = Self.parseAddressList(to)
+            let externalRecipients = allRecipients.filter { !Self.isOwn($0) }
+            if !externalRecipients.isEmpty {
+                return externalRecipients.map { Self.participant(from: $0) }
+            }
+            // All recipients are also own (sent to self) — show them anyway
+            if !allRecipients.isEmpty {
+                return allRecipients.map { Self.participant(from: $0) }
             }
         }
         return authors.map { Participant(name: Self.extractName(from: $0), email: $0) }
