@@ -184,6 +184,11 @@ func (s *Syncer) Sync() (*SyncResult, error) {
 		}
 	}
 
+	// Enable Gmail label fetching if this is a Gmail account
+	if s.isGmail() {
+		s.client.fetchGmailLabels = true
+	}
+
 	// Get mailboxes to sync
 	mailboxes, err := s.getMailboxesToSync()
 	if err != nil {
@@ -342,11 +347,106 @@ func (s *Syncer) backfillHeaders(mailboxes []string) {
 	}
 }
 
+// isGmail returns true if the account is a Gmail/Google Workspace account.
+func (s *Syncer) isGmail() bool {
+	return s.account.OAuth.Provider == "google"
+}
+
+// isGmailAllMail returns true if this is Gmail and the mailbox is All Mail.
+func (s *Syncer) isGmailAllMail(mailboxName string) bool {
+	if !s.isGmail() {
+		return false
+	}
+	// Check SPECIAL-USE \All attribute
+	for _, mbox := range s.serverMailboxes {
+		if mbox.Name == mailboxName {
+			for _, attr := range mbox.Attributes {
+				if attr == "\\All" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// gmailSystemLabelTags maps Gmail system labels to durian tags.
+// Empty string means the label is recognized but ignored (no tag created).
+var gmailSystemLabelTags = map[string]string{
+	"\\Inbox":     "inbox",
+	"\\Sent":      "sent",
+	"\\Draft":     "draft",
+	"\\Starred":   "flagged",
+	"\\Important": "important",
+	"\\Trash":     "trash",
+	"\\Spam":      "spam",
+	// Gmail category tabs — ignore (not useful as tags)
+	"CATEGORY_PERSONAL":   "",
+	"CATEGORY_SOCIAL":     "",
+	"CATEGORY_PROMOTIONS": "",
+	"CATEGORY_UPDATES":    "",
+	"CATEGORY_FORUMS":     "",
+}
+
+// gmailLabelTags is the subset of gmailSystemLabelTags that produce actual tags.
+// Used by syncGmailLabels to detect stale tags that should be removed.
+var gmailLabelTags = func() map[string]string {
+	m := make(map[string]string)
+	for k, v := range gmailSystemLabelTags {
+		if v != "" {
+			m[k] = v
+		}
+	}
+	return m
+}()
+
+// gmailLabelsToTags extracts X-GM-LABELS from an IMAP message and converts them to tags.
+func gmailLabelsToTags(msg *goimap.Message) []string {
+	raw, ok := msg.Items["X-GM-LABELS"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	labels, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+
+	var tags []string
+	for _, l := range labels {
+		label := fmt.Sprintf("%v", l)
+		label = strings.Trim(label, "\"")
+
+		if tag, ok := gmailSystemLabelTags[label]; ok {
+			if tag != "" {
+				tags = append(tags, tag)
+			}
+			// Empty string = recognized but ignored (e.g. CATEGORY_*)
+		} else {
+			// User labels → lowercase tag with spaces→hyphens
+			tag := strings.ToLower(label)
+			tag = strings.ReplaceAll(tag, " ", "-")
+			if tag != "" {
+				tags = append(tags, tag)
+			}
+		}
+	}
+	return tags
+}
+
+
+
 // getMailboxesToSync returns the list of mailboxes to sync
 func (s *Syncer) getMailboxesToSync() ([]string, error) {
 	// If specific mailboxes are requested via CLI, use those
 	if len(s.options.Mailboxes) > 0 {
 		return s.options.Mailboxes, nil
+	}
+
+	// Gmail: sync only All Mail + Spam + Trash (labels come via X-GM-LABELS)
+	if s.isGmail() && len(s.account.IMAP.Mailboxes) == 0 {
+		slog.Info("Gmail account detected, using All Mail sync strategy", "module", "SYNC")
+		return s.resolveGmailMailboxes()
 	}
 
 	// If explicit mailboxes are configured in config, use those
@@ -396,6 +496,28 @@ func (s *Syncer) getMailboxesToSync() ([]string, error) {
 	}
 
 	return mailboxes, nil
+}
+
+// resolveGmailMailboxes finds the localized Gmail system mailboxes via SPECIAL-USE.
+// Gmail localizes folder names (e.g., "[Gmail]/Alle Nachrichten" for All Mail in German).
+func (s *Syncer) resolveGmailMailboxes() ([]string, error) {
+	allMail, err := s.client.FindMailboxByRole(RoleAll)
+	if err != nil {
+		return nil, fmt.Errorf("cannot find All Mail folder: %w", err)
+	}
+
+	var result []string
+	result = append(result, allMail)
+
+	if spam, err := s.client.FindMailboxByRole(RoleJunk); err == nil {
+		result = append(result, spam)
+	}
+	if trash, err := s.client.FindMailboxByRole(RoleTrash); err == nil {
+		result = append(result, trash)
+	}
+
+	slog.Info("Gmail mailboxes resolved", "module", "SYNC", "mailboxes", result)
+	return result, nil
 }
 
 // getMailboxesByName finds mailboxes by matching against a list of names (legacy fallback)
@@ -566,8 +688,14 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 				}
 			}
 
-			// Get folder tag mapping for this mailbox
-			tagMapping := s.getFolderTagMapping(mailboxName)
+			// Get folder tag mapping for this mailbox.
+			// For Gmail All Mail, skip folder mapping — labels are synced
+			// via syncGmailLabels instead (the Archive mapping would
+			// incorrectly strip inbox tags).
+			var tagMapping *FolderTagMapping
+			if !s.isGmailAllMail(mailboxName) {
+				tagMapping = s.getFolderTagMapping(mailboxName)
+			}
 
 			// Check each message for duplicates
 			for _, uid := range unsyncedUIDs {
@@ -1021,6 +1149,11 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 		moved = s.uploadFolderMoves(mboxState, localMessages, allUIDs)
 	}
 
+	// Gmail: sync X-GM-LABELS → tags (only for All Mail, not Spam/Trash)
+	if s.isGmailAllMail(mailboxName) {
+		s.syncGmailLabels(mboxState, allUIDs)
+	}
+
 	slog.Debug("Flag sync complete", "module", "SYNC", "checked", checkedCount, "uploaded", uploaded, "downloaded", downloaded, "moved", moved, "errors", flagErrors)
 
 	if uploaded > 0 || downloaded > 0 || moved > 0 || flagErrors > 0 {
@@ -1034,6 +1167,89 @@ func (s *Syncer) syncFlags(mailboxName string, mboxState *MailboxState, allUIDs 
 	}
 
 	return uploaded, downloaded, moved
+}
+
+// syncGmailLabels fetches X-GM-LABELS for all UIDs and syncs them to tags.
+// Adds missing label tags and removes stale system label tags (e.g. inbox
+// removed when a message is archived in Gmail).
+func (s *Syncer) syncGmailLabels(mboxState *MailboxState, allUIDs []uint32) {
+	gmailLabels, err := s.client.FetchGmailLabels(allUIDs)
+	if err != nil {
+		slog.Warn("Failed to fetch Gmail labels", "module", "SYNC", "err", err)
+		return
+	}
+
+	// Build reverse map: tag → system label (for detecting stale tags)
+	systemTagSet := make(map[string]bool)
+	for _, tag := range gmailLabelTags {
+		systemTagSet[tag] = true
+	}
+
+	updated := 0
+	for _, uid := range allUIDs {
+		messageID, hasMapping := mboxState.GetMessageID(uid)
+		if !hasMapping || messageID == "" {
+			continue
+		}
+
+		labels := gmailLabels[uid] // may be nil (no labels)
+
+		// Convert labels to expected tags
+		expectedTags := make(map[string]bool)
+		for _, label := range labels {
+			label = strings.Trim(label, "\"")
+			if tag, ok := gmailSystemLabelTags[label]; ok {
+				if tag != "" {
+					expectedTags[tag] = true
+				}
+			} else {
+				tag := strings.ToLower(label)
+				tag = strings.ReplaceAll(tag, " ", "-")
+				if tag != "" {
+					expectedTags[tag] = true
+				}
+			}
+		}
+
+		// Get current tags
+		currentTags, err := s.store.GetTagsByMessageID(messageID)
+		if err != nil {
+			continue
+		}
+		currentSet := make(map[string]bool, len(currentTags))
+		for _, t := range currentTags {
+			currentSet[t] = true
+		}
+
+		// Compute diff
+		var tagsToAdd, tagsToRemove []string
+		for tag := range expectedTags {
+			if !currentSet[tag] {
+				tagsToAdd = append(tagsToAdd, tag)
+			}
+		}
+		// Only remove system label tags (inbox, sent, etc.) — not user tags
+		// that might have been added by rules or manually
+		for _, tag := range currentTags {
+			if systemTagSet[tag] && !expectedTags[tag] {
+				tagsToRemove = append(tagsToRemove, tag)
+			}
+		}
+
+		if len(tagsToAdd) > 0 || len(tagsToRemove) > 0 {
+			if err := s.store.ModifyTagsByMessageIDAndAccount(
+				messageID, s.accountName(), tagsToAdd, tagsToRemove); err != nil {
+				slog.Debug("Failed to sync Gmail labels", "module", "SYNC",
+					"message_id", messageID, "err", err)
+			} else {
+				updated++
+			}
+		}
+	}
+
+	if updated > 0 {
+		slog.Info("Gmail labels synced", "module", "SYNC", "updated", updated)
+	}
 }
 
 // folderMove represents a pending IMAP folder move operation.
@@ -1324,12 +1540,20 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 		}
 	}
 
-	// Eagerly apply folder tags (inbox, sent, trash, etc.)
-	mapping := s.getFolderTagMapping(mailboxName)
-	if mapping != nil {
-		for _, tag := range mapping.AddTags {
+	// Apply tags: Gmail All Mail uses X-GM-LABELS; everything else uses folder mapping.
+	if s.isGmailAllMail(mailboxName) {
+		for _, tag := range gmailLabelsToTags(imapMsg) {
 			if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
-				return fmt.Errorf("add folder tag %q: %w", tag, err)
+				return fmt.Errorf("add gmail label tag %q: %w", tag, err)
+			}
+		}
+	} else {
+		mapping := s.getFolderTagMapping(mailboxName)
+		if mapping != nil {
+			for _, tag := range mapping.AddTags {
+				if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
+					return fmt.Errorf("add folder tag %q: %w", tag, err)
+				}
 			}
 		}
 	}
