@@ -21,6 +21,14 @@ type SyncConfig struct {
 	AutoFetchEnabled  bool    `toml:"auto_fetch_enabled"`
 	AutoFetchInterval float64 `toml:"auto_fetch_interval"` // seconds
 	FullSyncInterval  float64 `toml:"full_sync_interval"`  // seconds
+	// TagSync configures the optional tag sync server for multi-machine setups
+	TagSync TagSyncConfig `toml:"tag_sync"`
+}
+
+// TagSyncConfig configures the optional remote tag sync server.
+type TagSyncConfig struct {
+	URL    string `toml:"url"`     // e.g. "http://nas:8724"
+	APIKey string `toml:"api_key"` // Shared secret
 }
 
 // ContactsConfig contains contacts database settings

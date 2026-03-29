@@ -251,6 +251,60 @@ func (d *DB) GetAccountsByThread(threadID string) ([]string, error) {
 	return accounts, rows.Err()
 }
 
+// JournalTagChange records a user-initiated tag change for sync purposes.
+func (d *DB) JournalTagChange(messageID, account, tag, action string, timestamp int64) {
+	d.db.Exec(`INSERT INTO tag_journal (message_id, account, tag, action, timestamp)
+		VALUES (?, ?, ?, ?, ?)`, messageID, account, tag, action, timestamp)
+}
+
+// ReadTagJournal returns all pending journal entries without deleting them.
+func (d *DB) ReadTagJournal() ([]struct{ ID int64; MessageID, Account, Tag, Action string; Timestamp int64 }, error) {
+	rows, err := d.db.Query("SELECT id, message_id, account, tag, action, timestamp FROM tag_journal ORDER BY id")
+	if err != nil {
+		return nil, fmt.Errorf("read journal: %w", err)
+	}
+	defer rows.Close()
+
+	var result []struct{ ID int64; MessageID, Account, Tag, Action string; Timestamp int64 }
+	for rows.Next() {
+		var r struct{ ID int64; MessageID, Account, Tag, Action string; Timestamp int64 }
+		if err := rows.Scan(&r.ID, &r.MessageID, &r.Account, &r.Tag, &r.Action, &r.Timestamp); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// ClearTagJournal deletes journal entries up to and including the given ID.
+func (d *DB) ClearTagJournal(upToID int64) error {
+	_, err := d.db.Exec("DELETE FROM tag_journal WHERE id <= ?", upToID)
+	return err
+}
+
+// ExportAllTags returns all (message_id, account, tag) tuples in the database.
+// Used for initial push to the tag sync server.
+func (d *DB) ExportAllTags() ([]struct{ MessageID, Account, Tag string }, error) {
+	rows, err := d.db.Query(`
+		SELECT m.message_id, m.account, t.tag
+		FROM tags t JOIN messages m ON m.id = t.message_id
+		ORDER BY m.message_id`)
+	if err != nil {
+		return nil, fmt.Errorf("export tags: %w", err)
+	}
+	defer rows.Close()
+
+	var result []struct{ MessageID, Account, Tag string }
+	for rows.Next() {
+		var r struct{ MessageID, Account, Tag string }
+		if err := rows.Scan(&r.MessageID, &r.Account, &r.Tag); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
 // GetAllMessagesWithTags returns a map of message_id → tags for all messages
 // in a given mailbox. When account is non-empty, results are scoped to that account.
 // Used for IMAP flag synchronization.

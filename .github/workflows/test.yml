@@ -18,11 +18,17 @@ jobs:
           key: bazel-cli-${{ hashFiles('MODULE.bazel', 'cli/go.mod', 'cli/go.sum') }}
           restore-keys: bazel-cli-
 
-      - name: Test
+      - name: Test CLI
         run: bazel test //cli/... --test_output=errors
 
-      - name: Build
+      - name: Test Sync Server
+        run: bazel test //sync:sync_test --test_output=errors
+
+      - name: Build CLI
         run: bazel build //cli/cmd/durian
+
+      - name: Build Sync Server
+        run: bazel build //sync:durian-sync
 
   gui:
     name: GUI (Swift)

@@ -28,6 +28,7 @@ go_library(
         "//cli/internal/sanitize",
         "//cli/internal/smtp",
         "//cli/internal/store",
+        "//cli/internal/tagsync",
         "@com_github_emersion_go_imap//:go-imap",
         "@com_github_gorilla_mux//:mux",
     ],

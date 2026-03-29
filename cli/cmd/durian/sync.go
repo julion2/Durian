@@ -9,6 +9,7 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/imap"
+	"github.com/durian-dev/durian/cli/internal/tagsync"
 )
 
 var (
@@ -137,6 +138,58 @@ func runSync(cmd *cobra.Command, args []string) error {
 	results, err := imap.SyncAccounts(accounts, options)
 	if err != nil {
 		return err
+	}
+
+	// Tag sync: push journal entries, then pull remote changes
+	if cfg.Sync.TagSync.URL != "" && cfg.Sync.TagSync.APIKey != "" {
+		client := tagsync.NewClient(cfg.Sync.TagSync.URL, cfg.Sync.TagSync.APIKey)
+
+		// Push pending local changes from journal
+		journal, journalErr := emailDB.ReadTagJournal()
+		if journalErr == nil && len(journal) > 0 {
+			changes := make([]tagsync.TagChange, len(journal))
+			var maxID int64
+			for i, j := range journal {
+				changes[i] = tagsync.TagChange{
+					MessageID: j.MessageID, Account: j.Account,
+					Tag: j.Tag, Action: j.Action, Timestamp: j.Timestamp,
+				}
+				if j.ID > maxID {
+					maxID = j.ID
+				}
+			}
+			if err := client.Push(changes); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: tag sync push failed: %v\n", err)
+			} else {
+				emailDB.ClearTagJournal(maxID)
+				fmt.Fprintf(os.Stderr, "✓ Pushed %d tag changes\n", len(changes))
+			}
+		}
+
+		// Pull remote changes
+		since := client.LoadLastSync()
+		changes, syncAt, pullErr := client.Pull(since)
+		if pullErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: tag sync pull failed: %v\n", pullErr)
+		} else {
+			applied := 0
+			for _, c := range changes {
+				switch c.Action {
+				case "add":
+					if err := emailDB.ModifyTagsByMessageIDAndAccount(c.MessageID, c.Account, []string{c.Tag}, nil); err == nil {
+						applied++
+					}
+				case "remove":
+					if err := emailDB.ModifyTagsByMessageIDAndAccount(c.MessageID, c.Account, nil, []string{c.Tag}); err == nil {
+						applied++
+					}
+				}
+			}
+			client.SaveLastSync(syncAt)
+			if applied > 0 {
+				fmt.Fprintf(os.Stderr, "✓ Applied %d remote tag changes\n", applied)
+			}
+		}
 	}
 
 	if jsonOutput {
