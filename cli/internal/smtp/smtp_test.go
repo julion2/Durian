@@ -331,3 +331,68 @@ func TestRecipients(t *testing.T) {
 		t.Errorf("Recipients() length = %d, want 2", len(recipients))
 	}
 }
+
+func TestBuild_MessageIDCached(t *testing.T) {
+	msg := &Message{
+		From:    "sender@example.com",
+		To:      []string{"recipient@example.com"},
+		Subject: "Test",
+		Body:    "Hello",
+	}
+
+	data1, err := msg.Build()
+	if err != nil {
+		t.Fatalf("first Build(): %v", err)
+	}
+	if msg.GeneratedMessageID == "" {
+		t.Fatal("GeneratedMessageID not set after Build()")
+	}
+	firstID := msg.GeneratedMessageID
+
+	data2, err := msg.Build()
+	if err != nil {
+		t.Fatalf("second Build(): %v", err)
+	}
+	if msg.GeneratedMessageID != firstID {
+		t.Errorf("Message-ID changed: %q -> %q", firstID, msg.GeneratedMessageID)
+	}
+
+	// Both builds should contain the same Message-ID header
+	id1 := extractHeader(string(data1), "Message-ID")
+	id2 := extractHeader(string(data2), "Message-ID")
+	if id1 != id2 {
+		t.Errorf("Message-ID header differs: %q vs %q", id1, id2)
+	}
+}
+
+func TestBuild_MessageIDPreset(t *testing.T) {
+	msg := &Message{
+		From:               "sender@example.com",
+		To:                 []string{"recipient@example.com"},
+		Subject:            "Test",
+		Body:               "Hello",
+		GeneratedMessageID: "<preset@example.com>",
+	}
+
+	data, err := msg.Build()
+	if err != nil {
+		t.Fatalf("Build(): %v", err)
+	}
+	if msg.GeneratedMessageID != "<preset@example.com>" {
+		t.Errorf("preset ID was overwritten: %q", msg.GeneratedMessageID)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "Message-ID: <preset@example.com>") {
+		t.Error("preset Message-ID not in headers")
+	}
+}
+
+func extractHeader(content, name string) string {
+	for _, line := range strings.Split(content, "\r\n") {
+		if strings.HasPrefix(line, name+": ") {
+			return strings.TrimPrefix(line, name+": ")
+		}
+	}
+	return ""
+}

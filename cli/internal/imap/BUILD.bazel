@@ -28,6 +28,7 @@ go_test(
     size = "small",
     srcs = [
         "flags_test.go",
+        "gmail_test.go",
         "rules_test.go",
         "state_test.go",
         "sync_test.go",

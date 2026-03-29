@@ -413,3 +413,68 @@ func TestSearch_UnknownField(t *testing.T) {
 		t.Error("expected error for unknown field")
 	}
 }
+
+func TestExtractAccounts(t *testing.T) {
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"tag:inbox", nil},
+		{"(tag:sent) AND (path:habric/**)", []string{"habric"}},
+		{"(tag:inbox) AND (path:work/** OR path:gmail/**)", []string{"work", "gmail"}},
+		{"*", nil},
+		{"path:personal/**", []string{"personal"}},
+	}
+	for _, tt := range tests {
+		got := extractAccounts(tt.query)
+		if len(got) != len(tt.want) {
+			t.Errorf("extractAccounts(%q) = %v, want %v", tt.query, got, tt.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != tt.want[i] {
+				t.Errorf("extractAccounts(%q)[%d] = %q, want %q", tt.query, i, got[i], tt.want[i])
+			}
+		}
+	}
+}
+
+func TestGetThreadTags_AccountScoped(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now().Unix()
+
+	// Insert messages in same thread but different accounts
+	msg1 := &Message{
+		MessageID: "scoped@x", Subject: "Scoped", FromAddr: "a@x",
+		Date: now, CreatedAt: now, FetchedBody: true, Account: "work",
+	}
+	db.InsertMessage(msg1)
+	db.AddTag(msg1.ID, "sent")
+
+	msg2 := &Message{
+		MessageID: "scoped@x", Subject: "Scoped", FromAddr: "a@x",
+		Date: now, CreatedAt: now, FetchedBody: true, Account: "gmail",
+	}
+	db.InsertMessage(msg2)
+	db.AddTag(msg2.ID, "inbox")
+
+	threadID := msg1.ThreadID
+
+	// No filter → both tags
+	all, _ := db.getThreadTags(threadID)
+	if len(all) != 2 {
+		t.Errorf("all tags = %v, want 2", all)
+	}
+
+	// Work only
+	work, _ := db.getThreadTags(threadID, "work")
+	if len(work) != 1 || work[0] != "sent" {
+		t.Errorf("work tags = %v, want [sent]", work)
+	}
+
+	// Gmail only
+	gmail, _ := db.getThreadTags(threadID, "gmail")
+	if len(gmail) != 1 || gmail[0] != "inbox" {
+		t.Errorf("gmail tags = %v, want [inbox]", gmail)
+	}
+}
