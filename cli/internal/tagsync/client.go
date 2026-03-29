@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -27,12 +26,19 @@ type TagChange struct {
 	ClientID  string `json:"client_id,omitempty"`
 }
 
+// MetaStore provides key-value metadata storage.
+type MetaStore interface {
+	GetMeta(key string) int64
+	SetMeta(key string, value int64)
+}
+
 // Client communicates with the tag sync server.
 type Client struct {
 	url      string
 	apiKey   string
 	clientID string
 	http     *http.Client
+	store    MetaStore
 }
 
 // NewClient creates a new tag sync client.
@@ -43,6 +49,11 @@ func NewClient(url, apiKey string) *Client {
 		clientID: getClientID(),
 		http:     &http.Client{Timeout: 10 * time.Second},
 	}
+}
+
+// SetStore sets the metadata store for persisting sync state.
+func (c *Client) SetStore(s MetaStore) {
+	c.store = s
 }
 
 // Push sends local tag changes to the sync server.
@@ -123,40 +134,26 @@ func (c *Client) Pull(since int64) ([]TagChange, int64, error) {
 	return result.Changes, result.SyncAt, nil
 }
 
-// LoadLastSync reads the last sync timestamp from disk.
+// LoadLastSync reads the last sync timestamp from the store.
 func (c *Client) LoadLastSync() int64 {
-	home, _ := os.UserHomeDir()
-	data, err := os.ReadFile(filepath.Join(home, ".config", "durian", "tag_sync_at"))
-	if err != nil {
+	if c.store == nil {
 		return 0
 	}
-	ts, _ := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
-	return ts
+	return c.store.GetMeta("tag_sync_at")
 }
 
-// SaveLastSync persists the sync timestamp to disk.
+// SaveLastSync persists the sync timestamp to the store.
 func (c *Client) SaveLastSync(ts int64) {
-	home, _ := os.UserHomeDir()
-	_ = os.WriteFile(
-		filepath.Join(home, ".config", "durian", "tag_sync_at"),
-		[]byte(strconv.FormatInt(ts, 10)),
-		0600,
-	)
+	if c.store != nil {
+		c.store.SetMeta("tag_sync_at", ts)
+	}
 }
 
 // getClientID returns a stable per-machine identifier.
 func getClientID() string {
 	hostname, err := os.Hostname()
 	if err != nil {
-		hostname = "unknown"
+		return "unknown"
 	}
-	home, _ := os.UserHomeDir()
-	idFile := filepath.Join(home, ".config", "durian", "client_id")
-	if data, err := os.ReadFile(idFile); err == nil {
-		return string(data)
-	}
-	// Generate from hostname
-	id := hostname
-	_ = os.WriteFile(idFile, []byte(id), 0600)
-	return id
+	return hostname
 }

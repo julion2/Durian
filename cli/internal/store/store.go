@@ -350,6 +350,10 @@ func (d *DB) migrate() error {
 				action TEXT NOT NULL,
 				timestamp INTEGER NOT NULL
 			)`,
+			`CREATE TABLE IF NOT EXISTS metadata (
+				key TEXT PRIMARY KEY,
+				value INTEGER NOT NULL
+			)`,
 			"UPDATE schema_version SET version = 8 WHERE rowid = 1",
 		}
 		for _, stmt := range migrations {

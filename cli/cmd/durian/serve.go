@@ -133,6 +133,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		// Optional: set up remote tag sync client
 		if cfg.Sync.TagSync.URL != "" && cfg.Sync.TagSync.APIKey != "" {
 			tagSyncClient := tagsync.NewClient(cfg.Sync.TagSync.URL, cfg.Sync.TagSync.APIKey)
+			tagSyncClient.SetStore(emailDB)
 			h.SetTagSync(tagSyncClient)
 			// Pull remote tag changes periodically
 			go tagSyncPollLoop(watcherCtx, tagSyncClient, emailDB)

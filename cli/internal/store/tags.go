@@ -282,6 +282,18 @@ func (d *DB) ClearTagJournal(upToID int64) error {
 	return err
 }
 
+// GetMeta reads an integer value from the metadata table.
+func (d *DB) GetMeta(key string) int64 {
+	var val int64
+	d.db.QueryRow("SELECT value FROM metadata WHERE key = ?", key).Scan(&val)
+	return val
+}
+
+// SetMeta writes an integer value to the metadata table.
+func (d *DB) SetMeta(key string, value int64) {
+	d.db.Exec("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", key, value)
+}
+
 // ExportAllTags returns all (message_id, account, tag) tuples in the database.
 // Used for initial push to the tag sync server.
 func (d *DB) ExportAllTags() ([]struct{ MessageID, Account, Tag string }, error) {

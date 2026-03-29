@@ -143,6 +143,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	// Tag sync: push journal entries, then pull remote changes
 	if cfg.Sync.TagSync.URL != "" && cfg.Sync.TagSync.APIKey != "" {
 		client := tagsync.NewClient(cfg.Sync.TagSync.URL, cfg.Sync.TagSync.APIKey)
+		client.SetStore(emailDB)
 
 		// Push pending local changes from journal
 		journal, journalErr := emailDB.ReadTagJournal()
