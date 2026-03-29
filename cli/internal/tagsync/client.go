@@ -102,7 +102,7 @@ func (c *Client) Push(changes []TagChange) error {
 // Pull fetches remote tag changes since the given timestamp.
 // Returns the changes and the server timestamp to use for the next pull.
 func (c *Client) Pull(since int64) ([]TagChange, int64, error) {
-	pullURL := fmt.Sprintf("%s/sync?since=%s&client_id=%s",
+	pullURL := fmt.Sprintf("%s/v1/sync?since=%s&client_id=%s",
 		c.url, strconv.FormatInt(since, 10), url.QueryEscape(c.clientID))
 
 	req, err := http.NewRequest("GET", pullURL, nil)
