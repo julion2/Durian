@@ -43,7 +43,15 @@ brew install --cask durian      # GUI
 
 ### Linux
 
-CLI only — build from source (see below).
+Pre-built CLI binaries (amd64/arm64) are available in each [GitHub release](https://github.com/julion2/Durian/releases):
+
+```bash
+# Download latest release (example for amd64)
+curl -sSL https://github.com/julion2/Durian/releases/latest/download/durian-linux-amd64.tar.gz | tar -xz
+sudo mv durian-linux-amd64 /usr/local/bin/durian
+```
+
+Or build from source (see below).
 
 ## Build from Source
 

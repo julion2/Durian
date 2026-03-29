@@ -66,7 +66,7 @@ func (c *Client) Push(changes []TagChange) error {
 		return fmt.Errorf("marshal: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", c.url+"/sync", bytes.NewReader(body))
+	req, err := http.NewRequest("POST", c.url+"/v1/sync", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("request: %w", err)
 	}

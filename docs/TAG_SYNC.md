@@ -110,8 +110,8 @@ api_key = "your-secret"
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Health check |
-| `POST` | `/sync` | Push tag changes |
-| `GET` | `/sync?since=<ts>&client_id=<id>` | Pull changes since timestamp |
+| `POST` | `/v1/sync` | Push tag changes |
+| `GET` | `/v1/sync?since=<ts>&client_id=<id>` | Pull changes since timestamp |
 
 ### Push payload
 

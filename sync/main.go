@@ -73,7 +73,7 @@ func main() {
 		log.Fatalf("Failed to init database: %v", err)
 	}
 
-	http.HandleFunc("/sync", authMiddleware(handleSync))
+	http.HandleFunc("/v1/sync", authMiddleware(handleSync))
 	http.HandleFunc("/health", handleHealth)
 
 	addr := fmt.Sprintf(":%d", *port)
