@@ -96,6 +96,8 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           SHA_ARM64=$(shasum -a 256 dist/durian-${VERSION}-darwin-arm64.tar.gz | cut -d' ' -f1)
           SHA_AMD64=$(shasum -a 256 dist/durian-${VERSION}-darwin-amd64.tar.gz | cut -d' ' -f1)
+          SHA_LINUX_AMD64=$(shasum -a 256 dist/durian-${VERSION}-linux-amd64.tar.gz | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(shasum -a 256 dist/durian-${VERSION}-linux-arm64.tar.gz | cut -d' ' -f1)
           SHA_GUI=$(shasum -a 256 dist/Durian-${VERSION}.zip | cut -d' ' -f1)
 
           git clone https://x-access-token:${GH_TOKEN}@github.com/julion2/homebrew-tap.git /tmp/tap
@@ -103,6 +105,8 @@ jobs:
           sed -e "s/__VERSION__/${VERSION}/g" \
               -e "s/__SHA_ARM64__/${SHA_ARM64}/g" \
               -e "s/__SHA_AMD64__/${SHA_AMD64}/g" \
+              -e "s/__SHA_LINUX_AMD64__/${SHA_LINUX_AMD64}/g" \
+              -e "s/__SHA_LINUX_ARM64__/${SHA_LINUX_ARM64}/g" \
               tools/brew-formula.rb.tmpl > /tmp/tap/Formula/durian.rb
 
           sed -e "s/__VERSION__/${VERSION}/g" \

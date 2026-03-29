@@ -285,12 +285,15 @@ func (d *DB) ClearTagJournal(upToID int64) error {
 // GetMeta reads an integer value from the metadata table.
 func (d *DB) GetMeta(key string) int64 {
 	var val int64
+	// Table may not exist on older DBs — returns 0
 	d.db.QueryRow("SELECT value FROM metadata WHERE key = ?", key).Scan(&val)
 	return val
 }
 
 // SetMeta writes an integer value to the metadata table.
 func (d *DB) SetMeta(key string, value int64) {
+	// Ensure table exists (idempotent, handles DBs opened before v8 migration)
+	d.db.Exec("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value INTEGER NOT NULL)")
 	d.db.Exec("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", key, value)
 }
 

@@ -14,11 +14,21 @@ class Durian < Formula
     end
   end
 
-  def install
+  on_linux do
     if Hardware::CPU.arm?
-      bin.install "durian-darwin-arm64" => "durian"
+      url "https://github.com/julion2/Durian/releases/download/v#{version}/durian-#{version}-linux-arm64.tar.gz"
+      sha256 "__SHA_LINUX_ARM64__"
     else
-      bin.install "durian-darwin-amd64" => "durian"
+      url "https://github.com/julion2/Durian/releases/download/v#{version}/durian-#{version}-linux-amd64.tar.gz"
+      sha256 "__SHA_LINUX_AMD64__"
+    end
+  end
+
+  def install
+    if OS.mac?
+      bin.install Hardware::CPU.arm? ? "durian-darwin-arm64" => "durian" : "durian-darwin-amd64" => "durian"
+    else
+      bin.install Hardware::CPU.arm? ? "durian-linux-arm64" => "durian" : "durian-linux-amd64" => "durian"
     end
   end
 
