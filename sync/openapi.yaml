@@ -1,0 +1,123 @@
+openapi: 3.0.0
+info:
+  title: Durian Tag Sync API
+  version: 1.0.0
+  description: Lightweight tag synchronization server for multi-machine setups.
+servers:
+  - url: http://localhost:8724/v1
+paths:
+  /sync:
+    post:
+      summary: Push tag changes
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRequest'
+      responses:
+        '200':
+          description: Changes accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  count:
+                    type: integer
+        '401':
+          description: Invalid API key
+    get:
+      summary: Pull tag changes since timestamp
+      security:
+        - apiKey: []
+      parameters:
+        - name: since
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Unix timestamp — only return changes after this time
+        - name: client_id
+          in: query
+          schema:
+            type: string
+          description: Exclude changes from this client
+      responses:
+        '200':
+          description: Tag changes since timestamp
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResponse'
+        '401':
+          description: Invalid API key
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    TagChange:
+      type: object
+      properties:
+        message_id:
+          type: string
+        account:
+          type: string
+        tag:
+          type: string
+        action:
+          type: string
+          enum: [add, remove]
+        timestamp:
+          type: integer
+          format: int64
+        client_id:
+          type: string
+      required:
+        - message_id
+        - tag
+        - action
+    SyncRequest:
+      type: object
+      properties:
+        client_id:
+          type: string
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagChange'
+      required:
+        - changes
+    SyncResponse:
+      type: object
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagChange'
+        sync_at:
+          type: integer
+          format: int64
+          description: Server timestamp to use as 'since' for next pull
