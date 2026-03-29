@@ -51,7 +51,7 @@ func TestAuthMiddleware_ValidKey(t *testing.T) {
 		w.WriteHeader(200)
 	})
 
-	req := httptest.NewRequest("GET", "/sync", nil)
+	req := httptest.NewRequest("GET", "/v1/sync", nil)
 	req.Header.Set("X-API-Key", "test-key")
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -67,7 +67,7 @@ func TestAuthMiddleware_InvalidKey(t *testing.T) {
 		w.WriteHeader(200)
 	})
 
-	req := httptest.NewRequest("GET", "/sync", nil)
+	req := httptest.NewRequest("GET", "/v1/sync", nil)
 	req.Header.Set("X-API-Key", "wrong-key")
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -83,7 +83,7 @@ func TestAuthMiddleware_MissingKey(t *testing.T) {
 		w.WriteHeader(200)
 	})
 
-	req := httptest.NewRequest("GET", "/sync", nil)
+	req := httptest.NewRequest("GET", "/v1/sync", nil)
 	w := httptest.NewRecorder()
 	handler(w, req)
 
@@ -103,7 +103,7 @@ func TestPostSync(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
@@ -131,7 +131,7 @@ func TestPostSync_InvalidAction(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
@@ -146,7 +146,7 @@ func TestPostSync_EmptyChanges(t *testing.T) {
 	setupTestServer(t)
 
 	body, _ := json.Marshal(SyncRequest{ClientID: "mac1", Changes: []TagChange{}})
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
@@ -168,12 +168,12 @@ func TestGetSync_PullAll(t *testing.T) {
 			{MessageID: "b@x", Account: "w", Tag: "sent", Action: "add", Timestamp: 200},
 		},
 	})
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
 	// Pull from mac2 — should see both
-	req = httptest.NewRequest("GET", "/sync?since=0&client_id=mac2", nil)
+	req = httptest.NewRequest("GET", "/v1/sync?since=0&client_id=mac2", nil)
 	w = httptest.NewRecorder()
 	handleGetSync(w, req)
 
@@ -193,12 +193,12 @@ func TestGetSync_ExcludesOwnClient(t *testing.T) {
 			{MessageID: "a@x", Account: "w", Tag: "inbox", Action: "add", Timestamp: 100},
 		},
 	})
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
 	// Pull from mac1 — should see nothing (own changes excluded)
-	req = httptest.NewRequest("GET", "/sync?since=0&client_id=mac1", nil)
+	req = httptest.NewRequest("GET", "/v1/sync?since=0&client_id=mac1", nil)
 	w = httptest.NewRecorder()
 	handleGetSync(w, req)
 
@@ -219,12 +219,12 @@ func TestGetSync_SinceTimestamp(t *testing.T) {
 			{MessageID: "b@x", Account: "w", Tag: "new", Action: "add", Timestamp: 200},
 		},
 	})
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
 	// Pull since=150 — only the second change
-	req = httptest.NewRequest("GET", "/sync?since=150&client_id=mac2", nil)
+	req = httptest.NewRequest("GET", "/v1/sync?since=150&client_id=mac2", nil)
 	w = httptest.NewRecorder()
 	handleGetSync(w, req)
 
@@ -249,11 +249,11 @@ func TestGetSync_DeduplicatesPerMessageTag(t *testing.T) {
 			{MessageID: "a@x", Account: "w", Tag: "inbox", Action: "remove", Timestamp: 200},
 		},
 	})
-	req := httptest.NewRequest("POST", "/sync", bytes.NewReader(body))
+	req := httptest.NewRequest("POST", "/v1/sync", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	handlePostSync(w, req)
 
-	req = httptest.NewRequest("GET", "/sync?since=0&client_id=mac2", nil)
+	req = httptest.NewRequest("GET", "/v1/sync?since=0&client_id=mac2", nil)
 	w = httptest.NewRecorder()
 	handleGetSync(w, req)
 
@@ -268,7 +268,7 @@ func TestGetSync_DeduplicatesPerMessageTag(t *testing.T) {
 }
 
 func TestSyncMethodNotAllowed(t *testing.T) {
-	req := httptest.NewRequest("PUT", "/sync", nil)
+	req := httptest.NewRequest("PUT", "/v1/sync", nil)
 	w := httptest.NewRecorder()
 	handleSync(w, req)
 

@@ -31,6 +31,16 @@ jobs:
           bazel build //cli/cmd/durian --platforms=@rules_go//go/toolchain:darwin_amd64
           cp bazel-bin/cli/cmd/durian/durian_/durian dist/durian-darwin-amd64
 
+      - name: Build CLI (linux-amd64)
+        run: |
+          bazel build //cli/cmd/durian --platforms=@rules_go//go/toolchain:linux_amd64
+          cp bazel-bin/cli/cmd/durian/durian_/durian dist/durian-linux-amd64
+
+      - name: Build CLI (linux-arm64)
+        run: |
+          bazel build //cli/cmd/durian --platforms=@rules_go//go/toolchain:linux_arm64
+          cp bazel-bin/cli/cmd/durian/durian_/durian dist/durian-linux-arm64
+
       - name: Build Sync Server (linux-amd64)
         run: |
           bazel build //sync:durian-sync --platforms=@rules_go//go/toolchain:linux_amd64
@@ -56,6 +66,8 @@ jobs:
           cd dist
           tar -czf durian-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz durian-darwin-arm64
           tar -czf durian-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz durian-darwin-amd64
+          tar -czf durian-${{ steps.version.outputs.version }}-linux-amd64.tar.gz durian-linux-amd64
+          tar -czf durian-${{ steps.version.outputs.version }}-linux-arm64.tar.gz durian-linux-arm64
           tar -czf durian-sync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz durian-sync-linux-amd64
           tar -czf durian-sync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz durian-sync-linux-arm64
           shasum -a 256 *.tar.gz *.zip > checksums.txt
@@ -66,6 +78,8 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             dist/durian-${{ steps.version.outputs.version }}-darwin-arm64.tar.gz \
             dist/durian-${{ steps.version.outputs.version }}-darwin-amd64.tar.gz \
+            dist/durian-${{ steps.version.outputs.version }}-linux-amd64.tar.gz \
+            dist/durian-${{ steps.version.outputs.version }}-linux-arm64.tar.gz \
             dist/durian-sync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz \
             dist/durian-sync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz \
             dist/Durian-${{ steps.version.outputs.version }}.zip \
