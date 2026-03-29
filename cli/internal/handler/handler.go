@@ -9,6 +9,7 @@ import (
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/durian-dev/durian/cli/internal/store"
+	"github.com/durian-dev/durian/cli/internal/tagsync"
 )
 
 // AttachmentFetcher fetches attachment bytes directly from the IMAP server.
@@ -31,8 +32,10 @@ type Handler struct {
 	parser      *mail.Parser
 	contacts    *contacts.DB
 	cfg         *config.Config    // application config (for outbox worker)
-	fetcher     AttachmentFetcher // optional IMAP attachment fetcher
-	syncTrigger SyncTrigger       // optional sync trigger for tag changes
+	fetcher        AttachmentFetcher // optional IMAP attachment fetcher
+	syncTrigger    SyncTrigger       // optional sync trigger for tag changes
+	tagSync        *tagsync.Client   // optional remote tag sync client
+	tagSyncEnabled bool              // true when tag sync is configured (enables journal)
 }
 
 // New creates a Handler that reads from the SQLite store.
@@ -52,6 +55,18 @@ func (h *Handler) SetFetcher(f AttachmentFetcher) {
 // SetSyncTrigger sets the sync trigger for pushing tag changes to IMAP.
 func (h *Handler) SetSyncTrigger(s SyncTrigger) {
 	h.syncTrigger = s
+}
+
+// SetTagSync sets the optional remote tag sync client.
+func (h *Handler) SetTagSync(c *tagsync.Client) {
+	h.tagSync = c
+	h.tagSyncEnabled = true
+}
+
+// EnableTagJournal enables the local tag journal without a remote client.
+// Used by CLI commands that modify tags when tag sync is configured.
+func (h *Handler) EnableTagJournal() {
+	h.tagSyncEnabled = true
 }
 
 // SetConfig sets the application config (needed by outbox worker for account lookup).

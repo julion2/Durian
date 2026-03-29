@@ -337,6 +337,26 @@ func (d *DB) migrate() error {
 				return fmt.Errorf("migrate v6→v7: %w", err)
 			}
 		}
+		version = 7
+	}
+
+	if version < 8 {
+		migrations := []string{
+			`CREATE TABLE IF NOT EXISTS tag_journal (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				message_id TEXT NOT NULL,
+				account TEXT NOT NULL,
+				tag TEXT NOT NULL,
+				action TEXT NOT NULL,
+				timestamp INTEGER NOT NULL
+			)`,
+			"UPDATE schema_version SET version = 8 WHERE rowid = 1",
+		}
+		for _, stmt := range migrations {
+			if _, err := d.db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate v7→v8: %w", err)
+			}
+		}
 	}
 
 	return nil

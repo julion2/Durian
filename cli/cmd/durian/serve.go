@@ -19,6 +19,7 @@ import (
 	"github.com/durian-dev/durian/cli/internal/contacts"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/store"
+	"github.com/durian-dev/durian/cli/internal/tagsync"
 )
 
 var serveCmd = &cobra.Command{
@@ -129,6 +130,15 @@ func runServe(cmd *cobra.Command, args []string) {
 	} else {
 		h.SetConfig(cfg)
 
+		// Optional: set up remote tag sync client
+		if cfg.Sync.TagSync.URL != "" && cfg.Sync.TagSync.APIKey != "" {
+			tagSyncClient := tagsync.NewClient(cfg.Sync.TagSync.URL, cfg.Sync.TagSync.APIKey)
+			h.SetTagSync(tagSyncClient)
+			// Pull remote tag changes periodically
+			go tagSyncPollLoop(watcherCtx, tagSyncClient, emailDB)
+			slog.Info("Tag sync enabled", "module", "SERVE", "url", cfg.Sync.TagSync.URL)
+		}
+
 		accounts := cfg.GetAccountsWithIMAP()
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
@@ -176,4 +186,55 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Server exiting")
+}
+
+// tagSyncPollLoop periodically pulls remote tag changes.
+func tagSyncPollLoop(ctx context.Context, client *tagsync.Client, db *store.DB) {
+	// Initial pull
+	pullRemoteTags(client, db)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pullRemoteTags(client, db)
+		}
+	}
+}
+
+// pullRemoteTags fetches tag changes from the sync server and applies them locally.
+func pullRemoteTags(client *tagsync.Client, db *store.DB) {
+	since := client.LoadLastSync()
+	changes, syncAt, err := client.Pull(since)
+	if err != nil {
+		slog.Warn("Tag sync pull failed", "module", "TAGSYNC", "err", err)
+		return
+	}
+
+	if len(changes) == 0 {
+		return
+	}
+
+	applied := 0
+	for _, c := range changes {
+		switch c.Action {
+		case "add":
+			if err := db.ModifyTagsByMessageIDAndAccount(c.MessageID, c.Account, []string{c.Tag}, nil); err == nil {
+				applied++
+			}
+		case "remove":
+			if err := db.ModifyTagsByMessageIDAndAccount(c.MessageID, c.Account, nil, []string{c.Tag}); err == nil {
+				applied++
+			}
+		}
+	}
+
+	client.SaveLastSync(syncAt)
+	if applied > 0 {
+		slog.Info("Applied remote tag changes", "module", "TAGSYNC", "applied", applied, "total", len(changes))
+	}
 }

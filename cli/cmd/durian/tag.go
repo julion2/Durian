@@ -49,6 +49,12 @@ func runTag(cmd *cobra.Command, args []string) error {
 
 	h := handler.New(emailDB, nil)
 
+	// Enable tag journal if tag sync is configured
+	cfg := GetConfig()
+	if cfg != nil && cfg.Sync.TagSync.URL != "" {
+		h.EnableTagJournal()
+	}
+
 	// Join tags back to string for handler (current interface expects string)
 	tagsStr := strings.Join(tags, " ")
 	resp := h.Tag(query, tagsStr)

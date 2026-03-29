@@ -115,6 +115,7 @@ durian sync --debug                   # debug output on stderr
 
 - [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
 - [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
+- [Tag Sync](docs/TAG_SYNC.md) — Multi-machine tag sync via self-hosted server
 - [Vim Compose](docs/vim-compose.md) — Vim keybindings in the compose editor
 
 ## Contributing

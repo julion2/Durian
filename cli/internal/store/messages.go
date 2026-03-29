@@ -179,6 +179,22 @@ func (d *DB) GetByThread(threadID string) ([]*Message, error) {
 	return deduped, nil
 }
 
+// GetAllByThread retrieves all messages in a thread without deduplication.
+// Returns all rows including multi-account duplicates. Used for tag sync.
+func (d *DB) GetAllByThread(threadID string) ([]*Message, error) {
+	rows, err := d.db.Query(`
+		SELECT id, message_id, thread_id, in_reply_to, refs, subject,
+		       from_addr, to_addrs, cc_addrs, date, created_at,
+		       body_text, body_html, mailbox, flags, uid, size, fetched_body, account
+		FROM messages WHERE thread_id = ?
+		ORDER BY date ASC`, threadID)
+	if err != nil {
+		return nil, fmt.Errorf("get all by thread: %w", err)
+	}
+	defer rows.Close()
+	return scanMessages(rows)
+}
+
 // MessageExists checks if a message with the given Message-ID exists.
 func (d *DB) MessageExists(messageID string) (bool, error) {
 	var count int
