@@ -320,3 +320,63 @@ func TestModifyTagsByMessageIDAndAccount_NotFound(t *testing.T) {
 		t.Fatalf("expected no-op, got error: %v", err)
 	}
 }
+
+func insertTestMessageForAccount(t *testing.T, db *DB, msgID, account string) int64 {
+	t.Helper()
+	now := time.Now().Unix()
+	msg := &Message{
+		MessageID: msgID, Subject: "Test " + msgID,
+		FromAddr: "a@x", Date: now, CreatedAt: now,
+		FetchedBody: true, Account: account,
+	}
+	if err := db.InsertMessage(msg); err != nil {
+		t.Fatalf("insert %s: %v", msgID, err)
+	}
+	return msg.ID
+}
+
+func TestListTags_AccountScoped(t *testing.T) {
+	db := newTestDB(t)
+
+	id1 := insertTestMessageForAccount(t, db, "m1@x", "work")
+	id2 := insertTestMessageForAccount(t, db, "m2@x", "gmail")
+
+	db.AddTag(id1, "inbox")
+	db.AddTag(id1, "finance")
+	db.AddTag(id2, "inbox")
+	db.AddTag(id2, "newsletter")
+
+	// All tags
+	all, _ := db.ListTags()
+	if len(all) != 3 { // finance, inbox, newsletter
+		t.Errorf("all tags = %v, want 3", all)
+	}
+
+	// Work only
+	work, _ := db.ListTags("work")
+	if len(work) != 2 {
+		t.Fatalf("work tags = %v, want 2", work)
+	}
+	found := make(map[string]bool)
+	for _, tag := range work {
+		found[tag] = true
+	}
+	if !found["inbox"] || !found["finance"] {
+		t.Errorf("work tags = %v, want [finance inbox]", work)
+	}
+	if found["newsletter"] {
+		t.Error("work should not have newsletter tag")
+	}
+
+	// Gmail only
+	gmail, _ := db.ListTags("gmail")
+	if len(gmail) != 2 {
+		t.Fatalf("gmail tags = %v, want 2", gmail)
+	}
+
+	// Both accounts
+	both, _ := db.ListTags("work", "gmail")
+	if len(both) != 3 {
+		t.Errorf("both tags = %v, want 3", both)
+	}
+}
