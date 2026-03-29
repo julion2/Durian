@@ -41,7 +41,7 @@ brew install durian             # CLI (required — the GUI uses it as backend)
 brew install --cask durian      # GUI
 ```
 
-### Linux
+### Linux (CLI only)
 
 ```bash
 brew tap julion2/tap
