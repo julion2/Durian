@@ -26,9 +26,17 @@ class Durian < Formula
 
   def install
     if OS.mac?
-      bin.install Hardware::CPU.arm? ? "durian-darwin-arm64" => "durian" : "durian-darwin-amd64" => "durian"
+      if Hardware::CPU.arm?
+        bin.install "durian-darwin-arm64" => "durian"
+      else
+        bin.install "durian-darwin-amd64" => "durian"
+      end
     else
-      bin.install Hardware::CPU.arm? ? "durian-linux-arm64" => "durian" : "durian-linux-amd64" => "durian"
+      if Hardware::CPU.arm?
+        bin.install "durian-linux-arm64" => "durian"
+      else
+        bin.install "durian-linux-amd64" => "durian"
+      end
     end
   end
 
