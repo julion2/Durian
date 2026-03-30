@@ -6,7 +6,7 @@
 #include <QListWidget>
 #include <QMainWindow>
 #include <QSplitter>
-#include <QStyle>
+#include <QToolButton>
 #include <QTextEdit>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -77,40 +77,65 @@ static QWidget *buildThreadRow(const ThreadPreview &thread) {
 class MainWindow : public QMainWindow {
 public:
     MainWindow() {
-        setWindowTitle("Durian (Linux Spike)");
+        setWindowTitle("Durian");
         resize(1100, 720);
 
         auto *root = new QWidget();
-        auto *splitter = new QSplitter(Qt::Horizontal, root);
+        splitter_ = new QSplitter(Qt::Horizontal, root);
 
-        auto *sidebar = new QWidget();
-        auto *sidebarLayout = new QVBoxLayout(sidebar);
-        sidebarLayout->setContentsMargins(10, 10, 10, 10);
-        sidebarLayout->setSpacing(8);
+        sidebar_ = new QWidget();
+        sidebarLayout_ = new QVBoxLayout(sidebar_);
+        sidebarLayout_->setContentsMargins(10, 10, 10, 10);
+        sidebarLayout_->setSpacing(8);
+        sidebarLayout_->setAlignment(Qt::AlignTop);
 
-        auto *sidebarTitle = new QLabel("Mailboxes");
-        QFont titleFont = sidebarTitle->font();
+        sidebarHeader_ = new QWidget();
+        auto *sidebarHeaderLayout = new QHBoxLayout(sidebarHeader_);
+        sidebarHeaderLayout->setContentsMargins(0, 0, 0, 0);
+        sidebarHeaderLayout->setSpacing(8);
+
+        auto *toggleButton = new QToolButton();
+        toggleButton->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        toggleButton->setText("≡");
+        QFont toggleFont = toggleButton->font();
+        toggleFont.setPointSize(16);
+        toggleFont.setBold(true);
+        toggleButton->setFont(toggleFont);
+        toggleButton->setAutoRaise(true);
+        toggleButton->setFixedSize(24, 24);
+        toggleButton->setStyleSheet(
+            "QToolButton { border: none; background: transparent; padding: 0px; }"
+            "QToolButton:hover { background: #f2f2f2; border-radius: 6px; }"
+        );
+
+        sidebarTitle_ = new QLabel("Mailboxes");
+        QFont titleFont = sidebarTitle_->font();
         titleFont.setPointSize(13);
         titleFont.setBold(true);
-        sidebarTitle->setFont(titleFont);
-        sidebarLayout->addWidget(sidebarTitle);
+        sidebarTitle_->setFont(titleFont);
 
-        auto *sidebarList = new QListWidget();
-        sidebarList->setFrameShape(QFrame::NoFrame);
-        sidebarList->setSpacing(6);
-        sidebarList->setStyleSheet(
+        sidebarHeaderLayout->addWidget(toggleButton);
+        sidebarHeaderLayout->addWidget(sidebarTitle_);
+        sidebarHeaderLayout->addStretch(1);
+        sidebarLayout_->addWidget(sidebarHeader_);
+
+        sidebarList_ = new QListWidget();
+        sidebarList_->setFrameShape(QFrame::NoFrame);
+        sidebarList_->setSpacing(6);
+        sidebarList_->setStyleSheet(
             "QListWidget { background: #ffffff; border: none; }"
             "QListWidget::item { padding: 6px 10px; color: #111; }"
             "QListWidget::item:selected { background: #ede7f6; border-radius: 6px; color: #111; }"
         );
-        sidebarList->addItem("Inbox");
-        sidebarList->addItem("Pinned");
-        sidebarList->addItem("Archive");
-        sidebarList->addItem("Sent");
-        sidebarList->addItem("Drafts");
-        sidebarList->addItem("Trash");
-        sidebarList->setCurrentRow(0);
-        sidebarLayout->addWidget(sidebarList, 1);
+        sidebarList_->addItem("Inbox");
+        sidebarList_->addItem("Pinned");
+        sidebarList_->addItem("Archive");
+        sidebarList_->addItem("Sent");
+        sidebarList_->addItem("Drafts");
+        sidebarList_->addItem("Trash");
+        sidebarList_->setCurrentRow(0);
+        sidebarLayout_->addWidget(sidebarList_, 1);
+        sidebarLayout_->addStretch(1);
 
         auto *listPane = new QWidget();
         auto *listLayout = new QVBoxLayout(listPane);
@@ -161,22 +186,38 @@ public:
         detailLayout->addWidget(meta_);
         detailLayout->addWidget(body_, 1);
 
-        splitter->addWidget(sidebar);
-        splitter->addWidget(listPane);
-        splitter->addWidget(detail);
-        splitter->setStretchFactor(0, 1);
-        splitter->setStretchFactor(1, 3);
-        splitter->setStretchFactor(2, 6);
-        splitter->setSizes({140, 360, 620});
-        splitter->setHandleWidth(1);
-        splitter->setStyleSheet("QSplitter::handle { background: #e6e6e6; }");
+        splitter_->addWidget(sidebar_);
+        splitter_->addWidget(listPane);
+        splitter_->addWidget(detail);
+        splitter_->setStretchFactor(0, 1);
+        splitter_->setStretchFactor(1, 3);
+        splitter_->setStretchFactor(2, 6);
+        splitter_->setSizes({140, 360, 620});
+        splitter_->setHandleWidth(1);
+        splitter_->setStyleSheet("QSplitter::handle { background: #e6e6e6; }");
 
         auto *rootLayout = new QHBoxLayout(root);
         rootLayout->setContentsMargins(6, 6, 6, 6);
-        rootLayout->addWidget(splitter);
+        rootLayout->addWidget(splitter_);
         setCentralWidget(root);
 
         seedData();
+        connect(toggleButton, &QToolButton::clicked, this, [this]() {
+            sidebarVisible_ = !sidebarVisible_;
+            sidebarList_->setVisible(sidebarVisible_);
+            sidebarTitle_->setVisible(sidebarVisible_);
+            if (sidebarVisible_) {
+                sidebar_->setMinimumWidth(120);
+                sidebar_->setMaximumWidth(260);
+                sidebarLayout_->setContentsMargins(10, 10, 10, 10);
+                splitter_->setSizes({140, 360, 620});
+            } else {
+                sidebar_->setMinimumWidth(36);
+                sidebar_->setMaximumWidth(36);
+                sidebarLayout_->setContentsMargins(6, 10, 6, 10);
+                splitter_->setSizes({36, 420, 700});
+            }
+        });
         connect(list_, &QListWidget::currentRowChanged, this, [this](int row) {
             updateRowSelection(row);
             if (row < 0 || row >= previews_.size()) {
@@ -231,6 +272,13 @@ private:
     QLabel *meta_ = nullptr;
     QTextEdit *body_ = nullptr;
     QVector<ThreadPreview> previews_;
+    QSplitter *splitter_ = nullptr;
+    QWidget *sidebar_ = nullptr;
+    QWidget *sidebarHeader_ = nullptr;
+    QListWidget *sidebarList_ = nullptr;
+    QVBoxLayout *sidebarLayout_ = nullptr;
+    QLabel *sidebarTitle_ = nullptr;
+    bool sidebarVisible_ = true;
 };
 
 int main(int argc, char **argv) {
