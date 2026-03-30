@@ -4,19 +4,9 @@ For email providers that don't support OAuth (e.g., GMX, web.de, custom SMTP), D
 
 On Linux, install `secret-tool` (libsecret). Then use `durian auth login <account>` — the CLI handles storing the password.
 
-## Creating a Keychain Entry
+## Config + Login
 
-Store your SMTP password securely in macOS Keychain:
-
-```bash
-security add-generic-password -s "gmx-smtp" -a "you@gmx.de" -w "your-app-password"
-```
-
-- `-s` = service name (used in config.toml as `password_keychain`)
-- `-a` = account name (your email address)
-- `-w` = password (use an app-specific password if available)
-
-Then add to your config.toml:
+Add to your config.toml:
 
 ```toml
 [[accounts]]
@@ -31,7 +21,13 @@ max_attachment_size = "20MB"
 
 [accounts.auth]
 username = "you@gmx.de"
-password_keychain = "gmx-smtp"
+```
+
+Then run:
+
+```bash
+durian auth login gmx         # alias
+durian auth login you@gmx.de  # email
 ```
 
 ## Disabling the Keychain Access Dialog
@@ -58,7 +54,7 @@ By default, macOS prompts you to allow access every time `durian` reads from the
 7. Navigate to your durian binary (e.g., `~/.local/bin/durian`)
 8. Click **Save Changes**
 
-After this, `durian send` will no longer prompt for Keychain access.
+After this, `durian` will no longer prompt for Keychain access.
 
 ## Common Providers
 
@@ -74,8 +70,8 @@ After this, `durian send` will no longer prompt for Keychain access.
 
 | Error | Solution |
 |-------|----------|
-| `keychain entry not found` | Create entry with `security add-generic-password` |
-| `failed to get password from keychain` | Check service name matches `password_keychain` in config |
+| `keychain entry not found` | Run `durian auth login <account>` again |
+| `failed to get password from keychain` | Ensure the email/alias matches your config and retry login |
 | Repeated access dialogs | Follow "Disabling the Keychain Access Dialog" above |
 | `authentication failed` | Verify password is correct, try app-specific password |
 

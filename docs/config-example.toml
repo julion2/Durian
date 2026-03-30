@@ -54,7 +54,6 @@ max_messages = 5000               # Max messages per mailbox, 0 = unlimited
 
 [accounts.auth]
 username = "you@example.com"       # IMAP/SMTP login username (if different from email)
-# password_keychain = "custom-key" # Optional Keychain entry name (default: email)
 # Then run: durian auth login personal
 
 # ── Microsoft 365 OAuth ────────────────────────────────────────────────
