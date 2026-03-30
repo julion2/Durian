@@ -7,6 +7,8 @@ genrule(
         "qml/ThreadList.qml",
         "qml/ThreadRow.qml",
         "qml/DetailView.qml",
+        "qml/ActionBar.qml",
+        "qml/MaterialSymbolsOutlined.ttf",
     ],
     outs = ["qrc_resources.cpp"],
     cmd = """

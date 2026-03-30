@@ -5,5 +5,9 @@
         <file>ThreadList.qml</file>
         <file>ThreadRow.qml</file>
         <file>DetailView.qml</file>
+        <file>ActionBar.qml</file>
+    </qresource>
+    <qresource prefix="/fonts">
+        <file>MaterialSymbolsOutlined.ttf</file>
     </qresource>
 </RCC>

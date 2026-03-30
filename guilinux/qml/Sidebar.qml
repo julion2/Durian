@@ -47,16 +47,43 @@ Item {
             clip: true
             currentIndex: 0
 
-            model: ["Inbox", "Pinned", "Archive", "Sent", "Drafts", "Trash"]
+            model: [
+                { name: "Inbox",   icon: "\uE156" },
+                { name: "Pinned",  icon: "\uF10D" },
+                { name: "Archive", icon: "\uE149" },
+                { name: "Sent",    icon: "\uE163" },
+                { name: "Drafts",  icon: "\uE66D" },
+                { name: "Trash",   icon: "\uE872" },
+            ]
 
             delegate: ItemDelegate {
                 required property int index
-                required property string modelData
+                required property var modelData
                 width: tagList.width
-                text: modelData
+                padding: 4
+                topPadding: 4
+                bottomPadding: 4
                 highlighted: tagList.currentIndex === index
 
                 onClicked: tagList.currentIndex = index
+
+                contentItem: RowLayout {
+                    spacing: 8
+                    Label {
+                        text: modelData.icon
+                        font.family: "Material Symbols Outlined"
+                        font.pixelSize: 20
+                        Layout.preferredWidth: 24
+                        horizontalAlignment: Text.AlignHCenter
+                        color: highlighted ? "#5e35b1" : "#888888"
+                    }
+                    Label {
+                        text: modelData.name
+                        font.pixelSize: 13
+                        color: "#111111"
+                        Layout.fillWidth: true
+                    }
+                }
 
                 background: Rectangle {
                     color: highlighted ? "#ede7f6" : (hovered ? "#f5f5f5" : "transparent")
