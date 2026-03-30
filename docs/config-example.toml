@@ -85,6 +85,7 @@ provider = "microsoft"
 # tenant = "common"                   # Azure AD tenant (default: "common")
 
 # ── Microsoft 365 Shared Mailbox ───────────────────────────────────────
+# See docs/OAUTH_SETUP.md for details on shared mailbox OAuth setup.
 
 [[accounts]]
 name = "Support"

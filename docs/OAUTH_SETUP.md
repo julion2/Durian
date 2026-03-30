@@ -4,6 +4,11 @@ Durian supports OAuth 2.0 for Microsoft 365 and Google/Gmail.
 
 ## Microsoft 365
 
+Durian can use a built-in Microsoft OAuth app by default. If you want to use
+your own Azure app (recommended for organizations), follow the steps below and
+set `client_id` in your config. Otherwise, you can skip app registration and
+omit `client_id` (the default will be used).
+
 1. Go to [Azure Portal](https://portal.azure.com) → App registrations → New registration
 2. Name: "Durian Mail" (or anything)
 3. Supported account types: "Accounts in any organizational directory"
@@ -15,12 +20,16 @@ Durian supports OAuth 2.0 for Microsoft 365 and Google/Gmail.
 6. Grant admin consent (required for work/school accounts)
 7. Copy **Application (client) ID**
 
-Add to config.toml:
+Add to config.toml (custom app):
 ```toml
 [accounts.oauth]
 provider = "microsoft"
 client_id = "your-client-id"
+# tenant = "common"   # Optional: "common", "organizations", or your tenant ID/domain
 ```
+
+Shared mailboxes: configure the shared mailbox as its own `[[accounts]]` entry
+and set `auth_email` to the delegating user who has Full Access + Send As.
 
 ## Google
 
@@ -42,7 +51,7 @@ client_secret = "your-client-secret"
 ## Usage
 
 ```bash
-durian auth login you@company.com   # Opens browser for OAuth
+durian auth login you@company.com   # Opens browser for OAuth (email or alias)
 durian auth status                  # Show all accounts + token status
 durian auth refresh you@company.com # Manual token refresh
 durian auth logout you@company.com  # Remove token from Keychain
