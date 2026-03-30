@@ -62,6 +62,8 @@ def _qt_local_repository_impl(ctx):
         ctx.symlink(lib_dir + "/QtQuick.framework/Headers", qt_includes + "/QtQuick")
         ctx.symlink(lib_dir + "/QtQml.framework/Headers", qt_includes + "/QtQml")
         ctx.symlink(lib_dir + "/QtQuickControls2.framework/Headers", qt_includes + "/QtQuickControls2")
+        ctx.symlink(lib_dir + "/QtWebEngineCore.framework/Headers", qt_includes + "/QtWebEngineCore")
+        ctx.symlink(lib_dir + "/QtWebEngineQuick.framework/Headers", qt_includes + "/QtWebEngineQuick")
 
         includes = [
             "lib/QtCore.framework/Headers",
@@ -78,6 +80,10 @@ def _qt_local_repository_impl(ctx):
             "lib/QtQml.framework/Headers/QtQml",
             "lib/QtQuickControls2.framework/Headers",
             "lib/QtQuickControls2.framework/Headers/QtQuickControls2",
+            "lib/QtWebEngineCore.framework/Headers",
+            "lib/QtWebEngineCore.framework/Headers/QtWebEngineCore",
+            "lib/QtWebEngineQuick.framework/Headers",
+            "lib/QtWebEngineQuick.framework/Headers/QtWebEngineQuick",
             "qt_includes",
         ] + (["include_decl", "include_decl/QtQmlIntegration"] if qt_decl_include else [])
         linkopts = [
@@ -90,6 +96,8 @@ def _qt_local_repository_impl(ctx):
             "-framework", "QtQuick",
             "-framework", "QtQml",
             "-framework", "QtQuickControls2",
+            "-framework", "QtWebEngineCore",
+            "-framework", "QtWebEngineQuick",
         ]
     else:
         includes = [
@@ -102,6 +110,8 @@ def _qt_local_repository_impl(ctx):
             "include/QtQml",
             "include/QtQmlIntegration",
             "include/QtQuickControls2",
+            "include/QtWebEngineCore",
+            "include/QtWebEngineQuick",
         ]
         linkopts = [
             "-L" + lib_dir,
@@ -113,6 +123,8 @@ def _qt_local_repository_impl(ctx):
             "-lQt6Quick",
             "-lQt6Qml",
             "-lQt6QuickControls2",
+            "-lQt6WebEngineCore",
+            "-lQt6WebEngineQuick",
         ]
 
     build = """

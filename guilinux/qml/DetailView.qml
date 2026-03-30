@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtWebEngine
 
 Item {
     id: detailView
@@ -229,14 +230,59 @@ Item {
                             Layout.bottomMargin: 4
                         }
 
-                        // Body
-                        Label {
-                            text: detailView.messageBody(modelData)
-                            font.pixelSize: 13
-                            color: "#333333"
-                            wrapMode: Text.Wrap
+                        // Body: HTML via WebEngine, plaintext fallback
+                        Loader {
                             Layout.fillWidth: true
-                            lineHeight: 1.3
+                            Layout.preferredHeight: item ? item.implicitHeight : 0
+                            sourceComponent: (modelData.html && modelData.html.trim().length > 0)
+                                ? webBodyComponent : textBodyComponent
+                        }
+
+                        Component {
+                            id: webBodyComponent
+                            WebEngineView {
+                                property bool ready: false
+                                implicitHeight: ready ? Math.max(contentsSize.height, 40) : 100
+                                onContentsSizeChanged: ready = true
+                                Component.onCompleted: {
+                                    var base = (networkClient ? networkClient.baseUrl : "http://localhost:9723")
+                                    var imgSrc = "img-src data: " + base
+                                    if (profileModel && profileModel.loadRemoteImages)
+                                        imgSrc = "img-src data: https: http: " + base
+                                    var csp = "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; " + imgSrc + ";\">"
+                                    var style = "<style>body { font-family: -apple-system, sans-serif; font-size: 13px; color: #333; margin: 0; padding: 0; } img { max-width: 100%; height: auto; }</style>"
+
+                                    // Resolve cid: references to API URLs
+                                    var html = modelData.html || ""
+                                    var msgId = modelData.message_id || modelData.id || ""
+                                    var atts = modelData.attachments || []
+                                    for (var i = 0; i < atts.length; i++) {
+                                        var att = atts[i]
+                                        if (att.content_id && att.content_id.length > 0) {
+                                            var cid = att.content_id.replace(/^</, "").replace(/>$/, "")
+                                            var apiUrl = (networkClient ? networkClient.baseUrl : "http://localhost:9723") +
+                                                "/api/v1/messages/" + encodeURIComponent(msgId) +
+                                                "/attachments/" + att.part_id
+                                            html = html.split("cid:" + cid).join(apiUrl)
+                                        }
+                                    }
+
+                                    loadHtml(csp + style + html)
+                                }
+                                backgroundColor: "transparent"
+                                settings.javascriptEnabled: false
+                            }
+                        }
+
+                        Component {
+                            id: textBodyComponent
+                            Label {
+                                text: modelData.body || ""
+                                font.pixelSize: 13
+                                color: "#333333"
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.3
+                            }
                         }
                     }
                 }

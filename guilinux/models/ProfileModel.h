@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QDir>
+#include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QString>
 #include <QVector>
@@ -32,9 +33,12 @@ class ProfileModel : public QObject {
     Q_PROPERTY(QVariantList profiles READ profileNames NOTIFY profilesChanged)
     Q_PROPERTY(int currentProfile READ currentProfile WRITE setCurrentProfile NOTIFY currentProfileChanged)
     Q_PROPERTY(QVariantList folders READ currentFolders NOTIFY currentProfileChanged)
+    Q_PROPERTY(bool loadRemoteImages READ loadRemoteImages NOTIFY configLoaded)
 
 public:
     explicit ProfileModel(QObject *parent = nullptr) : QObject(parent) {}
+
+    bool loadRemoteImages() const { return loadRemoteImages_; }
 
     Q_INVOKABLE bool isOwnEmail(const QString &from) const {
         QString lower = from.toLower();
@@ -44,11 +48,18 @@ public:
         return false;
     }
 
+    static QString configDir() {
+        QString xdg = QProcessEnvironment::systemEnvironment().value("XDG_CONFIG_HOME");
+        if (xdg.isEmpty())
+            xdg = QDir::homePath() + "/.config";
+        return xdg + "/durian";
+    }
+
     Q_INVOKABLE void load() {
         profiles_.clear();
         ownEmails_.clear();
         loadConfig();
-        QString path = QDir::homePath() + "/.config/durian/profiles.toml";
+        QString path = configDir() + "/profiles.toml";
 
         try {
             auto tbl = toml::parse_file(path.toStdString());
@@ -145,16 +156,31 @@ public:
         const auto &folders = profiles_[currentProfile_].folders;
         if (idx < 0 || idx >= folders.size())
             return {};
-        return folders[idx].query;
+        return applyProfileFilter(folders[idx].query);
+    }
+
+    Q_INVOKABLE QString applyProfileFilter(const QString &baseQuery) const {
+        if (currentProfile_ < 0 || currentProfile_ >= profiles_.size())
+            return baseQuery;
+        const auto &p = profiles_[currentProfile_];
+        // "All" profile (accounts = ["*"]) → no filter
+        if (p.accounts.contains("*") || p.accounts.isEmpty())
+            return baseQuery;
+        // Build path filter: (path:work/** OR path:personal/**)
+        QStringList pathFilters;
+        for (const auto &acc : p.accounts)
+            pathFilters.append("path:" + acc + "/**");
+        return "(" + baseQuery + ") AND (" + pathFilters.join(" OR ") + ")";
     }
 
 signals:
     void profilesChanged();
     void currentProfileChanged();
+    void configLoaded();
 
 private:
     void loadConfig() {
-        QString path = QDir::homePath() + "/.config/durian/config.toml";
+        QString path = configDir() + "/config.toml";
         try {
             auto tbl = toml::parse_file(path.toStdString());
             if (auto accs = tbl.get_as<toml::array>("accounts")) {
@@ -165,10 +191,16 @@ private:
                         ownEmails_.append(QString::fromStdString(**e).toLower());
                 }
             }
+            if (auto settings = tbl.get_as<toml::table>("settings")) {
+                if (auto lri = settings->get_as<bool>("load_remote_images"))
+                    loadRemoteImages_ = **lri;
+            }
         } catch (...) {}
+        emit configLoaded();
     }
 
     QVector<Profile> profiles_;
     QStringList ownEmails_;
+    bool loadRemoteImages_ = false;
     int currentProfile_ = 0;
 };

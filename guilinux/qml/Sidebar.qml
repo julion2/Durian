@@ -9,6 +9,10 @@ Item {
     property var profileModel: null
     signal folderSelected(string query)
 
+    function resetFolder() {
+        tagList.currentIndex = 0
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: collapsed ? 6 : 10

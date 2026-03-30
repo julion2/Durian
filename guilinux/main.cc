@@ -1,11 +1,13 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include "models/ThreadModel.h"
 #include "models/ProfileModel.h"
 #include "models/NetworkClient.h"
 
 int main(int argc, char *argv[]) {
+    QtWebEngineQuick::initialize();
     QGuiApplication app(argc, argv);
     app.setApplicationName("Durian");
 

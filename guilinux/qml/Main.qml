@@ -35,13 +35,15 @@ ApplicationWindow {
         }
     }
 
-    // Load default folder on startup
+    // Load first folder when profile changes
     Connections {
         target: profileModel
         function onCurrentProfileChanged() {
+            sidebar.resetFolder()
             var folders = profileModel.folders
             if (folders.length > 0) {
-                network.search(folders[0].query)
+                root.selectedThread = -1
+                network.search(profileModel.applyProfileFilter(folders[0].query))
             }
         }
     }
@@ -113,7 +115,7 @@ ApplicationWindow {
                         anchors.fill: parent
                         profileModel: profileModel
                         onFolderSelected: function(query) {
-                            network.search(query)
+                            network.search(profileModel.applyProfileFilter(query))
                         }
                     }
                 }
