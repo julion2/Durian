@@ -1,5 +1,39 @@
+genrule(
+    name = "qml_resources",
+    srcs = [
+        "qml/resources.qrc",
+        "qml/Main.qml",
+        "qml/Sidebar.qml",
+        "qml/ThreadList.qml",
+        "qml/ThreadRow.qml",
+        "qml/DetailView.qml",
+    ],
+    outs = ["qrc_resources.cpp"],
+    cmd = """
+        RCC="$$PWD/$(location @qt//:rcc)" && \
+        QRC=$(location qml/resources.qrc) && \
+        cd $$(dirname $$QRC)/.. && \
+        $$RCC --name resources qml/resources.qrc -o $$OLDPWD/$@
+    """,
+    tools = ["@qt//:rcc"],
+)
+
+genrule(
+    name = "moc_thread_model",
+    srcs = ["models/ThreadModel.h"],
+    outs = ["moc_ThreadModel.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/ThreadModel.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
 cc_binary(
     name = "guilinux",
-    srcs = ["main.cc"],
+    srcs = [
+        "main.cc",
+        "models/ThreadModel.h",
+        "data/SeedData.h",
+        ":qml_resources",
+        ":moc_thread_model",
+    ],
     deps = ["@qt//:qt6"],
 )

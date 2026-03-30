@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/qml">
+        <file>Main.qml</file>
+        <file>Sidebar.qml</file>
+        <file>ThreadList.qml</file>
+        <file>ThreadRow.qml</file>
+        <file>DetailView.qml</file>
+    </qresource>
+</RCC>

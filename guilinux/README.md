@@ -2,7 +2,7 @@
 
 ## Dependencies
 
-- Qt6
+- Qt6 (Core, Gui, Quick, Qml, QuickControls2)
 - Bazel
 
 Set one of these env vars to your Qt6 root:
