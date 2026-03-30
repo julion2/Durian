@@ -70,6 +70,42 @@ public:
         });
     }
 
+    Q_INVOKABLE void quickSearch(const QString &query, int limit = 25) {
+        QUrl url(baseUrl_ + "/api/v1/search");
+        QUrlQuery params;
+        params.addQueryItem("query", query);
+        params.addQueryItem("limit", QString::number(limit));
+        params.addQueryItem("enrich", QString::number(limit));
+        url.setQuery(params);
+
+        auto *reply = manager_->get(QNetworkRequest(url));
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) return;
+            auto doc = QJsonDocument::fromJson(reply->readAll());
+            auto obj = doc.object();
+            if (!obj.value("ok").toBool()) return;
+            // Merge preview from enriched threads
+            auto results = obj.value("results").toArray();
+            auto threads = obj.value("threads").toObject();
+            QJsonArray enriched;
+            for (const auto &val : results) {
+                auto r = val.toObject();
+                auto tid = r.value("thread_id").toString();
+                if (threads.contains(tid)) {
+                    auto msgs = threads.value(tid).toObject()
+                                    .value("messages").toArray();
+                    if (!msgs.isEmpty()) {
+                        auto body = msgs.first().toObject().value("body").toString();
+                        r.insert("preview", body.left(200).simplified());
+                    }
+                }
+                enriched.append(r);
+            }
+            emit quickSearchResults(enriched);
+        });
+    }
+
     Q_INVOKABLE void fetchThread(const QString &threadId) {
         QUrl url(baseUrl_ + "/api/v1/threads/" + threadId);
         auto *reply = manager_->get(QNetworkRequest(url));
@@ -93,6 +129,7 @@ public:
 signals:
     void baseUrlChanged();
     void searchResults(const QJsonArray &results);
+    void quickSearchResults(const QJsonArray &results);
     void threadLoaded(const QJsonObject &thread);
     void searchError(const QString &error);
 

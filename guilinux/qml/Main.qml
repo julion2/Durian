@@ -59,9 +59,7 @@ ApplicationWindow {
         onNavigateToThread: function(index) {
             root.selectedThread = index
         }
-        onRequestSearch: {
-            // TODO: open search popup
-        }
+        onRequestSearch: searchPopup.open()
     }
 
     // Full vertical layout: toolbar on top, content below
@@ -151,6 +149,16 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+    }
+
+    SearchPopup {
+        id: searchPopup
+        networkClient: network
+        profileModel: profileModel
+        onResultSelected: function(threadId, subject) {
+            // Load selected thread in detail view
+            network.fetchThread(threadId)
         }
     }
 }

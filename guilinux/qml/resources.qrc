@@ -9,6 +9,7 @@
         <file>KeyHandler.qml</file>
         <file>AvatarHelper.js</file>
         <file>Avatar.qml</file>
+        <file>SearchPopup.qml</file>
     </qresource>
     <qresource prefix="/fonts">
         <file>MaterialSymbolsOutlined.ttf</file>

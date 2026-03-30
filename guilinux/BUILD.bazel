@@ -11,6 +11,7 @@ genrule(
         "qml/KeyHandler.qml",
         "qml/AvatarHelper.js",
         "qml/Avatar.qml",
+        "qml/SearchPopup.qml",
         "qml/MaterialSymbolsOutlined.ttf",
     ],
     outs = ["qrc_resources.cpp"],
