@@ -763,8 +763,16 @@ class EmailBackend: ObservableObject {
         email.incomingAttachments = allAttachments
         email.hasAttachment = !allAttachments.isEmpty
 
-        let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
-        email.bodyState = .loaded(body: combinedBody, attributedBody: nil)
+        // Set preview text from enrichment (lightweight, no HTML).
+        // bodyState stays .notLoaded so full thread is fetched on click.
+        let previewBody = thread.messages.first?.body ?? ""
+        email.previewText = String(previewBody.prefix(200))
+
+        // Only set bodyState if HTML is present (full thread data, not light enrichment)
+        if thread.messages.contains(where: { $0.html != nil && !($0.html?.isEmpty ?? true) }) {
+            let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+            email.bodyState = .loaded(body: combinedBody, attributedBody: nil)
+        }
         cacheThread(id: email.id, messages: thread.messages)
     }
 
@@ -817,8 +825,12 @@ class EmailBackend: ObservableObject {
                 emails[index].incomingAttachments = allAttachments
                 emails[index].hasAttachment = !allAttachments.isEmpty
 
-                let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
-                emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
+                let previewBody = cached.messages.first?.body ?? ""
+                emails[index].previewText = String(previewBody.prefix(200))
+                if cached.messages.contains(where: { $0.html != nil && !($0.html?.isEmpty ?? true) }) {
+                    let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+                    emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
+                }
                 restoredCount += 1
             }
         }

@@ -128,11 +128,6 @@ func (h *Handler) convertThreadLight(threadID string, msgs []*store.Message) *in
 	var subject string
 
 	for _, msg := range msgs {
-		body := msg.BodyText
-		if len(body) > 200 {
-			body = body[:200]
-		}
-
 		info := internmail.MessageInfo{
 			ID:        msg.MessageID,
 			From:      msg.FromAddr,
@@ -141,8 +136,8 @@ func (h *Handler) convertThreadLight(threadID string, msgs []*store.Message) *in
 			Date:      time.Unix(msg.Date, 0).Format(time.RFC1123Z),
 			Timestamp: msg.Date,
 			MessageID: msg.MessageID,
-			Body:      body,
-			// HTML omitted — full body loaded on thread click
+			Body:      msg.BodyText,
+			// HTML omitted — loaded on thread click via /threads/{id}
 		}
 
 		if subject == "" {

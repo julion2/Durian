@@ -197,6 +197,9 @@ struct MailMessage: Identifiable, Hashable {
     // Thread messages (loaded from CLI show command)
     var threadMessages: [ThreadMessage]?
     
+    // Preview text from search enrichment (separate from bodyState cache)
+    var previewText: String?
+
     // Reply/Forward metadata (loaded with body)
     var messageId: String?
     var inReplyTo: String?
@@ -232,12 +235,19 @@ struct MailMessage: Identifiable, Hashable {
         return tags.split(separator: ",").contains("draft")
     }
 
-    /// Body preview for list view (first ~100 chars, stripped of HTML)
+    /// Body preview for list view (first ~150 chars)
     var bodyPreview: String? {
+        // Prefer enrichment preview (always available, no HTML)
+        if let preview = previewText, !preview.isEmpty {
+            let stripped = preview
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(stripped.prefix(150))
+        }
+        // Fallback to loaded body
         switch bodyState {
         case .loaded(let body, _):
             guard !body.isEmpty else { return nil }
-            // Strip HTML tags and get first 150 chars
             let stripped = body
                 .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
