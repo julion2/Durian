@@ -53,6 +53,13 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
+                        text: "\uF10D"
+                        font.family: "Material Symbols Outlined"
+                        font.pixelSize: 14
+                        color: "#f0a030"
+                        visible: row.tags.indexOf("flagged") >= 0
+                    }
+                    Label {
                         text: row.sender
                         font.pixelSize: 13
                         font.weight: Font.DemiBold

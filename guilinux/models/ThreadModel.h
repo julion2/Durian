@@ -96,6 +96,7 @@ public slots:
     void loadFromJson(const QJsonArray &results) {
         beginResetModel();
         threads_.clear();
+        QVector<ThreadPreview> pinned, unpinned;
         for (const auto &val : results) {
             auto obj = val.toObject();
             ThreadPreview t;
@@ -105,8 +106,12 @@ public slots:
             t.preview = obj.value("preview").toString();
             t.date = obj.value("date").toString();
             t.tags = obj.value("tags").toString();
-            threads_.append(t);
+            if (t.tags.contains("flagged"))
+                pinned.append(t);
+            else
+                unpinned.append(t);
         }
+        threads_ = pinned + unpinned;
         endResetModel();
         emit countChanged();
     }
