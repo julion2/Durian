@@ -33,14 +33,9 @@ enum AddressUtils {
 
         name = stripNestedQuotes(name)
 
-        // Name contains @ → it's an email used as name
+        // Name contains @ → it's an email used as name — show full email
         if name.contains("@") {
-            if !hasBracket && !name.contains(" "), let at = name.firstIndex(of: "@") {
-                // Bare email without <> — show local part
-                return String(name[..<at])
-            }
-            // Garbage before <> (e.g. "029401dcae34$...@foo.com") — discard
-            return ""
+            return name
         }
 
         name = collapseWhitespace(name)
