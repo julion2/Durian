@@ -1,6 +1,8 @@
 # Password Authentication Setup
 
-For email providers that don't support OAuth (e.g., GMX, web.de, custom SMTP), Durian uses password authentication with macOS Keychain.
+For email providers that don't support OAuth (e.g., GMX, web.de, custom SMTP), Durian uses password authentication with the OS keychain.
+
+On Linux, install `secret-tool` (libsecret). Then use `durian auth login <account>` — the CLI handles storing the password.
 
 ## Creating a Keychain Entry
 
