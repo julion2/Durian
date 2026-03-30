@@ -10,10 +10,27 @@ Item {
     property var networkClient: null
     property var profileModel: null
     property int currentIndex: -1
+    property bool active: false
     property var messages: []
     property string threadSubject: ""
+    property int focusedMessage: 0
+
+    function scrollToNextMessage() {
+        if (focusedMessage < messages.length - 1) {
+            focusedMessage++
+            msgListView.positionViewAtIndex(focusedMessage, ListView.Beginning)
+        }
+    }
+
+    function scrollToPrevMessage() {
+        if (focusedMessage > 0) {
+            focusedMessage--
+            msgListView.positionViewAtIndex(focusedMessage, ListView.Beginning)
+        }
+    }
 
     onCurrentIndexChanged: {
+        focusedMessage = 0
         if (currentIndex >= 0 && threadModel && networkClient) {
             var tid = threadModel.threadId(currentIndex)
             if (tid) networkClient.fetchThread(tid)
@@ -128,6 +145,7 @@ Item {
 
         // Message cards
         ListView {
+            id: msgListView
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 8
@@ -152,8 +170,9 @@ Item {
                     implicitHeight: msgCol.implicitHeight + 24
                     radius: 8
                     color: isOwn ? "#f3f0ff" : "#ffffff"
-                    border.color: isOwn ? "#ddd6f3" : "#e6e6e6"
-                    border.width: 1
+                    border.color: (detailView.active && index === detailView.focusedMessage)
+                        ? "#b39ddb" : (isOwn ? "#ddd6f3" : "#e6e6e6")
+                    border.width: (detailView.active && index === detailView.focusedMessage) ? 2 : 1
 
                     ColumnLayout {
                         id: msgCol
@@ -241,9 +260,17 @@ Item {
                         Component {
                             id: webBodyComponent
                             WebEngineView {
-                                property bool ready: false
-                                implicitHeight: ready ? Math.max(contentsSize.height, 40) : 100
-                                onContentsSizeChanged: ready = true
+                                property real finalHeight: 100
+                                property bool heightLocked: false
+                                implicitHeight: finalHeight
+                                onContentsSizeChanged: {
+                                    if (!heightLocked && contentsSize.height > 10) {
+                                        heightLocked = true
+                                        finalHeight = contentsSize.height
+                                    }
+                                }
+                                // Disable scroll/input so ListView handles scrolling
+                                enabled: false
                                 Component.onCompleted: {
                                     var base = (networkClient ? networkClient.baseUrl : "http://localhost:9723")
                                     var imgSrc = "img-src data: " + base

@@ -6,6 +6,7 @@
         <file>ThreadRow.qml</file>
         <file>DetailView.qml</file>
         <file>ActionBar.qml</file>
+        <file>KeyHandler.qml</file>
     </qresource>
     <qresource prefix="/fonts">
         <file>MaterialSymbolsOutlined.ttf</file>

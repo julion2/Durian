@@ -13,6 +13,13 @@ Item {
         tagList.currentIndex = 0
     }
 
+    function selectFolder(idx) {
+        tagList.currentIndex = idx
+        var folders = profileModel ? profileModel.folders : []
+        if (idx >= 0 && idx < folders.length)
+            folderSelected(folders[idx].query)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: collapsed ? 6 : 10

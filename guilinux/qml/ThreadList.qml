@@ -9,6 +9,11 @@ Item {
     property alias currentIndex: listView.currentIndex
     signal threadSelected(int index)
 
+    onCurrentIndexChanged: {
+        if (listView.currentIndex >= 0)
+            listView.positionViewAtIndex(listView.currentIndex, ListView.Contain)
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10

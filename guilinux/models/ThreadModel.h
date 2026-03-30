@@ -9,6 +9,7 @@
 
 class ThreadModel : public QAbstractListModel {
     Q_OBJECT
+    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
 
 public:
     enum Role {
@@ -104,7 +105,11 @@ public slots:
             threads_.append(t);
         }
         endResetModel();
+        emit countChanged();
     }
+
+signals:
+    void countChanged();
 
 private:
     QVector<ThreadPreview> threads_;

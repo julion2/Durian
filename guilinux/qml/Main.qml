@@ -48,6 +48,22 @@ ApplicationWindow {
         }
     }
 
+    // Vim keybindings
+    KeyHandler {
+        id: keyHandler
+        anchors.fill: parent
+        threadList: threadListView
+        sidebar: sidebar
+        detailView: detailViewRef
+        threadCount: threadModel.count
+        onNavigateToThread: function(index) {
+            root.selectedThread = index
+        }
+        onRequestSearch: {
+            // TODO: open search popup
+        }
+    }
+
     // Full vertical layout: toolbar on top, content below
     ColumnLayout {
         anchors.fill: parent
@@ -69,6 +85,7 @@ ApplicationWindow {
                 spacing: 0
 
                 ThreadList {
+                    id: threadListView
                     Layout.preferredWidth: 360
                     Layout.minimumWidth: 200
                     Layout.fillHeight: true
@@ -86,6 +103,7 @@ ApplicationWindow {
                 }
 
                 DetailView {
+                    id: detailViewRef
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumWidth: 300
@@ -93,6 +111,7 @@ ApplicationWindow {
                     networkClient: network
                     profileModel: profileModel
                     currentIndex: root.selectedThread
+                    active: keyHandler.threadFocused
                 }
             }
 
