@@ -23,6 +23,7 @@ Item {
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: collapsed ? 6 : 10
+        anchors.topMargin: collapsed ? 6 : 10
         spacing: 8
 
         RowLayout {
@@ -204,5 +205,8 @@ Item {
                 }
             }
         }
+
+        // Push content to top when collapsed
+        Item { Layout.fillHeight: true; visible: collapsed }
     }
 }
