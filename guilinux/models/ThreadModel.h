@@ -17,6 +17,7 @@ public:
         SenderRole,
         PreviewRole,
         InitialRole,
+        FromRole,
         DateRole,
         TagsRole,
         ThreadIdRole,
@@ -31,6 +32,7 @@ public:
             {SenderRole, "sender"},
             {PreviewRole, "preview"},
             {InitialRole, "initial"},
+            {FromRole, "fromRaw"},
             {DateRole, "date"},
             {TagsRole, "tags"},
             {ThreadIdRole, "threadId"},
@@ -46,6 +48,7 @@ public:
         case SenderRole: return displayName(t.sender);
         case PreviewRole: return t.preview;
         case InitialRole: return initialForSender(t.sender);
+        case FromRole: return t.sender;
         case DateRole: return t.date;
         case TagsRole: return t.tags;
         case ThreadIdRole: return t.threadId;
@@ -108,23 +111,20 @@ public slots:
         emit countChanged();
     }
 
-signals:
-    void countChanged();
-
-private:
-    QVector<ThreadPreview> threads_;
-
     // "Display Name <email>" → "Display Name", or email if no name
     static QString displayName(const QString &from) {
         int lt = from.indexOf('<');
-        if (lt > 0) {
-            QString name = from.left(lt).trimmed();
-            // Strip surrounding quotes
-            if (name.startsWith('"') && name.endsWith('"'))
-                name = name.mid(1, name.length() - 2);
-            if (!name.isEmpty()) return name;
+        int gt = from.indexOf('>');
+        if (lt >= 0 && gt > lt) {
+            if (lt > 0) {
+                QString name = from.left(lt).trimmed();
+                if (name.startsWith('"') && name.endsWith('"'))
+                    name = name.mid(1, name.length() - 2);
+                if (!name.isEmpty()) return name;
+            }
+            // No display name, extract email from angle brackets
+            return from.mid(lt + 1, gt - lt - 1).trimmed();
         }
-        // No angle brackets — might just be an email
         return from.trimmed();
     }
 
@@ -135,5 +135,11 @@ private:
         }
         return "?";
     }
+
+signals:
+    void countChanged();
+
+private:
+    QVector<ThreadPreview> threads_;
 };
 

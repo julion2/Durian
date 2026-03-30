@@ -55,6 +55,63 @@ genrule(
     tools = ["@qt//:moc"],
 )
 
+# Tests
+
+cc_test(
+    name = "icon_map_test",
+    srcs = ["tests/icon_map_test.cc", "models/IconMap.h"],
+    copts = ["-std=c++17", "-Iguilinux"],
+    size = "small",
+    deps = ["@googletest//:gtest_main", "@qt//:qt6"],
+)
+
+genrule(
+    name = "moc_thread_model_test",
+    srcs = ["tests/thread_model_test.cc"],
+    outs = ["thread_model_test_moc.h"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location tests/thread_model_test.cc) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+cc_test(
+    name = "thread_model_test",
+    srcs = [
+        "tests/thread_model_test.cc",
+        "models/ThreadModel.h",
+        "data/SeedData.h",
+        ":moc_thread_model",
+        ":moc_thread_model_test",
+    ],
+    copts = ["-std=c++17", "-Iguilinux"],
+    includes = ["."],
+    size = "small",
+    deps = ["@qt//:qt6"],
+)
+
+genrule(
+    name = "moc_profile_model_test",
+    srcs = ["tests/profile_model_test.cc"],
+    outs = ["profile_model_test_moc.h"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location tests/profile_model_test.cc) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+cc_test(
+    name = "profile_model_test",
+    srcs = [
+        "tests/profile_model_test.cc",
+        "models/ProfileModel.h",
+        "models/IconMap.h",
+        "third_party/toml.hpp",
+        ":moc_profile_model",
+        ":moc_profile_model_test",
+    ],
+    copts = ["-std=c++17", "-Iguilinux", "-Wno-deprecated-literal-operator"],
+    includes = ["."],
+    size = "small",
+    deps = ["@qt//:qt6"],
+)
+
 cc_binary(
     name = "guilinux",
     srcs = [

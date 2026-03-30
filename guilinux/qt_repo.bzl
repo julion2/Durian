@@ -64,6 +64,7 @@ def _qt_local_repository_impl(ctx):
         ctx.symlink(lib_dir + "/QtQuickControls2.framework/Headers", qt_includes + "/QtQuickControls2")
         ctx.symlink(lib_dir + "/QtWebEngineCore.framework/Headers", qt_includes + "/QtWebEngineCore")
         ctx.symlink(lib_dir + "/QtWebEngineQuick.framework/Headers", qt_includes + "/QtWebEngineQuick")
+        ctx.symlink(lib_dir + "/QtTest.framework/Headers", qt_includes + "/QtTest")
 
         includes = [
             "lib/QtCore.framework/Headers",
@@ -84,6 +85,8 @@ def _qt_local_repository_impl(ctx):
             "lib/QtWebEngineCore.framework/Headers/QtWebEngineCore",
             "lib/QtWebEngineQuick.framework/Headers",
             "lib/QtWebEngineQuick.framework/Headers/QtWebEngineQuick",
+            "lib/QtTest.framework/Headers",
+            "lib/QtTest.framework/Headers/QtTest",
             "qt_includes",
         ] + (["include_decl", "include_decl/QtQmlIntegration"] if qt_decl_include else [])
         linkopts = [
@@ -98,6 +101,7 @@ def _qt_local_repository_impl(ctx):
             "-framework", "QtQuickControls2",
             "-framework", "QtWebEngineCore",
             "-framework", "QtWebEngineQuick",
+            "-framework", "QtTest",
         ]
     else:
         includes = [
@@ -112,6 +116,7 @@ def _qt_local_repository_impl(ctx):
             "include/QtQuickControls2",
             "include/QtWebEngineCore",
             "include/QtWebEngineQuick",
+            "include/QtTest",
         ]
         linkopts = [
             "-L" + lib_dir,
@@ -125,6 +130,7 @@ def _qt_local_repository_impl(ctx):
             "-lQt6QuickControls2",
             "-lQt6WebEngineCore",
             "-lQt6WebEngineQuick",
+            "-lQt6Test",
         ]
 
     build = """

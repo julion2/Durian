@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QCryptographicHash>
-#include <QDebug>
 #include <QImage>
 #include <QPainter>
 #include <QPainterPath>
@@ -39,8 +38,7 @@ public:
         auto *nam = new QNetworkAccessManager(this);
         QString decoded = QUrl::fromPercentEncoding(email.toUtf8());
         QString clean = extractEmail(decoded).toLower().trimmed();
-        qDebug() << "AVATAR request:" << email << "-> decoded:" << decoded << "-> email:" << clean;
-        if (clean.isEmpty()) { qDebug() << "AVATAR no email, skip"; emit finished(); return; }
+        if (clean.isEmpty()) { emit finished(); return; }
 
         QString domain = clean.mid(clean.indexOf('@') + 1);
         QUrl url;
@@ -62,13 +60,11 @@ public:
                 "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36");
         }
 
-        qDebug() << "AVATAR fetching:" << url.toString();
         auto *reply = nam->get(req);
         connect(reply, &QNetworkReply::finished, this, [this, reply]() {
             reply->deleteLater();
             if (reply->error() == QNetworkReply::NoError) {
                 QByteArray data = reply->readAll();
-                qDebug() << "AVATAR got" << data.size() << "bytes from" << reply->url().toString();
                 if (!data.isEmpty()) {
                     QImage raw;
                     raw.loadFromData(data);
@@ -91,8 +87,6 @@ public:
                         painter.drawImage(0, 0, scaled);
                     }
                 }
-            } else {
-                qDebug() << "AVATAR error:" << reply->error() << reply->url().toString();
             }
             emit finished();
         });
