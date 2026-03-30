@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
@@ -10,7 +11,9 @@
 int main(int argc, char *argv[]) {
     QtWebEngineQuick::initialize();
     QGuiApplication app(argc, argv);
-    app.setApplicationName("Durian");
+    app.setApplicationName("Durian Nightly");
+    app.setDesktopFileName("durian-nightly");
+    app.setWindowIcon(QIcon(":/icons/durian-nightly.png"));
 
     QQuickStyle::setStyle("Basic");
 

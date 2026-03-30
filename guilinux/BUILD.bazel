@@ -12,6 +12,7 @@ genrule(
         "qml/AvatarHelper.js",
         "qml/Avatar.qml",
         "qml/SearchPopup.qml",
+        "qml/durian-nightly.png",
         "qml/MaterialSymbolsOutlined.ttf",
     ],
     outs = ["qrc_resources.cpp"],

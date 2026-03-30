@@ -11,6 +11,9 @@
         <file>Avatar.qml</file>
         <file>SearchPopup.qml</file>
     </qresource>
+    <qresource prefix="/icons">
+        <file>durian-nightly.png</file>
+    </qresource>
     <qresource prefix="/fonts">
         <file>MaterialSymbolsOutlined.ttf</file>
     </qresource>
