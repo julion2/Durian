@@ -6,16 +6,22 @@ struct EmailRowView: View {
     var isFirstInGroup: Bool = true   // First in contiguous selection group (top corners rounded)
     var isLastInGroup: Bool = true    // Last in contiguous selection group (bottom corners rounded)
     var currentFolder: String = AccountManager.shared.selectedFolder
-    
+
     // Context menu callbacks
     var onTogglePin: (() -> Void)?
     var onToggleRead: (() -> Void)?
     var onDelete: (() -> Void)?
 
+    // Cached counterparties — computed once, not on every render
+    private var cachedCounterparties: [Participant] {
+        Self.resolveCounterparties(email: email)
+    }
+
     var body: some View {
+        let parties = cachedCounterparties
         HStack(alignment: .top, spacing: 10) {
-            AvatarView(name: counterparties.first?.name ?? email.from,
-                       email: counterparties.first?.email ?? email.from,
+            AvatarView(name: parties.first?.name ?? email.from,
+                       email: parties.first?.email ?? email.from,
                        size: 32)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -32,7 +38,7 @@ struct EmailRowView: View {
                             .foregroundColor(.yellow)
                     }
                     
-                    Text(senderName)
+                    Text(parties.map(\.name).isEmpty ? Self.extractName(from: email.from) : parties.map(\.name).joined(separator: ", "))
                         .font(.headline)
                         .fontWeight(email.isRead ? .regular : .bold)
                         .foregroundStyle(isSelected ? .white : .primary)
@@ -146,15 +152,22 @@ struct EmailRowView: View {
         let email: String  // may equal name if no email available
     }
 
+    /// Cached own-email set — avoids repeated ConfigManager calls and regex
+    private static let ownEmails: Set<String> = {
+        Set(ConfigManager.shared.getAccounts().map { $0.email.lowercased() })
+    }()
+    private static let ownNames: Set<String> = {
+        Set(ConfigManager.shared.getAccounts().map {
+            $0.name.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        })
+    }()
+
     private static func isOwn(_ address: String) -> Bool {
-        let accounts = ConfigManager.shared.getAccounts()
         let email = extractEmail(from: address).lowercased()
-        if accounts.contains(where: { $0.email.lowercased() == email }) { return true }
+        if ownEmails.contains(email) { return true }
         let name = extractName(from: address).lowercased()
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        return accounts.contains(where: {
-            $0.name.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression) == name
-        })
+        return ownNames.contains(name)
     }
 
     private static func extractName(from address: String) -> String {
@@ -210,7 +223,7 @@ struct EmailRowView: View {
     }
 
     /// All non-own participants from thread messages (from + to + cc), deduplicated, ordered.
-    private var counterparties: [Participant] {
+    private static func resolveCounterparties(email: MailMessage) -> [Participant] {
         // When thread messages are loaded, use real from/to/cc fields
         if let messages = email.threadMessages, !messages.isEmpty {
             var seen = Set<String>()
@@ -273,10 +286,6 @@ struct EmailRowView: View {
         return authors.map { Participant(name: Self.extractName(from: $0), email: $0) }
     }
 
-    private var senderName: String {
-        let names = counterparties.map(\.name)
-        return names.isEmpty ? Self.extractName(from: email.from) : names.joined(separator: ", ")
-    }
 }
 
 // MARK: - Truncated Tags View

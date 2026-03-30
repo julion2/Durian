@@ -54,34 +54,32 @@ struct EmailListView: View {
 
     var body: some View {
         let items = buildEmailList()
+        let groupPositions = computeGroupPositions(from: items)
 
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(items) { item in
-                        listItemView(item)
+                        listItemView(item, groupPositions: groupPositions)
                     }
                 }
             }
             .overlayScrollbars()
             .onChange(of: cursorId) { _, newCursorId in
-                // Scroll to cursor position when it changes
                 if let cursorId = newCursorId {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        proxy.scrollTo(cursorId, anchor: .center)
-                    }
+                    proxy.scrollTo(cursorId, anchor: .center)
                 }
             }
         }
     }
     
     @ViewBuilder
-    private func listItemView(_ item: ListItem) -> some View {
+    private func listItemView(_ item: ListItem, groupPositions: [String: (isFirst: Bool, isLast: Bool)]) -> some View {
         switch item {
         case .header(let title, let style):
             headerView(title: title, style: style)
         case .email(let email):
-            emailRow(email: email)
+            emailRow(email: email, groupPositions: groupPositions)
         }
     }
     
@@ -137,43 +135,40 @@ struct EmailListView: View {
         return items
     }
     
-    /// Sorted email IDs for position calculations
-    private var sortedEmailIds: [String] {
-        emails.sorted { $0.timestamp > $1.timestamp }.map { $0.id }
-    }
-    
-    /// Berechnet ob Email erste/letzte in zusammenhängender Selection-Gruppe ist
-    private func selectionGroupPosition(for emailId: String) -> (isFirst: Bool, isLast: Bool) {
-        let isSelected = selection.contains(emailId) || cursorId == emailId
-        guard isSelected else {
-            return (true, true)  // Nicht selektiert = eigene "Gruppe"
+    /// Pre-computed selection group positions — O(n) instead of O(n²)
+    /// Takes pre-built items to avoid double buildEmailList() call
+    private func computeGroupPositions(from items: [ListItem]) -> [String: (isFirst: Bool, isLast: Bool)] {
+        let emailIds = items.compactMap { item -> String? in
+            if case .email(let email) = item { return email.id }
+            return nil
         }
-        
-        let sorted = sortedEmailIds
-        guard let index = sorted.firstIndex(of: emailId) else {
-            return (true, true)
+
+        var result: [String: (isFirst: Bool, isLast: Bool)] = [:]
+        for (i, id) in emailIds.enumerated() {
+            let isSelected = selection.contains(id) || cursorId == id
+            guard isSelected else {
+                result[id] = (true, true)
+                continue
+            }
+            let prevId = i > 0 ? emailIds[i - 1] : nil
+            let prevSelected = prevId != nil && (selection.contains(prevId!) || cursorId == prevId)
+            let nextId = i < emailIds.count - 1 ? emailIds[i + 1] : nil
+            let nextSelected = nextId != nil && (selection.contains(nextId!) || cursorId == nextId)
+            result[id] = (isFirst: !prevSelected, isLast: !nextSelected)
         }
-        
-        // Prüfe ob vorherige Email auch selektiert ist
-        let prevId = index > 0 ? sorted[index - 1] : nil
-        let prevSelected = prevId != nil && (selection.contains(prevId!) || cursorId == prevId)
-        
-        // Prüfe ob nächste Email auch selektiert ist
-        let nextId = index < sorted.count - 1 ? sorted[index + 1] : nil
-        let nextSelected = nextId != nil && (selection.contains(nextId!) || cursorId == nextId)
-        
-        return (isFirst: !prevSelected, isLast: !nextSelected)
+        return result
     }
     
     @ViewBuilder
-    private func emailRow(email: MailMessage) -> some View {
+    private func emailRow(email: MailMessage, groupPositions: [String: (isFirst: Bool, isLast: Bool)]) -> some View {
         // Cursor position gets highlight, marked emails show selection indicator
         let isCursor = cursorId == email.id
         let isMarked = selection.contains(email.id)
         let isSelected = isCursor || isMarked
         
-        // Berechne Position in Gruppe für corner radius
-        let (isFirstInGroup, isLastInGroup) = selectionGroupPosition(for: email.id)
+        // Pre-computed position in selection group for corner radius
+        let pos = groupPositions[email.id] ?? (true, true)
+        let (isFirstInGroup, isLastInGroup) = pos
         
         EmailRowView(
             email: email,

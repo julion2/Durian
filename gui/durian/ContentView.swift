@@ -265,14 +265,15 @@ struct ContentView: View {
                         cursorId: $cursorEmailId,
                         selection: $markedEmails,
                         onEmailAppear: { email in
-                            // Prefetch body when email becomes visible
+                            // Only prefetch body for currently selected email (avoids request storm on scroll)
+                            guard email.id == cursorEmailId else { return }
                             switch email.bodyState {
                             case .notLoaded, .failed:
                                 Task {
                                     await accountManager.fetchEmailBody(id: email.id)
                                 }
                             case .loading, .loaded:
-                                break // Already loading or loaded
+                                break
                             }
                         },
                         onTogglePin: { emailId in
