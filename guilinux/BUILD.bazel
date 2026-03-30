@@ -10,6 +10,7 @@ genrule(
         "qml/ActionBar.qml",
         "qml/KeyHandler.qml",
         "qml/AvatarHelper.js",
+        "qml/Avatar.qml",
         "qml/MaterialSymbolsOutlined.ttf",
     ],
     outs = ["qrc_resources.cpp"],
@@ -27,6 +28,14 @@ genrule(
     srcs = ["models/ThreadModel.h"],
     outs = ["moc_ThreadModel.cpp"],
     cmd = "$$PWD/$(location @qt//:moc) $(location models/ThreadModel.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+genrule(
+    name = "moc_avatar_provider",
+    srcs = ["models/AvatarProvider.h"],
+    outs = ["moc_AvatarProvider.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/AvatarProvider.h) -o $@",
     tools = ["@qt//:moc"],
 )
 
@@ -54,11 +63,13 @@ cc_binary(
         "models/ProfileModel.h",
         "models/IconMap.h",
         "models/NetworkClient.h",
+        "models/AvatarProvider.h",
         "data/SeedData.h",
         "third_party/toml.hpp",
         ":qml_resources",
         ":moc_thread_model",
         ":moc_profile_model",
+        ":moc_avatar_provider",
         ":moc_network_client",
     ],
     copts = ["-std=c++17", "-Iguilinux", "-Wno-deprecated-literal-operator"],

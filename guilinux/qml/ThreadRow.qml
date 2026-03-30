@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import "AvatarHelper.js" as Avatar
 
 Item {
     id: row
@@ -13,6 +12,7 @@ Item {
     required property string sender
     required property string preview
     required property string initial
+    required property string fromRaw
     required property string date
     required property string tags
     property bool selected: false
@@ -39,19 +39,9 @@ Item {
             anchors.margins: 10
             spacing: 10
 
-            Rectangle {
-                width: 32
-                height: 32
-                radius: 16
-                color: Avatar.colorFor(row.sender)
-
-                Label {
-                    anchors.centerIn: parent
-                    text: Avatar.initials(row.sender)
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                    color: "#ffffff"
-                }
+            Avatar {
+                from: row.fromRaw
+                size: 32
             }
 
             ColumnLayout {

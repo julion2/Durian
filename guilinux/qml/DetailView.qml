@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtWebEngine
-import "AvatarHelper.js" as Avatar
 
 Item {
     id: detailView
@@ -186,17 +185,10 @@ Item {
                             Layout.fillWidth: true
                             spacing: 10
 
-                            Rectangle {
-                                width: 36; height: 36; radius: 18
-                                color: Avatar.colorFor(modelData.from || "")
+                            Avatar {
+                                from: modelData.from || ""
+                                size: 36
                                 Layout.alignment: Qt.AlignTop
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: Avatar.initials(modelData.from || "")
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                    color: "#ffffff"
-                                }
                             }
 
                             ColumnLayout {

@@ -5,6 +5,7 @@
 #include "models/ThreadModel.h"
 #include "models/ProfileModel.h"
 #include "models/NetworkClient.h"
+#include "models/AvatarProvider.h"
 
 int main(int argc, char *argv[]) {
     QtWebEngineQuick::initialize();
@@ -18,6 +19,7 @@ int main(int argc, char *argv[]) {
     qmlRegisterType<NetworkClient>("Durian", 1, 0, "NetworkClient");
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider("avatar", new AvatarProvider());
     engine.load(QUrl("qrc:/qml/Main.qml"));
 
     if (engine.rootObjects().isEmpty())
