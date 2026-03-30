@@ -29,6 +29,14 @@ genrule(
 )
 
 genrule(
+    name = "moc_network_client",
+    srcs = ["models/NetworkClient.h"],
+    outs = ["moc_NetworkClient.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/NetworkClient.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+genrule(
     name = "moc_profile_model",
     srcs = ["models/ProfileModel.h"],
     outs = ["moc_ProfileModel.cpp"],
@@ -43,12 +51,14 @@ cc_binary(
         "models/ThreadModel.h",
         "models/ProfileModel.h",
         "models/IconMap.h",
+        "models/NetworkClient.h",
         "data/SeedData.h",
         "third_party/toml.hpp",
         ":qml_resources",
         ":moc_thread_model",
         ":moc_profile_model",
+        ":moc_network_client",
     ],
-    copts = ["-std=c++17", "-Iguilinux"],
+    copts = ["-std=c++17", "-Iguilinux", "-Wno-deprecated-literal-operator"],
     deps = ["@qt//:qt6"],
 )

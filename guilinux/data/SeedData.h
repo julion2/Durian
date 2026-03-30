@@ -4,9 +4,12 @@
 #include <QString>
 
 struct ThreadPreview {
+    QString threadId;
     QString subject;
     QString sender;
     QString preview;
+    QString date;
+    QString tags;
 };
 
 inline QVector<ThreadPreview> seedThreads() {

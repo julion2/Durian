@@ -7,6 +7,7 @@ Item {
 
     property bool collapsed: false
     property var profileModel: null
+    signal folderSelected(string query)
 
     ColumnLayout {
         anchors.fill: parent
@@ -163,7 +164,10 @@ Item {
                 bottomPadding: 4
                 highlighted: tagList.currentIndex === index
 
-                onClicked: tagList.currentIndex = index
+                onClicked: {
+                    tagList.currentIndex = index
+                    sidebar.folderSelected(modelData.query)
+                }
 
                 contentItem: RowLayout {
                     spacing: 8

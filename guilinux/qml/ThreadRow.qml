@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 Item {
     id: row
-    height: 84
+    implicitHeight: innerCol.implicitHeight + 24
 
     // Auto-injected by ListView from model role names
     required property int index
@@ -12,6 +12,8 @@ Item {
     required property string sender
     required property string preview
     required property string initial
+    required property string date
+    required property string tags
     property bool selected: false
     signal clicked()
 
@@ -51,18 +53,29 @@ Item {
             }
 
             ColumnLayout {
+                id: innerCol
                 Layout.fillWidth: true
-                spacing: 4
+                spacing: 3
 
-                Label {
-                    text: row.sender
-                    font.pixelSize: 13
-                    font.weight: Font.DemiBold
-                    color: "#111111"
-                    elide: Text.ElideRight
+                // Sender + date
+                RowLayout {
                     Layout.fillWidth: true
+                    Label {
+                        text: row.sender
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                        color: "#111111"
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: row.date
+                        font.pixelSize: 11
+                        color: "#999999"
+                    }
                 }
 
+                // Subject
                 Label {
                     text: row.subject || "(No Subject)"
                     font.pixelSize: 12
@@ -72,14 +85,40 @@ Item {
                     Layout.fillWidth: true
                 }
 
+                // Preview
                 Label {
                     text: row.preview
                     font.pixelSize: 11
                     color: "#666666"
-                    wrapMode: Text.WordWrap
-                    maximumLineCount: 2
                     elide: Text.ElideRight
+                    maximumLineCount: 1
                     Layout.fillWidth: true
+                    visible: row.preview.length > 0
+                }
+
+                // Tags
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    visible: tagRepeater.count > 0
+                    Repeater {
+                        id: tagRepeater
+                        model: row.tags ? row.tags.split(",").filter(t => !["inbox","sent","draft","unread","archive","trash","spam"].includes(t.trim())).slice(0, 3) : []
+                        delegate: Rectangle {
+                            required property string modelData
+                            height: 16
+                            width: tagLabel.width + 10
+                            radius: 8
+                            color: "#f0ecf9"
+                            Label {
+                                id: tagLabel
+                                anchors.centerIn: parent
+                                text: modelData.trim()
+                                font.pixelSize: 9
+                                color: "#7c5cbf"
+                            }
+                        }
+                    }
                 }
             }
         }

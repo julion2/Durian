@@ -20,12 +20,30 @@ ApplicationWindow {
 
     ThreadModel {
         id: threadModel
-        Component.onCompleted: loadSeedData()
     }
 
     ProfileModel {
         id: profileModel
         Component.onCompleted: load()
+    }
+
+    NetworkClient {
+        id: network
+        onSearchResults: function(results) {
+            threadModel.loadFromJson(results)
+            root.selectedThread = threadModel.rowCount() > 0 ? 0 : -1
+        }
+    }
+
+    // Load default folder on startup
+    Connections {
+        target: profileModel
+        function onCurrentProfileChanged() {
+            var folders = profileModel.folders
+            if (folders.length > 0) {
+                network.search(folders[0].query)
+            }
+        }
     }
 
     // Full vertical layout: toolbar on top, content below
@@ -92,6 +110,9 @@ ApplicationWindow {
                         id: sidebar
                         anchors.fill: parent
                         profileModel: profileModel
+                        onFolderSelected: function(query) {
+                            network.search(query)
+                        }
                     }
                 }
 
