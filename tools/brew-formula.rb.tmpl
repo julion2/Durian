@@ -38,6 +38,8 @@ class Durian < Formula
         bin.install "durian-linux-amd64" => "durian"
       end
     end
+
+    generate_completions_from_executable(bin/"durian", "completion")
   end
 
   test do
