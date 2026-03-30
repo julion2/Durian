@@ -9,6 +9,7 @@ genrule(
         "qml/DetailView.qml",
         "qml/ActionBar.qml",
         "qml/KeyHandler.qml",
+        "qml/AvatarHelper.js",
         "qml/MaterialSymbolsOutlined.ttf",
     ],
     outs = ["qrc_resources.cpp"],

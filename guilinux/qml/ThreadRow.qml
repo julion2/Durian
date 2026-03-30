@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "AvatarHelper.js" as Avatar
 
 Item {
     id: row
@@ -42,13 +43,14 @@ Item {
                 width: 32
                 height: 32
                 radius: 16
-                color: "#f0f0f0"
+                color: Avatar.colorFor(row.sender)
 
                 Label {
                     anchors.centerIn: parent
-                    text: row.initial
+                    text: Avatar.initials(row.sender)
+                    font.pixelSize: 11
                     font.weight: Font.DemiBold
-                    color: "#333333"
+                    color: "#ffffff"
                 }
             }
 

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtWebEngine
+import "AvatarHelper.js" as Avatar
 
 Item {
     id: detailView
@@ -187,14 +188,14 @@ Item {
 
                             Rectangle {
                                 width: 36; height: 36; radius: 18
-                                color: isOwn ? "#e0d6f9" : "#f0f0f0"
+                                color: Avatar.colorFor(modelData.from || "")
                                 Layout.alignment: Qt.AlignTop
                                 Label {
                                     anchors.centerIn: parent
-                                    text: detailView.initialFor(modelData.from)
-                                    font.pixelSize: 14
+                                    text: Avatar.initials(modelData.from || "")
+                                    font.pixelSize: 12
                                     font.weight: Font.DemiBold
-                                    color: "#333333"
+                                    color: "#ffffff"
                                 }
                             }
 
