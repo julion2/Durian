@@ -6,6 +6,7 @@ Item {
     id: sidebar
 
     property bool collapsed: false
+    property var profileModel: null
 
     ColumnLayout {
         anchors.fill: parent
@@ -38,6 +39,110 @@ Item {
             Item { Layout.fillWidth: true }
         }
 
+        // Profile switcher
+        AbstractButton {
+            id: profileButton
+            Layout.fillWidth: true
+            visible: !sidebar.collapsed
+            implicitHeight: 30
+
+            property string currentName: {
+                var profiles = profileModel ? profileModel.profiles : []
+                var idx = profileModel ? profileModel.currentProfile : 0
+                return profiles[idx] ? profiles[idx].name : ""
+            }
+
+            onClicked: profilePopup.visible ? profilePopup.close() : profilePopup.open()
+
+            leftPadding: 8
+            rightPadding: 8
+
+            contentItem: RowLayout {
+                spacing: 4
+                Label {
+                    text: profileButton.currentName
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    color: "#333333"
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+                Label {
+                    text: "\u25BE"
+                    font.pixelSize: 10
+                    color: "#999999"
+                }
+            }
+
+            background: Rectangle {
+                color: profileButton.hovered ? "#f0f0f0" : "#f7f7f7"
+                radius: 6
+                border.color: profileButton.hovered ? "#d0d0d0" : "#e8e8e8"
+                border.width: 1
+            }
+
+            Popup {
+                id: profilePopup
+                y: profileButton.height + 4
+                width: profileButton.width
+                implicitHeight: Math.min(col.height + 8, 300)
+                padding: 4
+
+                background: Rectangle {
+                    color: "#ffffff"
+                    radius: 8
+                    border.color: "#e0e0e0"
+                    border.width: 1
+                }
+
+                contentItem: Flickable {
+                    contentWidth: width
+                    contentHeight: col.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: col
+                        width: parent.width
+                        spacing: 2
+
+                        Repeater {
+                            model: profileModel ? profileModel.profiles : []
+                            delegate: AbstractButton {
+                                required property int index
+                                required property var modelData
+                                width: col.width
+                                height: 28
+                                onClicked: {
+                                    if (profileModel) profileModel.currentProfile = index
+                                    profilePopup.close()
+                                }
+
+                                contentItem: Label {
+                                    text: modelData.name
+                                    font.pixelSize: 12
+                                    font.weight: index === (profileModel ? profileModel.currentProfile : -1)
+                                        ? Font.DemiBold : Font.Normal
+                                    color: index === (profileModel ? profileModel.currentProfile : -1)
+                                        ? "#5e35b1" : "#333333"
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: 8
+                                }
+
+                                background: Rectangle {
+                                    color: index === (profileModel ? profileModel.currentProfile : -1)
+                                        ? "#ede7f6"
+                                        : (parent.hovered ? "#f5f5f5" : "transparent")
+                                    radius: 6
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Folder list from profile
         ListView {
             id: tagList
             Layout.fillWidth: true
@@ -47,14 +152,7 @@ Item {
             clip: true
             currentIndex: 0
 
-            model: [
-                { name: "Inbox",   icon: "\uE156" },
-                { name: "Pinned",  icon: "\uF10D" },
-                { name: "Archive", icon: "\uE149" },
-                { name: "Sent",    icon: "\uE163" },
-                { name: "Drafts",  icon: "\uE66D" },
-                { name: "Trash",   icon: "\uE872" },
-            ]
+            model: profileModel ? profileModel.folders : []
 
             delegate: ItemDelegate {
                 required property int index
@@ -91,7 +189,5 @@ Item {
                 }
             }
         }
-
-        Item { Layout.fillHeight: true }
     }
 }

@@ -23,6 +23,11 @@ ApplicationWindow {
         Component.onCompleted: loadSeedData()
     }
 
+    ProfileModel {
+        id: profileModel
+        Component.onCompleted: load()
+    }
+
     // Full vertical layout: toolbar on top, content below
     ColumnLayout {
         anchors.fill: parent
@@ -86,6 +91,7 @@ ApplicationWindow {
                     Sidebar {
                         id: sidebar
                         anchors.fill: parent
+                        profileModel: profileModel
                     }
                 }
 

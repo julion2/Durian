@@ -3,7 +3,7 @@
 #include <QAbstractListModel>
 #include <QString>
 #include <QVector>
-#include "../data/SeedData.h"
+#include "data/SeedData.h"
 
 class ThreadModel : public QAbstractListModel {
     Q_OBJECT

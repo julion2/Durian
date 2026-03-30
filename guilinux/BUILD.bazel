@@ -28,14 +28,27 @@ genrule(
     tools = ["@qt//:moc"],
 )
 
+genrule(
+    name = "moc_profile_model",
+    srcs = ["models/ProfileModel.h"],
+    outs = ["moc_ProfileModel.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/ProfileModel.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
 cc_binary(
     name = "guilinux",
     srcs = [
         "main.cc",
         "models/ThreadModel.h",
+        "models/ProfileModel.h",
+        "models/IconMap.h",
         "data/SeedData.h",
+        "third_party/toml.hpp",
         ":qml_resources",
         ":moc_thread_model",
+        ":moc_profile_model",
     ],
+    copts = ["-std=c++17", "-Iguilinux"],
     deps = ["@qt//:qt6"],
 )
