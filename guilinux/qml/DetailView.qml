@@ -269,7 +269,8 @@ Item {
                                     var imgSrc = "img-src data: " + base
                                     if (profileModel && profileModel.loadRemoteImages)
                                         imgSrc = "img-src data: https: http: " + base
-                                    var csp = "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; " + imgSrc + ";\">"
+                                    var fontSrc = (profileModel && profileModel.loadRemoteImages) ? " font-src https: data:;" : ""
+                                    var csp = "<meta http-equiv='Content-Security-Policy' content=\"default-src 'none'; style-src 'unsafe-inline'; " + imgSrc + ";" + fontSrc + "\">"
                                     var style = "<style>body { font-family: -apple-system, sans-serif; font-size: 13px; color: #333; margin: 0; padding: 0; } img { max-width: 100%; height: auto; }</style>"
 
                                     // Resolve cid: references to API URLs

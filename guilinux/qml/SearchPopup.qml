@@ -8,6 +8,7 @@ Popup {
     property var networkClient: null
     property var profileModel: null
     property var results: []
+    property string lastQuery: ""
 
     signal resultSelected(string threadId, string subject)
 
@@ -222,6 +223,7 @@ Popup {
     function selectCurrent() {
         if (resultList.currentIndex >= 0 && resultList.currentIndex < results.length) {
             var item = results[resultList.currentIndex]
+            searchPopup.lastQuery = searchInput.text
             resultSelected(item.thread_id, item.subject)
             searchPopup.close()
         }

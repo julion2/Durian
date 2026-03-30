@@ -43,7 +43,10 @@ ApplicationWindow {
             var folders = profileModel.folders
             if (folders.length > 0) {
                 root.selectedThread = -1
-                network.search(profileModel.applyProfileFilter(folders[0].query))
+                var filtered = profileModel.applyProfileFilter(folders[0].query)
+                root.lastFolderQuery = filtered
+                root.inSearchMode = false
+                network.search(filtered)
             }
         }
     }
@@ -60,6 +63,14 @@ ApplicationWindow {
             root.selectedThread = index
         }
         onRequestSearch: searchPopup.open()
+        onExitSearch: {
+            if (root.inSearchMode) {
+                root.inSearchMode = false
+                // Reload current folder
+                if (root.lastFolderQuery)
+                    network.search(root.lastFolderQuery)
+            }
+        }
     }
 
     // Full vertical layout: toolbar on top, content below
@@ -89,6 +100,8 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     model: threadModel
                     currentIndex: root.selectedThread
+                    searchMode: root.inSearchMode
+                    searchTerm: searchPopup.lastQuery
                     onThreadSelected: function(index) {
                         root.selectedThread = index
                     }
@@ -132,7 +145,10 @@ ApplicationWindow {
                         anchors.fill: parent
                         profileModel: profileModel
                         onFolderSelected: function(query) {
-                            network.search(profileModel.applyProfileFilter(query))
+                            var filtered = profileModel.applyProfileFilter(query)
+                            root.lastFolderQuery = filtered
+                            root.inSearchMode = false
+                            network.search(filtered)
                         }
                     }
                 }
@@ -152,13 +168,31 @@ ApplicationWindow {
         }
     }
 
+    property string lastFolderQuery: ""
+
     SearchPopup {
         id: searchPopup
         networkClient: network
         profileModel: profileModel
         onResultSelected: function(threadId, subject) {
-            // Load selected thread in detail view
-            network.fetchThread(threadId)
+            // Load search results into thread list
+            var searchResults = searchPopup.results
+            var arr = []
+            for (var i = 0; i < searchResults.length; i++) {
+                arr.push(searchResults[i])
+            }
+            threadModel.loadFromJson(arr)
+            // Select the clicked result
+            for (var j = 0; j < threadModel.count; j++) {
+                if (threadModel.threadId(j) === threadId) {
+                    root.selectedThread = j
+                    break
+                }
+            }
+            root.inSearchMode = true
         }
     }
+
+    // Track search mode for Esc-to-return
+    property bool inSearchMode: false
 }

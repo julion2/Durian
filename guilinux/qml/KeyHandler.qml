@@ -16,6 +16,7 @@ Item {
 
     signal navigateToThread(int index)
     signal requestSearch()
+    signal exitSearch()
 
     // Focus state: list vs thread detail
     property bool threadFocused: false
@@ -150,6 +151,9 @@ Item {
                 threadFocused = true
                 if (detailView) detailView.focusedMessage = 0
                 countPrefix = 0
+                event.accepted = true
+            } else if (key === Qt.Key_Escape) {
+                exitSearch()
                 event.accepted = true
             } else if (text === "/") {
                 requestSearch()
