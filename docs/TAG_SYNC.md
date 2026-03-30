@@ -6,7 +6,9 @@ Sync email tags across multiple machines using a lightweight self-hosted server.
 - **Multi-machine:** Keep tags in sync between your Mac and a Linux workstation
 - **Backup:** Run the server on a VPS/NAS as a tag backup — even with a single client, all tag changes are durably stored on the server
 
-**Security:** The sync server has minimal auth (API key). Run it in a private network — [Tailscale](https://tailscale.com) (recommended), VPN, or LAN. Do not expose it to the public internet.
+**Security (Important):** The sync server has minimal auth (API key), no TLS, and no rate limiting.
+Run it only in a private network — [Tailscale](https://tailscale.com) (recommended), VPN, or LAN.
+Do not expose it to the public internet.
 
 ## Architecture
 
@@ -128,6 +130,12 @@ api_key = "your-secret"
     }
   ]
 }
+```
+
+All `/v1/sync` requests must include the `X-API-Key` header:
+
+```bash
+curl -H "X-API-Key: your-secret" http://localhost:8724/v1/sync
 ```
 
 ### Pull response

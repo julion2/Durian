@@ -77,6 +77,7 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+      description: Shared API key provided via the `X-API-Key` header
   schemas:
     TagChange:
       type: object
