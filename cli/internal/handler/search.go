@@ -47,7 +47,7 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 		if err != nil || len(msgs) == 0 {
 			continue
 		}
-		threads[r.Thread] = h.convertThread(r.Thread, msgs)
+		threads[r.Thread] = h.convertThreadLight(r.Thread, msgs)
 	}
 
 	return protocol.SuccessWithResultsAndThreads(mails, threads)
