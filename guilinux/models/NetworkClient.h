@@ -70,9 +70,30 @@ public:
         });
     }
 
+    Q_INVOKABLE void fetchThread(const QString &threadId) {
+        QUrl url(baseUrl_ + "/api/v1/threads/" + threadId);
+        auto *reply = manager_->get(QNetworkRequest(url));
+        connect(reply, &QNetworkReply::finished, this, [this, reply]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                emit searchError(reply->errorString());
+                return;
+            }
+            auto doc = QJsonDocument::fromJson(reply->readAll());
+            auto obj = doc.object();
+            if (!obj.value("ok").toBool()) {
+                emit searchError("API returned error");
+                return;
+            }
+            auto thread = obj.value("thread").toObject();
+            emit threadLoaded(thread);
+        });
+    }
+
 signals:
     void baseUrlChanged();
     void searchResults(const QJsonArray &results);
+    void threadLoaded(const QJsonObject &thread);
     void searchError(const QString &error);
 
 private:

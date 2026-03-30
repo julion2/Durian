@@ -36,8 +36,18 @@ class ProfileModel : public QObject {
 public:
     explicit ProfileModel(QObject *parent = nullptr) : QObject(parent) {}
 
+    Q_INVOKABLE bool isOwnEmail(const QString &from) const {
+        QString lower = from.toLower();
+        for (const auto &email : ownEmails_) {
+            if (lower.contains(email)) return true;
+        }
+        return false;
+    }
+
     Q_INVOKABLE void load() {
         profiles_.clear();
+        ownEmails_.clear();
+        loadConfig();
         QString path = QDir::homePath() + "/.config/durian/profiles.toml";
 
         try {
@@ -143,6 +153,22 @@ signals:
     void currentProfileChanged();
 
 private:
+    void loadConfig() {
+        QString path = QDir::homePath() + "/.config/durian/config.toml";
+        try {
+            auto tbl = toml::parse_file(path.toStdString());
+            if (auto accs = tbl.get_as<toml::array>("accounts")) {
+                for (auto &item : *accs) {
+                    auto *atbl = item.as_table();
+                    if (!atbl) continue;
+                    if (auto e = atbl->get_as<std::string>("email"))
+                        ownEmails_.append(QString::fromStdString(**e).toLower());
+                }
+            }
+        } catch (...) {}
+    }
+
     QVector<Profile> profiles_;
+    QStringList ownEmails_;
     int currentProfile_ = 0;
 };

@@ -88,6 +88,8 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     Layout.minimumWidth: 300
                     threadModel: threadModel
+                    networkClient: network
+                    profileModel: profileModel
                     currentIndex: root.selectedThread
                 }
             }
