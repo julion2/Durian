@@ -15,6 +15,7 @@ Item {
     required property string fromRaw
     required property string date
     required property string tags
+    required property bool hasAttachment
     property bool selected: false
     signal clicked()
 

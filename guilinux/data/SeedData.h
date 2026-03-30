@@ -10,6 +10,7 @@ struct ThreadPreview {
     QString preview;
     QString date;
     QString tags;
+    bool hasAttachment = false;
 };
 
 inline QVector<ThreadPreview> seedThreads() {

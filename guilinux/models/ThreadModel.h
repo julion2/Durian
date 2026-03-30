@@ -21,6 +21,7 @@ public:
         DateRole,
         TagsRole,
         ThreadIdRole,
+        HasAttachmentRole,
     };
     Q_ENUM(Role)
 
@@ -36,6 +37,7 @@ public:
             {DateRole, "date"},
             {TagsRole, "tags"},
             {ThreadIdRole, "threadId"},
+            {HasAttachmentRole, "hasAttachment"},
         };
     }
 
@@ -52,6 +54,7 @@ public:
         case DateRole: return t.date;
         case TagsRole: return t.tags;
         case ThreadIdRole: return t.threadId;
+        case HasAttachmentRole: return t.hasAttachment;
         default: return {};
         }
     }
@@ -106,6 +109,8 @@ public slots:
             t.preview = obj.value("preview").toString();
             t.date = obj.value("date").toString();
             t.tags = obj.value("tags").toString();
+            t.hasAttachment = obj.value("hasAttachment").toBool()
+                              || t.tags.contains("attachment");
             if (t.tags.contains("flagged"))
                 pinned.append(t);
             else

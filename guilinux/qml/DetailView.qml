@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtWebEngine
 
@@ -122,6 +123,12 @@ Item {
                (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m
     }
 
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + " B"
+        if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB"
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB"
+    }
+
     // Pick best body: prefer stripped HTML, fall back to plain text
     function messageBody(msg) {
         if (msg.html && msg.html.trim().length > 0)
@@ -153,12 +160,14 @@ Item {
             model: detailView.messages
 
             delegate: Item {
+                id: msgDelegate
                 required property var modelData
                 required property int index
                 width: ListView.view.width
                 implicitHeight: card.implicitHeight
 
                 property bool isOwn: profileModel ? profileModel.isOwnEmail(modelData.from || "") : false
+                property string msgId: modelData.message_id || modelData.id || ""
 
                 Rectangle {
                     id: card
@@ -275,7 +284,7 @@ Item {
 
                                     // Resolve cid: references to API URLs
                                     var html = modelData.html || ""
-                                    var msgId = modelData.message_id || modelData.id || ""
+                                    var msgId = msgDelegate.msgId
                                     var atts = modelData.attachments || []
                                     for (var i = 0; i < atts.length; i++) {
                                         var att = atts[i]
@@ -303,6 +312,106 @@ Item {
                                 color: "#333333"
                                 wrapMode: Text.Wrap
                                 lineHeight: 1.3
+                            }
+                        }
+
+                        // Attachments (only non-inline)
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            visible: attachmentRepeater.count > 0
+                            Layout.topMargin: 4
+
+                            Repeater {
+                                id: attachmentRepeater
+                                model: {
+                                    var atts = modelData.attachments || []
+                                    var real = []
+                                    for (var i = 0; i < atts.length; i++) {
+                                        if (atts[i].disposition !== "inline")
+                                            real.push(atts[i])
+                                    }
+                                    return real
+                                }
+
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: attRow.implicitWidth + 16
+                                    height: 28
+                                    radius: 6
+                                    color: attMouse.containsMouse ? "#f0ecf9" : "#f5f5f5"
+                                    border.color: "#e0e0e0"
+                                    border.width: 1
+
+                                    MouseArea {
+                                        id: attMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                        onClicked: function(mouse) {
+                                            if (mouse.button === Qt.RightButton) {
+                                                attContextMenu.popup()
+                                            } else {
+                                                // Left click = save to Downloads
+                                                saveToDownloads()
+                                            }
+                                        }
+
+                                        function saveToDownloads() {
+                                            var msgId = msgDelegate.msgId
+                                            networkClient.downloadAttachment(msgId, modelData.part_id,
+                                                modelData.filename, networkClient.downloadsPath())
+                                        }
+
+                                        Menu {
+                                            id: attContextMenu
+                                            MenuItem {
+                                                text: "Save to Downloads"
+                                                onTriggered: attMouse.saveToDownloads()
+                                            }
+                                            MenuItem {
+                                                text: "Save As..."
+                                                onTriggered: saveAsDialog.open()
+                                            }
+                                        }
+
+                                        FileDialog {
+                                            id: saveAsDialog
+                                            title: "Save " + (modelData.filename || "attachment")
+                                            fileMode: FileDialog.SaveFile
+                                            currentFile: "file:///" + (modelData.filename || "attachment")
+                                            onAccepted: {
+                                                var msgId = msgDelegate.msgId
+                                                var path = selectedFile.toString().replace("file://", "")
+                                                networkClient.downloadAttachment(msgId, modelData.part_id,
+                                                    modelData.filename, path)
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        id: attRow
+                                        anchors.centerIn: parent
+                                        spacing: 4
+                                        Label {
+                                            text: "\uE226"
+                                            font.family: "Material Symbols Outlined"
+                                            font.pixelSize: 14
+                                            color: "#888888"
+                                        }
+                                        Label {
+                                            text: modelData.filename || "attachment"
+                                            font.pixelSize: 11
+                                            color: "#333333"
+                                        }
+                                        Label {
+                                            text: formatSize(modelData.size || 0)
+                                            font.pixelSize: 10
+                                            color: "#999999"
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

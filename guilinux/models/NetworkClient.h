@@ -7,6 +7,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDir>
+#include <QFile>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QUrlQuery>
 
@@ -59,10 +62,21 @@ public:
                                     .value("messages").toArray();
                     if (!msgs.isEmpty()) {
                         auto body = msgs.first().toObject().value("body").toString();
-                        // Trim to first 200 chars, collapse whitespace
-                        body = body.left(200).simplified();
-                        r.insert("preview", body);
+                        r.insert("preview", body.left(200).simplified());
                     }
+                    // Check for real attachments across all messages
+                    bool hasAttachment = false;
+                    for (const auto &m : msgs) {
+                        auto atts = m.toObject().value("attachments").toArray();
+                        for (const auto &a : atts) {
+                            if (a.toObject().value("disposition").toString() != "inline") {
+                                hasAttachment = true;
+                                break;
+                            }
+                        }
+                        if (hasAttachment) break;
+                    }
+                    if (hasAttachment) r.insert("hasAttachment", true);
                 }
                 enriched.append(r);
             }
@@ -106,6 +120,35 @@ public:
         });
     }
 
+    Q_INVOKABLE void downloadAttachment(const QString &messageId, int partId,
+                                           const QString &filename, const QString &savePath) {
+        QUrl url(baseUrl_ + "/api/v1/messages/" + messageId + "/attachments/" + QString::number(partId));
+        auto *reply = manager_->get(QNetworkRequest(url));
+        connect(reply, &QNetworkReply::finished, this, [this, reply, savePath, filename]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) {
+                emit downloadError(filename, reply->errorString());
+                return;
+            }
+            QByteArray data = reply->readAll();
+            QString path = savePath;
+            if (QFileInfo(path).isDir())
+                path = path + "/" + filename;
+            QFile file(path);
+            if (file.open(QIODevice::WriteOnly)) {
+                file.write(data);
+                file.close();
+                emit downloadComplete(filename, path);
+            } else {
+                emit downloadError(filename, "Could not write to " + path);
+            }
+        });
+    }
+
+    Q_INVOKABLE QString downloadsPath() const {
+        return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    }
+
     Q_INVOKABLE void fetchThread(const QString &threadId) {
         QUrl url(baseUrl_ + "/api/v1/threads/" + threadId);
         auto *reply = manager_->get(QNetworkRequest(url));
@@ -132,6 +175,8 @@ signals:
     void quickSearchResults(const QJsonArray &results);
     void threadLoaded(const QJsonObject &thread);
     void searchError(const QString &error);
+    void downloadComplete(const QString &filename, const QString &path);
+    void downloadError(const QString &filename, const QString &error);
 
 private:
     QNetworkAccessManager *manager_;
