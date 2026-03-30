@@ -1,0 +1,5 @@
+cc_binary(
+    name = "guilinux",
+    srcs = ["main.cc"],
+    deps = ["@qt//:qt6"],
+)
