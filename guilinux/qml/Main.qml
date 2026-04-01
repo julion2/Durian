@@ -90,15 +90,19 @@ ApplicationWindow {
         }
     }
 
-    // Grab focus on startup and when clicking anywhere
+    // Grab focus on startup and reclaim after any interaction
     Component.onCompleted: keyHandler.forceActiveFocus()
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
-        propagateComposedEvents: true
-        onPressed: function(mouse) {
-            keyHandler.forceActiveFocus()
-            mouse.accepted = false  // let clicks through
+    Timer {
+        id: refocusTimer
+        interval: 50
+        onTriggered: keyHandler.forceActiveFocus()
+    }
+    Connections {
+        target: root
+        function onActiveFocusItemChanged() {
+            // Reclaim focus unless search popup is open
+            if (!searchPopup.visible)
+                refocusTimer.restart()
         }
     }
 
