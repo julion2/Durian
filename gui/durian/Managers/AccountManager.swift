@@ -192,6 +192,11 @@ class AccountManager: ObservableObject {
     }
 
     func modifyTags(id: String, add: [String], remove: [String]) async {
+        await modifyTagsWithoutSync(id: id, add: add, remove: remove)
+        syncFromBackend()
+    }
+
+    func modifyTagsWithoutSync(id: String, add: [String], remove: [String]) async {
         guard let backend = emailBackend else { return }
         do {
             try await backend.modifyTags(id: id, add: add, remove: remove)
@@ -199,7 +204,12 @@ class AccountManager: ObservableObject {
             Log.error("BACKEND", "Failed to modify tags: \(error)")
             BannerManager.shared.showWarning(title: "Tag Failed", message: "Could not modify tags.")
         }
+    }
+
+    /// Sync once and refresh folder counts — call after batch operations
+    func syncAndRefresh() async {
         syncFromBackend()
+        await refreshFolderCounts()
     }
 
     func fetchAllTags() async -> [String] {
@@ -241,6 +251,11 @@ class AccountManager: ObservableObject {
     // MARK: - Batch Operations (Multi-Selection)
 
     func deleteMessages(ids: Set<String>) async {
+        await deleteMessagesWithoutSync(ids: ids)
+        syncFromBackend()
+    }
+
+    func deleteMessagesWithoutSync(ids: Set<String>) async {
         guard let backend = emailBackend else { return }
         var failCount = 0
         for id in ids {
@@ -250,7 +265,6 @@ class AccountManager: ObservableObject {
         if failCount > 0 {
             BannerManager.shared.showWarning(title: "Delete Failed", message: "Could not delete \(failCount) message(s).")
         }
-        syncFromBackend()
     }
 
     func toggleReadForMessages(ids: Set<String>) async {
