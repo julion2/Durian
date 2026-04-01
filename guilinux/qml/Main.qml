@@ -35,6 +35,45 @@ ApplicationWindow {
         }
     }
 
+    // Download feedback toast
+    Connections {
+        target: network
+        function onDownloadComplete(filename, path) {
+            toastLabel.text = "\u2713 " + filename
+            toastRect.visible = true
+            toastTimer.restart()
+        }
+        function onDownloadError(filename, error) {
+            toastLabel.text = "\u2717 " + filename + ": " + error
+            toastRect.visible = true
+            toastTimer.restart()
+        }
+    }
+
+    Rectangle {
+        id: toastRect
+        visible: false
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.margins: 16
+        width: toastLabel.implicitWidth + 24
+        height: 32
+        radius: 8
+        color: "#333333"
+        z: 100
+        Label {
+            id: toastLabel
+            anchors.centerIn: parent
+            color: "#ffffff"
+            font.pixelSize: 12
+        }
+        Timer {
+            id: toastTimer
+            interval: 3000
+            onTriggered: toastRect.visible = false
+        }
+    }
+
     // Load first folder when profile changes
     Connections {
         target: profileModel
@@ -48,6 +87,18 @@ ApplicationWindow {
                 root.inSearchMode = false
                 network.search(filtered)
             }
+        }
+    }
+
+    // Grab focus on startup and when clicking anywhere
+    Component.onCompleted: keyHandler.forceActiveFocus()
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        propagateComposedEvents: true
+        onPressed: function(mouse) {
+            keyHandler.forceActiveFocus()
+            mouse.accepted = false  // let clicks through
         }
     }
 

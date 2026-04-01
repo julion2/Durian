@@ -25,6 +25,10 @@ Popup {
         results = []
         searchInput.forceActiveFocus()
     }
+    onClosed: {
+        // Return focus to main KeyHandler
+        if (parent) parent.forceActiveFocus()
+    }
 
     background: Rectangle {
         color: "#ffffff"
