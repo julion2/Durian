@@ -86,25 +86,13 @@ ApplicationWindow {
                 root.lastFolderQuery = filtered
                 root.inSearchMode = false
                 network.search(filtered)
+                root.reclaim()
             }
         }
     }
 
-    // Grab focus on startup and reclaim after any interaction
     Component.onCompleted: keyHandler.forceActiveFocus()
-    Timer {
-        id: refocusTimer
-        interval: 50
-        onTriggered: keyHandler.forceActiveFocus()
-    }
-    Connections {
-        target: root
-        function onActiveFocusItemChanged() {
-            // Reclaim focus unless search popup is open
-            if (!searchPopup.visible)
-                refocusTimer.restart()
-        }
-    }
+    function reclaim() { keyHandler.forceActiveFocus() }
 
     // Vim keybindings
     KeyHandler {
@@ -159,6 +147,7 @@ ApplicationWindow {
                     searchTerm: searchPopup.lastQuery
                     onThreadSelected: function(index) {
                         root.selectedThread = index
+                        root.reclaim()
                     }
                 }
 
@@ -204,6 +193,7 @@ ApplicationWindow {
                             root.lastFolderQuery = filtered
                             root.inSearchMode = false
                             network.search(filtered)
+                            root.reclaim()
                         }
                     }
                 }
