@@ -62,7 +62,7 @@ genrule(
 cc_test(
     name = "icon_map_test",
     srcs = ["tests/icon_map_test.cc", "models/IconMap.h"],
-    copts = ["-std=c++17", "-Iguilinux"],
+    copts = ["-std=c++17", "-Ilinux"],
     size = "small",
     deps = ["@googletest//:gtest_main", "@qt//:qt6"],
 )
@@ -84,7 +84,7 @@ cc_test(
         ":moc_thread_model",
         ":moc_thread_model_test",
     ],
-    copts = ["-std=c++17", "-Iguilinux"],
+    copts = ["-std=c++17", "-Ilinux"],
     includes = ["."],
     size = "small",
     deps = ["@qt//:qt6"],
@@ -108,14 +108,14 @@ cc_test(
         ":moc_profile_model",
         ":moc_profile_model_test",
     ],
-    copts = ["-std=c++17", "-Iguilinux", "-Wno-deprecated-literal-operator"],
+    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
     includes = ["."],
     size = "small",
     deps = ["@qt//:qt6"],
 )
 
 cc_binary(
-    name = "guilinux",
+    name = "durian",
     srcs = [
         "main.cc",
         "models/ThreadModel.h",
@@ -131,6 +131,6 @@ cc_binary(
         ":moc_avatar_provider",
         ":moc_network_client",
     ],
-    copts = ["-std=c++17", "-Iguilinux", "-Wno-deprecated-literal-operator"],
+    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
     deps = ["@qt//:qt6"],
 )
