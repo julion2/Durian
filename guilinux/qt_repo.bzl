@@ -7,10 +7,28 @@ def _qt_local_repository_impl(ctx):
     if not qt_root_path.exists:
         fail("Qt root does not exist: %s" % qt_root)
 
-    lib_dir = qt_root + "/lib"
-    if not ctx.path(lib_dir).exists:
-        lib_dir = qt_root + "/lib64"
-    if not ctx.path(lib_dir).exists:
+    # Find lib dir — handles /usr/lib, /usr/lib64, /usr/lib64/qt6/lib
+    lib_dir = None
+    for candidate in [
+        qt_root + "/lib",
+        qt_root + "/lib64",
+        qt_root + "/../",  # QTDIR=/usr/lib64/qt6 → libs in /usr/lib64
+    ]:
+        p = ctx.path(candidate)
+        if p.exists and ctx.path(candidate + "/libQt6Core.so").exists:
+            lib_dir = candidate
+            break
+        # macOS frameworks
+        if p.exists and ctx.path(candidate + "/QtCore.framework").exists:
+            lib_dir = candidate
+            break
+    if not lib_dir:
+        # Fallback: just pick first existing
+        for candidate in [qt_root + "/lib", qt_root + "/lib64"]:
+            if ctx.path(candidate).exists:
+                lib_dir = candidate
+                break
+    if not lib_dir:
         fail("Qt lib dir not found under: %s" % qt_root)
 
     ctx.symlink(lib_dir, "lib")
@@ -22,6 +40,8 @@ def _qt_local_repository_impl(ctx):
             qt_root + "/libexec/" + tool,
             qt_root + "/bin/" + tool,
             qt_root + "/share/qt/libexec/" + tool,
+            # Fedora: QTDIR=/usr, tools in /usr/lib64/qt6/libexec/
+            qt_root + "/lib64/qt6/libexec/" + tool,
         ]:
             if ctx.path(candidate).exists:
                 tool_path = candidate
@@ -30,12 +50,23 @@ def _qt_local_repository_impl(ctx):
             fail("Qt tool '%s' not found under %s" % (tool, qt_root))
         ctx.file(tool, "#!/bin/bash\nexec %s \"$@\"\n" % tool_path, executable = True)
 
-    include_dir = qt_root + "/include"
-    has_include = ctx.path(include_dir).exists
+    # Find include dir — handles /usr/include/qt6 (Fedora) and /usr/include (standard)
+    include_dir = None
+    for candidate in [qt_root + "/include/qt6", qt_root + "/include"]:
+        if ctx.path(candidate).exists and ctx.path(candidate + "/QtCore").exists:
+            include_dir = candidate
+            break
+    if not include_dir:
+        # Might just have /usr/include without QtCore subdir
+        for candidate in [qt_root + "/include/qt6", qt_root + "/include"]:
+            if ctx.path(candidate).exists:
+                include_dir = candidate
+                break
+    has_include = include_dir and ctx.path(include_dir).exists
     has_frameworks = ctx.path(lib_dir + "/QtWidgets.framework").exists
 
     if not has_include and not has_frameworks:
-        fail("Qt headers not found. Expected %s or Qt*.framework under %s" % (include_dir, lib_dir))
+        fail("Qt headers not found. Expected include dir with QtCore or Qt*.framework under %s" % qt_root)
 
     if has_include:
         ctx.symlink(include_dir, "include")
