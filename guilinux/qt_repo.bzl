@@ -169,7 +169,7 @@ exports_files(["rcc", "moc"])
 
 cc_library(
     name = "qt6",
-    hdrs = glob(["include/**", "include_decl/**", "lib/**/Headers/**", "qt_includes/**"]),
+    hdrs = glob(["include/**", "include_decl/**", "lib/**/Headers/**", "qt_includes/**"], allow_empty = True),
     includes = {includes},
     defines = [
         "QT_WIDGETS_LIB",
