@@ -822,35 +822,46 @@ struct ThreadMessageCardView: View {
         }
     }
 
-    /// Resolve cid: references in HTML by fetching inline attachment data
+    /// Resolve cid: references in HTML by fetching inline attachment data in parallel
     private func resolveInlineImages() async {
         guard let html = message.html else { return }
 
-        // Find inline attachments with content IDs
         let inlineAttachments = (message.attachments ?? []).filter {
             $0.disposition == "inline" && $0.contentId != nil && !$0.contentId!.isEmpty
         }
         guard !inlineAttachments.isEmpty else { return }
-
-        // Check if HTML actually contains cid: references
         guard html.contains("cid:") else { return }
 
+        // Fetch all inline images in parallel
+        let fetched = await withTaskGroup(of: (String, String?).self, returning: [(String, String)].self) { group in
+            for attachment in inlineAttachments {
+                guard let contentId = attachment.contentId else { continue }
+                let cleanId = contentId.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+                guard html.contains("cid:\(cleanId)") else { continue }
+
+                group.addTask {
+                    guard let data = await self.fetchAttachmentData(attachment) else {
+                        return (cleanId, nil)
+                    }
+                    let base64 = data.base64EncodedString()
+                    return (cleanId, "data:\(attachment.contentType);base64,\(base64)")
+                }
+            }
+
+            var results: [(String, String)] = []
+            for await (cleanId, dataURL) in group {
+                if let dataURL { results.append((cleanId, dataURL)) }
+            }
+            return results
+        }
+
+        guard !fetched.isEmpty else { return }
+
         var resolved = html
-        for attachment in inlineAttachments {
-            guard let contentId = attachment.contentId else { continue }
-            // Content-ID can be with or without angle brackets
-            let cleanId = contentId.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-            guard resolved.contains("cid:\(cleanId)") else { continue }
-
-            // Fetch the attachment data
-            guard let data = await fetchAttachmentData(attachment) else { continue }
-            let base64 = data.base64EncodedString()
-            let dataURL = "data:\(attachment.contentType);base64,\(base64)"
-
+        for (cleanId, dataURL) in fetched {
             resolved = resolved.replacingOccurrences(of: "cid:\(cleanId)", with: dataURL)
         }
 
-        // Only update if we actually resolved something
         if resolved != html {
             await MainActor.run {
                 resolvedHTML = resolved

@@ -200,6 +200,7 @@ struct MailMessage: Identifiable, Hashable {
     // Preview text from search enrichment (separate from bodyState cache)
     var previewText: String?
 
+
     // Reply/Forward metadata (loaded with body)
     var messageId: String?
     var inReplyTo: String?

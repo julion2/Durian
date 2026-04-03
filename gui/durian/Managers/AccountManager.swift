@@ -48,19 +48,26 @@ class AccountManager: ObservableObject {
         Log.debug("BACKEND", "AccountManager: Setting up email backend")
         emailBackend = EmailBackend()
         
-        // Subscribe to backend changes
-        emailBackend?.objectWillChange.sink { [weak self] in
-            self?.objectWillChange.send()
-            self?.syncFromBackend()
-        }.store(in: &cancellables)
+        // Subscribe to backend changes — debounced to avoid cascade storms
+        emailBackend?.objectWillChange
+            .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
+            .sink { [weak self] in
+                self?.syncFromBackend()
+            }.store(in: &cancellables)
     }
-    
+
     private func syncFromBackend() {
         guard let backend = emailBackend else { return }
-        // mailFolders is now a computed property from ProfileManager
-        mailMessages = backend.emails
-        isLoadingEmails = backend.isLoadingEmails
-        loadingProgress = backend.loadingProgress
+        // Only assign if actually changed to avoid unnecessary @Published triggers
+        if mailMessages != backend.emails {
+            mailMessages = backend.emails
+        }
+        if isLoadingEmails != backend.isLoadingEmails {
+            isLoadingEmails = backend.isLoadingEmails
+        }
+        if loadingProgress != backend.loadingProgress {
+            loadingProgress = backend.loadingProgress
+        }
     }
     
     // MARK: - Folder Unread Counts & Dock Badge

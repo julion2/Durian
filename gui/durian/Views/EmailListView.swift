@@ -170,27 +170,27 @@ struct EmailListView: View {
         let pos = groupPositions[email.id] ?? (true, true)
         let (isFirstInGroup, isLastInGroup) = pos
         
-        EmailRowView(
+        EquatableView(content: EmailRowView(
             email: email,
             isSelected: isSelected,
             isFirstInGroup: isFirstInGroup,
             isLastInGroup: isLastInGroup,
-            onTogglePin: { 
+            onTogglePin: {
                 cursorId = email.id
                 selection = [email.id]
-                onTogglePin?(email.id) 
+                onTogglePin?(email.id)
             },
-            onToggleRead: { 
+            onToggleRead: {
                 cursorId = email.id
                 selection = [email.id]
-                onToggleRead?(email.id) 
+                onToggleRead?(email.id)
             },
-            onDelete: { 
+            onDelete: {
                 cursorId = email.id
                 selection = [email.id]
-                onDelete?(email.id) 
+                onDelete?(email.id)
             }
-        )
+        ))
         .id(email.id)
         .contentShape(Rectangle())
         .onTapGesture {

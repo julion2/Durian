@@ -1,16 +1,27 @@
 import SwiftUI
 
-struct EmailRowView: View {
+struct EmailRowView: View, Equatable {
     let email: MailMessage
     var isSelected: Bool = false
-    var isFirstInGroup: Bool = true   // First in contiguous selection group (top corners rounded)
-    var isLastInGroup: Bool = true    // Last in contiguous selection group (bottom corners rounded)
+    var isFirstInGroup: Bool = true
+    var isLastInGroup: Bool = true
     var currentFolder: String = AccountManager.shared.selectedFolder
 
-    // Context menu callbacks
+    // Context menu callbacks (excluded from Equatable)
     var onTogglePin: (() -> Void)?
     var onToggleRead: (() -> Void)?
     var onDelete: (() -> Void)?
+
+    static func == (lhs: EmailRowView, rhs: EmailRowView) -> Bool {
+        lhs.email.id == rhs.email.id &&
+        lhs.email.tags == rhs.email.tags &&
+        lhs.email.isRead == rhs.email.isRead &&
+        lhs.email.isPinned == rhs.email.isPinned &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isFirstInGroup == rhs.isFirstInGroup &&
+        lhs.isLastInGroup == rhs.isLastInGroup &&
+        lhs.currentFolder == rhs.currentFolder
+    }
 
     // Cached counterparties — computed once, not on every render
     private var cachedCounterparties: [Participant] {
@@ -87,6 +98,7 @@ struct EmailRowView: View {
             .fill(isSelected ? Color.accentColor : Color.clear)
         )
         .padding(.horizontal, 8)
+        .drawingGroup()
         .contextMenu {
             Button(action: { onTogglePin?() }) {
                 Label(email.isPinned ? "Unpin" : "Pin", systemImage: email.isPinned ? "pin.slash" : "pin")
@@ -128,10 +140,8 @@ struct EmailRowView: View {
 
     @ViewBuilder
     private var tagRow: some View {
-        GeometryReader { geo in
-            TruncatedTagsView(tags: visibleTags, availableWidth: geo.size.width, isSelected: isSelected)
-        }
-        .frame(height: 18)
+        TruncatedTagsView(tags: visibleTags, availableWidth: 320, isSelected: isSelected)
+            .frame(height: 18)
     }
 
     /// Tags already represented by icons or implied by the current view
@@ -141,7 +151,7 @@ struct EmailRowView: View {
         guard let tags = email.tags, !tags.isEmpty else { return [] }
         return tags
             .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { String($0.trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.isEmpty && !Self.hiddenTags.contains($0) && $0 != currentFolder }
     }
 
