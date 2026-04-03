@@ -846,17 +846,18 @@ class EmailBackend: ObservableObject {
             if case .notLoaded = email.bodyState { return true }
             return false
         }
-        
+
         guard !emailsToFetch.isEmpty else { return }
-        
-        Log.debug("BACKEND", "Prefetching \(emailsToFetch.count) bodies...")
-        
-        for email in emailsToFetch {
-            if shouldCancelPrefetch || Task.isCancelled {
-                Log.debug("BACKEND", "Prefetch cancelled")
-                return
+
+        Log.debug("BACKEND", "Prefetching \(emailsToFetch.count) bodies in parallel...")
+
+        await withTaskGroup(of: Void.self) { group in
+            for email in emailsToFetch {
+                if shouldCancelPrefetch || Task.isCancelled { break }
+                group.addTask {
+                    await self.fetchEmailBodyInternal(id: email.id, isPrefetch: true)
+                }
             }
-            await fetchEmailBodyInternal(id: email.id, isPrefetch: true)
         }
     }
 
