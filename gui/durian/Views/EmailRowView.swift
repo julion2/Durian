@@ -128,10 +128,8 @@ struct EmailRowView: View {
 
     @ViewBuilder
     private var tagRow: some View {
-        GeometryReader { geo in
-            TruncatedTagsView(tags: visibleTags, availableWidth: geo.size.width, isSelected: isSelected)
-        }
-        .frame(height: 18)
+        TruncatedTagsView(tags: visibleTags, availableWidth: 320, isSelected: isSelected)
+            .frame(height: 18)
     }
 
     /// Tags already represented by icons or implied by the current view
@@ -141,7 +139,7 @@ struct EmailRowView: View {
         guard let tags = email.tags, !tags.isEmpty else { return [] }
         return tags
             .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { String($0.trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.isEmpty && !Self.hiddenTags.contains($0) && $0 != currentFolder }
     }
 
