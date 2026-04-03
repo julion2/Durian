@@ -177,11 +177,12 @@ struct ContentView: View {
                         Task {
                             for id in ids {
                                 if isAdding {
-                                    await accountManager.addTag(id: id, tag: tag)
+                                    await accountManager.modifyTagsWithoutSync(id: id, add: [tag], remove: [])
                                 } else {
-                                    await accountManager.removeTag(id: id, tag: tag)
+                                    await accountManager.modifyTagsWithoutSync(id: id, add: [], remove: [tag])
                                 }
                             }
+                            await accountManager.syncAndRefresh()
                             allTags = await accountManager.fetchAllTags()
                         }
                     }
@@ -609,6 +610,11 @@ struct ContentView: View {
 
     private func togglePin() {
         guard let emailId = markedEmails.first else { return }
+        if keymapHandler.engine.isVisualMode {
+            keymapHandler.engine.exitVisualMode()
+            visualModeAnchor = nil
+            markedEmails = [emailId]
+        }
         Task { await accountManager.togglePin(id: emailId) }
     }
 
@@ -929,14 +935,16 @@ struct ContentView: View {
                 let ids = markedEmails
                 guard !ids.isEmpty else { return [] }
                 let next = nextEmailId(after: ids)
+                visualModeAnchor = nil
+                keymapHandler.engine.exitVisualMode()
                 accountManager.removeLocally(ids: ids)
                 advanceCursor(to: next)
                 return ids
             }
             for id in ids {
-                await accountManager.modifyTags(id: id, add: ["archive"], remove: ["inbox"])
+                await accountManager.modifyTagsWithoutSync(id: id, add: ["archive"], remove: ["inbox"])
             }
-            await accountManager.refreshFolderCounts()
+            await accountManager.syncAndRefresh()
         }
 
         // Delete: dd - works with multi-selection
@@ -951,8 +959,8 @@ struct ContentView: View {
                 advanceCursor(to: next)
                 return ids
             }
-            await accountManager.deleteMessages(ids: ids)
-            await accountManager.refreshFolderCounts()
+            await accountManager.deleteMessagesWithoutSync(ids: ids)
+            await accountManager.syncAndRefresh()
         }
         
         // ═══════════════════════════════════════════════════════════
@@ -1036,9 +1044,9 @@ struct ContentView: View {
         // Escape - Exit visual mode (clears selection, keeps cursor)
         keymapHandler.registerSimpleHandler(for: .exitVisualMode) { [self] in
             await MainActor.run {
-                if keymapHandler.engine.visualModeType != .none {
+                // Always clean up visual mode state (engine may have already exited)
+                if visualModeAnchor != nil || keymapHandler.engine.visualModeType != .none {
                     keymapHandler.engine.exitVisualMode()
-                    // Clear all marks, keep only cursor
                     if let cursor = cursorEmailId {
                         markedEmails = [cursor]
                     }
