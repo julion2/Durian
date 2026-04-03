@@ -33,6 +33,8 @@ and set `auth_email` to the delegating user who has Full Access + Send As.
 
 ## Google
 
+> **Note:** Google OAuth tokens expire every 7 days while the app is in "Testing" mode in Google Cloud Console. You will need to re-authenticate periodically with `durian auth login`. This is a Google limitation for unverified apps (see [#147](https://github.com/julion2/Durian/issues/147)).
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
 2. Create project (if needed)
 3. Configure OAuth consent screen (External, add your email as test user)
