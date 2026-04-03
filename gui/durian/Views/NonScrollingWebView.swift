@@ -86,7 +86,7 @@ struct NonScrollingWebView: NSViewRepresentable {
         // so height measurement still works while inline <script> tags are blocked.
         let csp: String
         if loadRemoteImages {
-            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https: http:;"
+            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; font-src https: data:;"
         } else {
             csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid:;"
         }

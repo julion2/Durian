@@ -43,7 +43,7 @@ struct EmailWebView: NSViewRepresentable {
         // Dynamic CSP based on loadRemoteImages setting
         let csp: String
         if loadRemoteImages {
-            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https: http:;"
+            csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; font-src https: data:;"
         } else {
             csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data: cid:;"
         }
