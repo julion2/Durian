@@ -444,7 +444,7 @@ class EmailBackend: ObservableObject {
         if let enrichedThreads, !enrichedThreads.isEmpty {
             for (index, email) in emails.enumerated() {
                 if let thread = enrichedThreads[email.id] {
-                    applyThread(thread, to: &emails[index])
+                    applyThread(thread, to: &emails[index], isEnrichment: true)
                 }
             }
             Log.debug("BACKEND", "Enriched \(enrichedThreads.count) threads from search")
@@ -736,7 +736,7 @@ class EmailBackend: ObservableObject {
     // MARK: - Thread Application Helper
 
     /// Applies a ThreadContent to a MailMessage, populating body, metadata, and attachments.
-    private func applyThread(_ thread: ThreadContent, to email: inout MailMessage) {
+    private func applyThread(_ thread: ThreadContent, to email: inout MailMessage, isEnrichment: Bool = false) {
         email.threadMessages = thread.messages
         if let newestMessage = thread.messages.first {
             email.from = newestMessage.from
@@ -768,8 +768,10 @@ class EmailBackend: ObservableObject {
         let previewBody = thread.messages.first?.body ?? ""
         email.previewText = String(previewBody.prefix(200))
 
-        // Only set bodyState if HTML is present (full thread data, not light enrichment)
-        if thread.messages.contains(where: { $0.html != nil && !($0.html?.isEmpty ?? true) }) {
+        // Set bodyState to .loaded only on full fetch (not enrichment).
+        // Full fetch: has HTML for emails that have it, or plaintext-only for text emails.
+        // Enrichment: never has HTML, bodies are trimmed previews.
+        if !isEnrichment {
             let combinedBody = thread.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
             email.bodyState = .loaded(body: combinedBody, attributedBody: nil)
         }
