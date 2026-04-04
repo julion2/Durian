@@ -62,8 +62,8 @@ Or download pre-built binaries from [GitHub Releases](https://github.com/julion2
 
 ```bash
 bazel build //cli/cmd/durian    # CLI (macOS & Linux)
-bazel build //gui:Durian        # GUI (macOS only, debug)
-bazel build -c opt //gui:Durian # GUI (macOS only, release)
+bazel build //macos:Durian        # GUI (macOS only, debug)
+bazel build -c opt //macos:Durian # GUI (macOS only, release)
 
 ./cli/install.sh                # build & install CLI to /usr/local/bin
 ./gui/install.sh                # build & install GUI to /Applications
@@ -74,7 +74,7 @@ bazel build -c opt //gui:Durian # GUI (macOS only, release)
 
 ```bash
 bazel test //cli/...            # CLI tests
-bazel test //gui/...            # GUI tests (requires Xcode 26)
+bazel test //macos/...            # GUI tests (requires Xcode 26)
 ```
 
 ## CLI

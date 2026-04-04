@@ -5,9 +5,9 @@ cd "$(dirname "$0")/.."
 APP_NAME="DurianNightly"
 
 echo "Building..."
-bazel build //gui:Durian
+bazel build //macos:Durian
 
-ZIP="$(bazel cquery //gui:Durian --output=files 2>/dev/null)"
+ZIP="$(bazel cquery //macos:Durian --output=files 2>/dev/null)"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 unzip -qo "$ZIP" -d "$TMPDIR"

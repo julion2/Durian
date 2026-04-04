@@ -5,9 +5,9 @@ Email client: Go CLI backend + Swift macOS GUI.
 ## Build & Run
 
 - **CLI:** `bazel build //cli/cmd/durian` → install: `cli/install.sh` (copies to /usr/local/bin)
-- **GUI:** `bazel build //gui:Durian` → dev run: `gui/run.sh` (debug build → `/Applications/DurianNightly.app`) → install: `gui/install.sh` (release build → `/Applications/Durian.app`)
-- **Tests:** `bazel test //cli/...` (CLI) / `bazel test //gui/...` (GUI, requires Xcode 26) / `bazel test //...` (all)
-- **CI Tests (GUI):** `bazel test //gui:ci_config_test //gui:ci_profile_test //gui:ci_banner_manager_test //gui:ci_model_test` (uses `durian_core` target, no Views, works on Xcode 16+)
+- **GUI:** `bazel build //macos:Durian` → dev run: `macos/run.sh` (debug build → `/Applications/DurianNightly.app`) → install: `macos/install.sh` (release build → `/Applications/Durian.app`)
+- **Tests:** `bazel test //cli/...` (CLI) / `bazel test //macos/...` (GUI, requires Xcode 26) / `bazel test //...` (all)
+- **CI Tests (GUI):** `bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test` (uses `durian_core` target, no Views, works on Xcode 16+)
 - **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
 - **Logs (CLI/Go):** `~/.config/durian/serve.log` (truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
 
@@ -17,13 +17,13 @@ Email client: Go CLI backend + Swift macOS GUI.
 - `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, SQLite store, HTTP API server
   - `cli/cmd/durian/` — CLI commands (sync, send, serve, search, tag, contacts, draft, auth)
   - `cli/internal/` — Internal packages (config, imap, smtp, handler, store, oauth, mail, encoding, contacts, draft, keychain, protocol)
-- `gui/` — Swift macOS app (SwiftUI)
-  - `gui/durian/Managers/` — Singleton `ObservableObject` managers (`@MainActor`, `.shared`)
-  - `gui/durian/Views/` — SwiftUI view components
-  - `gui/durian/Models/` — Data structs
-  - `gui/durian/Network/` — `NotmuchBackend` (HTTP client to CLI server)
-  - `gui/durian/Keymaps/` — Vim-style key sequence engine
-  - `gui/durian/Utilities/` — Helper extensions
+- `macos/` — Swift macOS app (SwiftUI)
+  - `macos/durian/Managers/` — Singleton `ObservableObject` managers (`@MainActor`, `.shared`)
+  - `macos/durian/Views/` — SwiftUI view components
+  - `macos/durian/Models/` — Data structs
+  - `macos/durian/Network/` — `NotmuchBackend` (HTTP client to CLI server)
+  - `macos/durian/Keymaps/` — Vim-style key sequence engine
+  - `macos/durian/Utilities/` — Helper extensions
 - `openapi.yaml` — API spec for GUI ↔ CLI communication
 
 ## CI
@@ -32,7 +32,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **CLI job** runs on `ubuntu-latest` (Go tests + build)
 - **GUI job** runs on `macos-15` with `ci_*` test targets using `durian_core` (models/managers/utilities, no Views)
 - Views use macOS 26 APIs (`glassEffect`) requiring Xcode 26, but `rules_swift` `test_discoverer` crashes on Xcode 26. The `durian_core` target splits out testable code that compiles on Xcode 16+.
-- When adding new GUI tests: add both a regular `swift_test` (deps `durian_testlib`) and a `ci_*` variant (deps `durian_core`) in `gui/BUILD.bazel`
+- When adding new GUI tests: add both a regular `swift_test` (deps `durian_testlib`) and a `ci_*` variant (deps `durian_core`) in `macos/BUILD.bazel`
 
 ## Code Style
 
@@ -47,7 +47,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - Use `// MARK:` sections
 - Managers: singleton with `static let shared`, `@MainActor`, `@Published` for state
 - User-facing errors: `ErrorManager.shared.showWarning/showCritical` (toast banners)
-- Logging: `Log.debug("PREFIX", "message")` via `os_log` wrapper (`gui/durian/Utilities/Log.swift`). Levels: `.debug` (trace), `.info` (notable events), `.warning` (recoverable), `.error` (failures). Prefix = uppercase module name (e.g. `SYNC`, `EMAIL`, `KEYMAPS`, `CONFIG`). Never use `print()` — it goes to `/dev/null` when launched from `/Applications`.
+- Logging: `Log.debug("PREFIX", "message")` via `os_log` wrapper (`macos/durian/Utilities/Log.swift`). Levels: `.debug` (trace), `.info` (notable events), `.warning` (recoverable), `.error` (failures). Prefix = uppercase module name (e.g. `SYNC`, `EMAIL`, `KEYMAPS`, `CONFIG`). Never use `print()` — it goes to `/dev/null` when launched from `/Applications`.
 
 ### General
 - UI text: English (all user-facing strings)

@@ -12,10 +12,10 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 echo "Building..."
-bazel build -c opt //gui:Durian
+bazel build -c opt //macos:Durian
 
 # Bazel produces a zip containing the .app bundle
-BAZEL_ZIP="$(bazel cquery //gui:Durian -c opt --output=files 2>/dev/null)"
+BAZEL_ZIP="$(bazel cquery //macos:Durian -c opt --output=files 2>/dev/null)"
 
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
