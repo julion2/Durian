@@ -263,6 +263,7 @@ struct ContentView: View {
                 if !displayEmails.isEmpty {
                     EmailListView(
                         emails: displayEmails,
+                        emailListGeneration: accountManager.emailListGeneration,
                         cursorId: $cursorEmailId,
                         selection: $markedEmails,
                         onEmailAppear: { email in

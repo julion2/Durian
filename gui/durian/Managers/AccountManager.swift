@@ -16,6 +16,8 @@ class AccountManager: ObservableObject {
     // MARK: - Email Backend Properties
     @Published var emailBackend: EmailBackend?
     @Published var mailMessages: [MailMessage] = []    // Messages
+    /// Generation counter — incremented when email data changes (not on cursor moves)
+    @Published var emailListGeneration: Int = 0
     @Published var selectedFolder: String = "inbox"
     @Published var isLoadingEmails = false
     @Published var loadingProgress = ""
@@ -61,6 +63,7 @@ class AccountManager: ObservableObject {
         // Only assign if actually changed to avoid unnecessary @Published triggers
         if mailMessages != backend.emails {
             mailMessages = backend.emails
+            emailListGeneration += 1
         }
         if isLoadingEmails != backend.isLoadingEmails {
             isLoadingEmails = backend.isLoadingEmails
@@ -253,6 +256,7 @@ class AccountManager: ObservableObject {
     /// Optimistically remove emails from the local list without touching the backend.
     func removeLocally(ids: Set<String>) {
         mailMessages.removeAll { ids.contains($0.id) }
+        emailListGeneration += 1
     }
 
     // MARK: - Batch Operations (Multi-Selection)

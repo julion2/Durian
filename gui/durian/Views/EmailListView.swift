@@ -43,6 +43,7 @@ enum DateGrouping: Hashable, Comparable {
 
 struct EmailListView: View {
     let emails: [MailMessage]
+    let emailListGeneration: Int             // Incremented only on data change, not cursor
     @Binding var cursorId: String?           // Current cursor position (highlighted)
     @Binding var selection: Set<String>      // Marked emails (for batch operations)
     let onEmailAppear: (MailMessage) -> Void
@@ -52,8 +53,10 @@ struct EmailListView: View {
     var onToggleRead: ((String) -> Void)?
     var onDelete: ((String) -> Void)?
 
+    @State private var cachedItems: [ListItem] = []
+
     var body: some View {
-        let items = buildEmailList()
+        let items = cachedItems.isEmpty ? buildEmailList() : cachedItems
         let groupPositions = computeGroupPositions(from: items)
 
         ScrollViewReader { proxy in
@@ -69,6 +72,12 @@ struct EmailListView: View {
                 if let cursorId = newCursorId {
                     proxy.scrollTo(cursorId, anchor: .center)
                 }
+            }
+            .onChange(of: emailListGeneration) { _, _ in
+                cachedItems = buildEmailList()
+            }
+            .onAppear {
+                if cachedItems.isEmpty { cachedItems = buildEmailList() }
             }
         }
     }
