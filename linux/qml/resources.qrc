@@ -1,0 +1,20 @@
+<RCC>
+    <qresource prefix="/qml">
+        <file>Main.qml</file>
+        <file>Sidebar.qml</file>
+        <file>ThreadList.qml</file>
+        <file>ThreadRow.qml</file>
+        <file>DetailView.qml</file>
+        <file>ActionBar.qml</file>
+        <file>KeyHandler.qml</file>
+        <file>AvatarHelper.js</file>
+        <file>Avatar.qml</file>
+        <file>SearchPopup.qml</file>
+    </qresource>
+    <qresource prefix="/icons">
+        <file>durian-nightly.png</file>
+    </qresource>
+    <qresource prefix="/fonts">
+        <file>MaterialSymbolsOutlined.ttf</file>
+    </qresource>
+</RCC>

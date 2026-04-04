@@ -53,7 +53,7 @@ jobs:
 
       - name: Build GUI
         run: |
-          bazel build -c opt --define ci=true //gui:Durian
+          bazel build -c opt --define ci=true //macos:Durian
           # Repack with correct timestamps (Bazel sets 1980-01-01 for reproducibility)
           cd /tmp && unzip -o $GITHUB_WORKSPACE/bazel-bin/gui/Durian.zip -d gui_repack
           find gui_repack -exec touch {} +

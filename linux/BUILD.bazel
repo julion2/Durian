@@ -1,0 +1,136 @@
+genrule(
+    name = "qml_resources",
+    srcs = [
+        "qml/resources.qrc",
+        "qml/Main.qml",
+        "qml/Sidebar.qml",
+        "qml/ThreadList.qml",
+        "qml/ThreadRow.qml",
+        "qml/DetailView.qml",
+        "qml/ActionBar.qml",
+        "qml/KeyHandler.qml",
+        "qml/AvatarHelper.js",
+        "qml/Avatar.qml",
+        "qml/SearchPopup.qml",
+        "qml/durian-nightly.png",
+        "qml/MaterialSymbolsOutlined.ttf",
+    ],
+    outs = ["qrc_resources.cpp"],
+    cmd = """
+        RCC="$$PWD/$(location @qt//:rcc)" && \
+        QRC=$(location qml/resources.qrc) && \
+        cd $$(dirname $$QRC)/.. && \
+        $$RCC --name resources qml/resources.qrc -o $$OLDPWD/$@
+    """,
+    tools = ["@qt//:rcc"],
+)
+
+genrule(
+    name = "moc_thread_model",
+    srcs = ["models/ThreadModel.h"],
+    outs = ["moc_ThreadModel.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/ThreadModel.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+genrule(
+    name = "moc_avatar_provider",
+    srcs = ["models/AvatarProvider.h"],
+    outs = ["moc_AvatarProvider.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/AvatarProvider.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+genrule(
+    name = "moc_network_client",
+    srcs = ["models/NetworkClient.h"],
+    outs = ["moc_NetworkClient.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/NetworkClient.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+genrule(
+    name = "moc_profile_model",
+    srcs = ["models/ProfileModel.h"],
+    outs = ["moc_ProfileModel.cpp"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location models/ProfileModel.h) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+# Tests
+
+cc_test(
+    name = "icon_map_test",
+    srcs = ["tests/icon_map_test.cc", "models/IconMap.h"],
+    copts = ["-std=c++17", "-Ilinux"],
+    size = "small",
+    deps = ["@googletest//:gtest_main", "@qt//:qt6"],
+)
+
+genrule(
+    name = "moc_thread_model_test",
+    srcs = ["tests/thread_model_test.cc"],
+    outs = ["thread_model_test_moc.h"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location tests/thread_model_test.cc) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+cc_test(
+    name = "thread_model_test",
+    srcs = [
+        "tests/thread_model_test.cc",
+        "models/ThreadModel.h",
+        "data/SeedData.h",
+        ":moc_thread_model",
+        ":moc_thread_model_test",
+    ],
+    copts = ["-std=c++17", "-Ilinux"],
+    includes = ["."],
+    size = "small",
+    deps = ["@qt//:qt6"],
+)
+
+genrule(
+    name = "moc_profile_model_test",
+    srcs = ["tests/profile_model_test.cc"],
+    outs = ["profile_model_test_moc.h"],
+    cmd = "$$PWD/$(location @qt//:moc) $(location tests/profile_model_test.cc) -o $@",
+    tools = ["@qt//:moc"],
+)
+
+cc_test(
+    name = "profile_model_test",
+    srcs = [
+        "tests/profile_model_test.cc",
+        "models/ProfileModel.h",
+        "models/IconMap.h",
+        "third_party/toml.hpp",
+        ":moc_profile_model",
+        ":moc_profile_model_test",
+    ],
+    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
+    includes = ["."],
+    size = "small",
+    deps = ["@qt//:qt6"],
+)
+
+cc_binary(
+    name = "durian",
+    srcs = [
+        "main.cc",
+        "models/ThreadModel.h",
+        "models/ProfileModel.h",
+        "models/IconMap.h",
+        "models/NetworkClient.h",
+        "models/AvatarProvider.h",
+        "data/SeedData.h",
+        "third_party/toml.hpp",
+        ":qml_resources",
+        ":moc_thread_model",
+        ":moc_profile_model",
+        ":moc_avatar_provider",
+        ":moc_network_client",
+    ],
+    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
+    deps = ["@qt//:qt6"],
+)
