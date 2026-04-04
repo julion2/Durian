@@ -262,28 +262,18 @@ struct MailMessage: Identifiable, Hashable {
     // Hashable
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
-        hasher.combine(subject)
-        hasher.combine(from)
-        hasher.combine(date)
         hasher.combine(tags)
-        hasher.combine(body)
         hasher.combine(isRead)
         hasher.combine(isPinned)
         hasher.combine(bodyState)
-        hasher.combine(threadMessages?.count ?? 0)
     }
 
     static func == (lhs: MailMessage, rhs: MailMessage) -> Bool {
         lhs.id == rhs.id &&
-        lhs.subject == rhs.subject &&
-        lhs.from == rhs.from &&
-        lhs.date == rhs.date &&
         lhs.tags == rhs.tags &&
-        lhs.body == rhs.body &&
         lhs.isRead == rhs.isRead &&
         lhs.isPinned == rhs.isPinned &&
-        lhs.bodyState == rhs.bodyState &&
-        lhs.threadMessages?.count == rhs.threadMessages?.count
+        lhs.bodyState == rhs.bodyState
     }
 }
 
