@@ -44,7 +44,8 @@ def _qt_local_repository_impl(ctx):
             qt_root + "/share/qt/libexec/" + tool,
             # Fedora: QTDIR=/usr, tools in /usr/lib64/qt6/libexec/
             qt_root + "/lib64/qt6/libexec/" + tool,
-            # Ubuntu/Debian: QTDIR=/usr, tools in /usr/lib/x86_64-linux-gnu/qt6/libexec/
+            # Ubuntu/Debian: QTDIR=/usr, tools in /usr/lib/qt6/libexec/
+            qt_root + "/lib/qt6/libexec/" + tool,
             qt_root + "/lib/x86_64-linux-gnu/qt6/libexec/" + tool,
             qt_root + "/lib/aarch64-linux-gnu/qt6/libexec/" + tool,
         ]:
@@ -57,12 +58,16 @@ def _qt_local_repository_impl(ctx):
 
     # Find include dir — handles /usr/include/qt6 (Fedora) and /usr/include (standard)
     include_dir = None
-    for candidate in [qt_root + "/include/qt6", qt_root + "/include"]:
+    for candidate in [
+        qt_root + "/include/qt6",
+        qt_root + "/include/x86_64-linux-gnu/qt6",   # Ubuntu/Debian x86_64
+        qt_root + "/include/aarch64-linux-gnu/qt6",   # Ubuntu/Debian arm64
+        qt_root + "/include",
+    ]:
         if ctx.path(candidate).exists and ctx.path(candidate + "/QtCore").exists:
             include_dir = candidate
             break
     if not include_dir:
-        # Might just have /usr/include without QtCore subdir
         for candidate in [qt_root + "/include/qt6", qt_root + "/include"]:
             if ctx.path(candidate).exists:
                 include_dir = candidate
