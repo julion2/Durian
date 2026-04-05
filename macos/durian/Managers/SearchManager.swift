@@ -11,25 +11,39 @@ import Foundation
 class SearchManager: ObservableObject {
     @Published var results: [MailMessage] = []
     @Published var isSearching: Bool = false
-    
+
     private var searchTask: Task<Void, Never>?
     private let debounceDelay: UInt64 = 300_000_000  // 300ms in nanoseconds
     private let resultLimit: Int = 25
-    
+
+    private let backendProvider: () -> (any SearchBackend)?
+    private let profileFilterProvider: (String) -> String
+
+    init() {
+        self.backendProvider = { AccountManager.shared.emailBackend }
+        self.profileFilterProvider = { ProfileManager.shared.applyProfileFilter(to: $0) }
+    }
+
+    /// Test-only initializer for dependency injection
+    init(backend: @escaping () -> (any SearchBackend)?, profileFilter: @escaping (String) -> String) {
+        self.backendProvider = backend
+        self.profileFilterProvider = profileFilter
+    }
+
     /// Search emails with debounce
     func search(query: String) {
         // Cancel previous search
         searchTask?.cancel()
-        
+
         // Clear results if query is empty
         guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
             results = []
             isSearching = false
             return
         }
-        
+
         isSearching = true
-        
+
         searchTask = Task {
             // Debounce
             do {
@@ -37,26 +51,26 @@ class SearchManager: ObservableObject {
             } catch {
                 return  // Task was cancelled
             }
-            
+
             guard !Task.isCancelled else { return }
-            
+
             // Perform search via EmailBackend
-            guard let backend = AccountManager.shared.emailBackend else {
+            guard let backend = backendProvider() else {
                 results = []
                 isSearching = false
                 return
             }
-            
-            let filteredQuery = ProfileManager.shared.applyProfileFilter(to: query)
+
+            let filteredQuery = profileFilterProvider(query)
             let searchResults = await backend.searchAll(query: filteredQuery, limit: resultLimit)
-            
+
             guard !Task.isCancelled else { return }
-            
+
             results = searchResults
             isSearching = false
         }
     }
-    
+
     /// Clear search results
     func clear() {
         searchTask?.cancel()

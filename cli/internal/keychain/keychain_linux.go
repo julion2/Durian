@@ -6,9 +6,12 @@ import (
 	"strings"
 )
 
+// commandRunner creates exec.Cmd instances. Tests override this to avoid real keychain access.
+var commandRunner = exec.Command
+
 // GetPassword retrieves a password using secret-tool (libsecret)
 func GetPassword(service, account string) (string, error) {
-	cmd := exec.Command("secret-tool", "lookup", "service", service, "account", account)
+	cmd := commandRunner("secret-tool", "lookup", "service", service, "account", account)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -29,7 +32,7 @@ func GetPassword(service, account string) (string, error) {
 
 // SetPassword stores a password using secret-tool (libsecret)
 func SetPassword(service, account, password string) error {
-	cmd := exec.Command("secret-tool", "store",
+	cmd := commandRunner("secret-tool", "store",
 		"--label", fmt.Sprintf("durian: %s", account),
 		"service", service,
 		"account", account,
@@ -45,7 +48,7 @@ func SetPassword(service, account, password string) error {
 
 // DeletePassword removes a password using secret-tool (libsecret)
 func DeletePassword(service, account string) error {
-	cmd := exec.Command("secret-tool", "clear", "service", service, "account", account)
+	cmd := commandRunner("secret-tool", "clear", "service", service, "account", account)
 
 	if err := cmd.Run(); err != nil {
 		// secret-tool clear doesn't error on missing items

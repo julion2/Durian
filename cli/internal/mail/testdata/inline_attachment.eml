@@ -1,0 +1,23 @@
+From: sender@example.com
+To: recipient@example.com
+Subject: Inline Attachment Email
+Date: Sat, 05 Apr 2026 11:00:00 +0200
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="----=_Part_Inline_001"
+
+------=_Part_Inline_001
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+This email has an inline image below.
+
+------=_Part_Inline_001
+Content-Type: image/png; name="photo.png"
+Content-Disposition: inline; filename="photo.png"
+Content-Transfer-Encoding: base64
+Content-Id: <photo001@example.com>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGA
+faKk0AAAAABJRU5ErkJggg==
+
+------=_Part_Inline_001--

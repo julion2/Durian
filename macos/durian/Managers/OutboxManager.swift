@@ -14,12 +14,21 @@ class OutboxManager: ObservableObject {
 
     @Published var pendingCount: Int = 0
 
-    private init() {}
+    private let backendProvider: () -> (any OutboxBackend)?
+
+    private init() {
+        self.backendProvider = { AccountManager.shared.emailBackend }
+    }
+
+    /// Test-only initializer for dependency injection
+    init(backend: @escaping () -> (any OutboxBackend)?) {
+        self.backendProvider = backend
+    }
 
     /// Refresh the pending count from the server.
     func refresh() {
         Task {
-            guard let backend = AccountManager.shared.emailBackend else { return }
+            guard let backend = backendProvider() else { return }
             let items = await backend.listOutbox()
             pendingCount = items.count
             Log.debug("OUTBOX", "Pending count: \(pendingCount)")

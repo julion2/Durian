@@ -10,6 +10,18 @@ import Combine
 
 // MARK: - Mail Backend Protocol
 
+/// Subset protocol for search operations (used by SearchManager DI).
+@MainActor
+protocol SearchBackend {
+    func searchAll(query: String, limit: Int) async -> [MailMessage]
+}
+
+/// Subset protocol for outbox operations (used by OutboxManager DI).
+@MainActor
+protocol OutboxBackend {
+    func listOutbox() async -> [OutboxEntry]
+}
+
 /// Protocol defining the interface for mail backends.
 /// EmailBackend conforms to this.
 @MainActor

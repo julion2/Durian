@@ -133,6 +133,51 @@ swift_test(
     deps = [":durian_core"],
 )
 
+swift_test(
+    name = "sync_manager_test",
+    size = "small",
+    srcs = ["tests/SyncManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "search_manager_test",
+    size = "small",
+    srcs = ["tests/SearchManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "outbox_manager_test",
+    size = "small",
+    srcs = ["tests/OutboxManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_sync_manager_test",
+    size = "small",
+    srcs = ["tests/SyncManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "ci_search_manager_test",
+    size = "small",
+    srcs = ["tests/SearchManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "ci_outbox_manager_test",
+    size = "small",
+    srcs = ["tests/OutboxManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
 genrule(
     name = "StampedInfoPlist",
     srcs = ["Info.plist"],
