@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "keychain",
@@ -9,4 +9,11 @@ go_library(
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/keychain",
     visibility = ["//cli:__subpackages__"],
+)
+
+go_test(
+    name = "keychain_test",
+    size = "small",
+    srcs = ["keychain_darwin_test.go"],
+    embed = [":keychain"],
 )

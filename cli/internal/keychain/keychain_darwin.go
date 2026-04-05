@@ -6,9 +6,12 @@ import (
 	"strings"
 )
 
+// commandRunner creates exec.Cmd instances. Tests override this to avoid real keychain access.
+var commandRunner = exec.Command
+
 // GetPassword retrieves a password from the macOS Keychain
 func GetPassword(service, account string) (string, error) {
-	cmd := exec.Command("security", "find-generic-password",
+	cmd := commandRunner("security", "find-generic-password",
 		"-s", service,
 		"-a", account,
 		"-w", // Output only the password
@@ -32,7 +35,7 @@ func GetPassword(service, account string) (string, error) {
 func SetPassword(service, account, password string) error {
 	_ = DeletePassword(service, account)
 
-	cmd := exec.Command("security", "add-generic-password",
+	cmd := commandRunner("security", "add-generic-password",
 		"-s", service,
 		"-a", account,
 		"-w", password,
@@ -48,7 +51,7 @@ func SetPassword(service, account, password string) error {
 
 // DeletePassword removes a password from the macOS Keychain
 func DeletePassword(service, account string) error {
-	cmd := exec.Command("security", "delete-generic-password",
+	cmd := commandRunner("security", "delete-generic-password",
 		"-s", service,
 		"-a", account,
 	)

@@ -11,3 +11,6 @@ build --reuse_sandbox_directories
 # --- Test defaults ---
 test --test_output=errors
 test --test_verbose_timeout_warnings
+
+# Qt tests need offscreen platform on headless Linux (CI, Vagrant)
+test --test_env=QT_QPA_PLATFORM=offscreen

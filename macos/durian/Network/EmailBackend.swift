@@ -114,7 +114,7 @@ enum TagError: Error, LocalizedError {
 // MARK: - Email Backend
 
 @MainActor
-class EmailBackend: ObservableObject {
+class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
     private var durianProcess: Process?
     private let decoder = JSONDecoder()
     private let baseURL = URL(string: "http://localhost:9723/api/v1")!

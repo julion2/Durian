@@ -133,6 +133,96 @@ swift_test(
     deps = [":durian_core"],
 )
 
+swift_test(
+    name = "sync_manager_test",
+    size = "small",
+    srcs = ["tests/SyncManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "search_manager_test",
+    size = "small",
+    srcs = ["tests/SearchManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "outbox_manager_test",
+    size = "small",
+    srcs = ["tests/OutboxManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_sync_manager_test",
+    size = "small",
+    srcs = ["tests/SyncManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "ci_search_manager_test",
+    size = "small",
+    srcs = ["tests/SearchManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "ci_outbox_manager_test",
+    size = "small",
+    srcs = ["tests/OutboxManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "contacts_manager_test",
+    size = "small",
+    srcs = ["tests/ContactsManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_contacts_manager_test",
+    size = "small",
+    srcs = ["tests/ContactsManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "email_sending_test",
+    size = "small",
+    srcs = ["tests/EmailSendingTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_email_sending_test",
+    size = "small",
+    srcs = ["tests/EmailSendingTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "account_manager_test",
+    size = "small",
+    srcs = ["tests/AccountManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_account_manager_test",
+    size = "small",
+    srcs = ["tests/AccountManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
 genrule(
     name = "StampedInfoPlist",
     srcs = ["Info.plist"],

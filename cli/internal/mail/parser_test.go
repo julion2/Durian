@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"encoding/base64"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -231,5 +232,160 @@ func TestNewParser(t *testing.T) {
 	parser := NewParser()
 	if parser == nil {
 		t.Error("NewParser() should not return nil")
+	}
+}
+
+func TestDetectMagic(t *testing.T) {
+	tests := []struct {
+		name             string
+		data             []byte
+		transferEncoding string
+		wantMime         string
+		wantExt          string
+	}{
+		{"PDF magic", []byte("%PDF-1.4 rest of content here"), "", "application/pdf", ".pdf"},
+		{"PNG magic", append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 8)...), "", "image/png", ".png"},
+		{"JPEG magic", append([]byte{0xFF, 0xD8, 0xFF, 0xE0}, make([]byte, 8)...), "", "image/jpeg", ".jpg"},
+		{"GIF magic", []byte("GIF89a rest of content"), "", "image/gif", ".gif"},
+		{"ZIP magic", append([]byte{0x50, 0x4B, 0x03, 0x04}, make([]byte, 8)...), "", "application/zip", ".zip"},
+		{"XML magic", []byte("<?xml version=\"1.0\"?>"), "", "application/xml", ".xml"},
+		{"unknown bytes", []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}, "", "", ""},
+		{"too short", []byte{0x89, 'P', 'N'}, "", "", ""},
+		{"empty data", []byte{}, "", "", ""},
+		{
+			"base64 PDF",
+			[]byte(base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 fake pdf content here"))),
+			"base64",
+			"application/pdf", ".pdf",
+		},
+		{
+			"base64 PNG",
+			[]byte(base64.StdEncoding.EncodeToString(append([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}, make([]byte, 16)...))),
+			"base64",
+			"image/png", ".png",
+		},
+		{
+			"base64 data with 7bit encoding ignored",
+			[]byte(base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 content"))),
+			"7bit",
+			"", "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotMime, gotExt := detectMagic(tt.data, tt.transferEncoding)
+			if gotMime != tt.wantMime {
+				t.Errorf("detectMagic() mime = %q, want %q", gotMime, tt.wantMime)
+			}
+			if gotExt != tt.wantExt {
+				t.Errorf("detectMagic() ext = %q, want %q", gotExt, tt.wantExt)
+			}
+		})
+	}
+}
+
+func TestParserHTMLOnlyFallback(t *testing.T) {
+	msg := loadTestMail(t, "html_only.eml")
+	parser := NewParser()
+
+	content := parser.Parse(msg)
+
+	if content.Subject != "HTML Only Email" {
+		t.Errorf("Subject = %q, want %q", content.Subject, "HTML Only Email")
+	}
+
+	// HTML should contain the original HTML
+	if !strings.Contains(content.HTML, "<strong>HTML</strong>") {
+		t.Errorf("HTML should contain strong tag, got: %q", content.HTML)
+	}
+
+	// Body should be auto-generated from HTML (fallback)
+	if !strings.Contains(content.Body, "Important Update") {
+		t.Errorf("Body should contain text derived from HTML, got: %q", content.Body)
+	}
+}
+
+func TestParserInlineAttachment(t *testing.T) {
+	msg := loadTestMail(t, "inline_attachment.eml")
+	parser := NewParser()
+
+	content := parser.Parse(msg)
+
+	if content.Subject != "Inline Attachment Email" {
+		t.Errorf("Subject = %q, want %q", content.Subject, "Inline Attachment Email")
+	}
+
+	// Body should contain the text part
+	if !strings.Contains(content.Body, "inline image below") {
+		t.Errorf("Body should contain text content, got: %q", content.Body)
+	}
+
+	// Should have 1 inline attachment
+	if len(content.Attachments) != 1 {
+		t.Fatalf("Should have 1 attachment, got %d", len(content.Attachments))
+	}
+
+	att := content.Attachments[0]
+	if att.Filename != "photo.png" {
+		t.Errorf("Attachment filename = %q, want %q", att.Filename, "photo.png")
+	}
+	if att.Disposition != "inline" {
+		t.Errorf("Attachment disposition = %q, want %q", att.Disposition, "inline")
+	}
+	if att.ContentID != "<photo001@example.com>" {
+		t.Errorf("Attachment ContentID = %q, want %q", att.ContentID, "<photo001@example.com>")
+	}
+}
+
+func TestParserUnnamedAttachmentMagicDetection(t *testing.T) {
+	msg := loadTestMail(t, "unnamed_attachment_pdf.eml")
+	parser := NewParser()
+
+	content := parser.Parse(msg)
+
+	if content.Subject != "Unnamed Attachment" {
+		t.Errorf("Subject = %q, want %q", content.Subject, "Unnamed Attachment")
+	}
+
+	// Body should contain the text part
+	if !strings.Contains(content.Body, "See the attached file") {
+		t.Errorf("Body should contain text content, got: %q", content.Body)
+	}
+
+	// Should have 1 attachment with magic-detected name and type
+	if len(content.Attachments) != 1 {
+		t.Fatalf("Should have 1 attachment, got %d", len(content.Attachments))
+	}
+
+	att := content.Attachments[0]
+	if att.Filename != "attachment.pdf" {
+		t.Errorf("Attachment filename = %q, want %q (from magic detection)", att.Filename, "attachment.pdf")
+	}
+	if att.ContentType != "application/pdf" {
+		t.Errorf("Attachment ContentType = %q, want %q (from magic detection)", att.ContentType, "application/pdf")
+	}
+}
+
+func TestParserEmptyContentType(t *testing.T) {
+	msg := loadTestMail(t, "empty_content_type.eml")
+	parser := NewParser()
+
+	content := parser.Parse(msg)
+
+	if content.Subject != "No Content Type" {
+		t.Errorf("Subject = %q, want %q", content.Subject, "No Content Type")
+	}
+
+	// Should fall back to text/plain
+	if !strings.Contains(content.Body, "no Content-Type header") {
+		t.Errorf("Body should contain text content, got: %q", content.Body)
+	}
+	if !strings.Contains(content.Body, "default to text/plain") {
+		t.Errorf("Body should contain full text, got: %q", content.Body)
+	}
+
+	// No HTML for plain text
+	if content.HTML != "" {
+		t.Errorf("HTML should be empty, got: %q", content.HTML)
 	}
 }

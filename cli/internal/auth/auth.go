@@ -16,6 +16,12 @@ const (
 	PasswordKeychainService = "durian-password"
 )
 
+// Replaceable function vars for testability.
+var (
+	getKeychainPassword = keychain.GetPassword
+	getValidOAuthToken  = oauth.GetValidToken
+)
+
 // GetSMTPAuth returns the appropriate SMTP auth method for the given account.
 func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 	switch account.SMTP.Auth {
@@ -28,7 +34,7 @@ func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 		// SMTP also requires the SASL user to be the delegator — shared mailboxes
 		// cannot perform SMTP AUTH. MAIL FROM / From: header use account.Email downstream.
 		authEmail := account.GetAuthEmail()
-		token, err := oauth.GetValidToken(authEmail, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
+		token, err := getValidOAuthToken(authEmail, account.OAuth.ClientID, account.OAuth.ClientSecret, account.OAuth.Tenant)
 		if err != nil {
 			if errors.Is(err, oauth.ErrTokenNotFound) {
 				return nil, fmt.Errorf("not authenticated for %s", authEmail)
@@ -45,7 +51,7 @@ func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 		}, nil
 
 	case "password":
-		password, err := keychain.GetPassword(PasswordKeychainService, account.Email)
+		password, err := getKeychainPassword(PasswordKeychainService, account.Email)
 		if err != nil {
 			if errors.Is(err, keychain.ErrNotFound) {
 				return nil, fmt.Errorf("no password stored for %s", account.Email)

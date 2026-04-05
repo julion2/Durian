@@ -22,6 +22,10 @@ import (
 	"github.com/durian-dev/durian/cli/internal/tagsync"
 )
 
+var servePort int
+var serveDB string
+var serveContactsDB string
+
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start OpenAPI HTTP server (for GUI integration)",
@@ -31,6 +35,9 @@ This replaces the old JSON protocol server.`,
 }
 
 func init() {
+	serveCmd.Flags().IntVar(&servePort, "port", 9723, "port to listen on")
+	serveCmd.Flags().StringVar(&serveDB, "db", "", "path to email database (default: ~/.config/durian/email.db)")
+	serveCmd.Flags().StringVar(&serveContactsDB, "contacts-db", "", "path to contacts database (default: ~/.config/durian/contacts.db)")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -48,7 +55,10 @@ func runServe(cmd *cobra.Command, args []string) {
 
 	// Open contacts database (non-fatal if missing)
 	var contactsDB *contacts.DB
-	contactsDBPath := contacts.DefaultDBPath()
+	contactsDBPath := serveContactsDB
+	if contactsDBPath == "" {
+		contactsDBPath = contacts.DefaultDBPath()
+	}
 	if cdb, err := contacts.Open(contactsDBPath); err != nil {
 		slog.Warn("Could not open contacts database", "module", "SERVE", "path", contactsDBPath, "err", err)
 	} else {
@@ -58,23 +68,36 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	// Open email store (required for reads)
-	emailDB, err := openEmailDB()
+	dbPath := serveDB
+	if dbPath == "" {
+		dbPath = store.DefaultDBPath()
+	}
+	emailDB, err := store.Open(dbPath)
 	if err != nil {
 		slog.Error("Email store required but unavailable", "module", "SERVE", "err", err)
 		fmt.Fprintln(os.Stderr, "Error: email store unavailable:", err)
 		os.Exit(1)
 	}
+	if err := emailDB.Init(); err != nil {
+		emailDB.Close()
+		slog.Error("Email store init failed", "module", "SERVE", "err", err)
+		fmt.Fprintln(os.Stderr, "Error: email store init failed:", err)
+		os.Exit(1)
+	}
 	defer emailDB.Close()
-	slog.Info("Opened email store", "module", "SERVE", "path", store.DefaultDBPath())
+	slog.Info("Opened email store", "module", "SERVE", "path", dbPath)
 
 	h := handler.New(emailDB, contactsDB)
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
+	addr := fmt.Sprintf(":%d", servePort)
+	allowedHost := fmt.Sprintf("localhost:%d", servePort)
+	allowedHostIP := fmt.Sprintf("127.0.0.1:%d", servePort)
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			host := req.Host
-			if host != "localhost:9723" && host != "127.0.0.1:9723" &&
+			if host != allowedHost && host != allowedHostIP &&
 				host != "localhost" && host != "127.0.0.1" {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
@@ -157,7 +180,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	server := &http.Server{
-		Addr:    ":9723",
+		Addr:    addr,
 		Handler: r,
 	}
 
