@@ -21,6 +21,9 @@ jobs:
       - name: Test CLI
         run: bazel test //cli/... --test_output=errors
 
+      - name: Test API Contract
+        run: bazel test //integration:integration_test --test_output=all
+
       - name: Build CLI
         run: bazel build //cli/cmd/durian
 
@@ -42,22 +45,6 @@ jobs:
 
       - name: Build Sync Server
         run: bazel build //sync:durian-sync
-
-  integration:
-    name: Integration (Contract)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Mount Bazel cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/bazel-disk
-          key: bazel-integration-${{ hashFiles('MODULE.bazel', 'cli/go.mod', 'cli/go.sum') }}
-          restore-keys: bazel-integration-
-
-      - name: Test API Contract
-        run: bazel test //integration:integration_test --test_output=all
 
   gui:
     name: GUI (Swift)

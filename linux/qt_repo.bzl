@@ -12,6 +12,8 @@ def _qt_local_repository_impl(ctx):
     for candidate in [
         qt_root + "/lib",
         qt_root + "/lib64",
+        qt_root + "/lib/x86_64-linux-gnu",   # Ubuntu/Debian x86_64
+        qt_root + "/lib/aarch64-linux-gnu",   # Ubuntu/Debian arm64
         qt_root + "/../",  # QTDIR=/usr/lib64/qt6 → libs in /usr/lib64
     ]:
         p = ctx.path(candidate)
@@ -42,6 +44,9 @@ def _qt_local_repository_impl(ctx):
             qt_root + "/share/qt/libexec/" + tool,
             # Fedora: QTDIR=/usr, tools in /usr/lib64/qt6/libexec/
             qt_root + "/lib64/qt6/libexec/" + tool,
+            # Ubuntu/Debian: QTDIR=/usr, tools in /usr/lib/x86_64-linux-gnu/qt6/libexec/
+            qt_root + "/lib/x86_64-linux-gnu/qt6/libexec/" + tool,
+            qt_root + "/lib/aarch64-linux-gnu/qt6/libexec/" + tool,
         ]:
             if ctx.path(candidate).exists:
                 tool_path = candidate
