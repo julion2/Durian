@@ -161,8 +161,12 @@ func ValidateRules(rules []RuleConfig, cfg *Config, queryValidator RuleQueryVali
 			}
 		}
 
-		if len(rule.AddTags) == 0 && len(rule.RemoveTags) == 0 {
-			warn(prefix, "rule has no add_tags or remove_tags (no-op)")
+		if len(rule.AddTags) == 0 && len(rule.RemoveTags) == 0 && rule.Exec == "" {
+			warn(prefix, "rule has no add_tags, remove_tags, or exec (no-op)")
+		}
+
+		if rule.ExecTimeout < 0 {
+			add(prefix+".exec_timeout", "must be non-negative")
 		}
 
 		for _, acct := range rule.Accounts {

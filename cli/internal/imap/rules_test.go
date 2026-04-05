@@ -186,6 +186,18 @@ func TestMatchingRules(t *testing.T) {
 	}
 }
 
+func TestWildcardMatchesEverything(t *testing.T) {
+	rules := []config.RuleConfig{
+		{Name: "CatchAll", Match: "*", AddTags: []string{"all"}},
+	}
+
+	msg := &store.Message{FromAddr: "anyone@anywhere.com", Subject: "Whatever"}
+	matched := MatchingRules(rules, msg, 0, nil, "test")
+	if len(matched) != 1 {
+		t.Errorf("wildcard * should match everything, got %d matches", len(matched))
+	}
+}
+
 func TestMatchingRules_AccountScope(t *testing.T) {
 	rules := []config.RuleConfig{
 		{Name: "Scoped", Match: "from:@work.test", AddTags: []string{"work"}, Accounts: []string{"personal"}},

@@ -43,3 +43,19 @@ add_tags = ["bounce"]
 #
 # Optional fields:
 #   accounts = ["alias"]    — only apply this rule to specific accounts (by alias)
+#   exec = "command"        — run external command (stdin=email JSON, stdout=tag ops JSON)
+#   exec_timeout = 10       — timeout in seconds (default: 10)
+#
+# Exec hook example:
+#   The command receives email data as JSON on stdin:
+#     {"from":"...", "to":"...", "subject":"...", "body":"...", "account":"...", "tags":["..."], "has_attachment":false}
+#   It should output tag operations as JSON on stdout:
+#     {"add_tags":["label1"], "remove_tags":["label2"]}
+#   Non-zero exit = error (rule skipped, static add_tags/remove_tags used as fallback).
+
+# [[rules]]
+# name = "ML Classifier"
+# match = "*"
+# exec = "durian-classify"
+# exec_timeout = 5
+# accounts = ["work", "uni"]
