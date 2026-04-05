@@ -1,8 +1,15 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "tagsync",
     srcs = ["client.go"],
     importpath = "github.com/durian-dev/durian/cli/internal/tagsync",
     visibility = ["//cli:__subpackages__"],
+)
+
+go_test(
+    name = "tagsync_test",
+    size = "small",
+    srcs = ["client_test.go"],
+    embed = [":tagsync"],
 )
