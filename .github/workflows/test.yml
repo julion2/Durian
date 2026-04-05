@@ -44,4 +44,4 @@ jobs:
           restore-keys: bazel-gui-
 
       - name: Test
-        run: bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test --test_output=errors
+        run: bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test //macos:ci_sync_manager_test //macos:ci_search_manager_test //macos:ci_outbox_manager_test --test_output=errors

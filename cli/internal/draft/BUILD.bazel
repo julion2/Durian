@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "draft",
@@ -11,4 +11,11 @@ go_library(
         "//cli/internal/smtp",
         "@com_github_emersion_go_imap//:go-imap",
     ],
+)
+
+go_test(
+    name = "draft_test",
+    size = "small",
+    srcs = ["draft_test.go"],
+    embed = [":draft"],
 )
