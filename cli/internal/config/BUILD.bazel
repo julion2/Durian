@@ -5,8 +5,11 @@ go_library(
     srcs = [
         "config.go",
         "helpers.go",
+        "keymaps.go",
+        "profiles.go",
         "rules.go",
         "types.go",
+        "validate.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/config",
     visibility = ["//cli:__subpackages__"],

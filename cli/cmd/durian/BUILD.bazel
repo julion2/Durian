@@ -17,6 +17,7 @@ go_library(
         "sync.go",
         "tag.go",
         "tagsync.go",
+        "validate.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/cmd/durian",
     visibility = ["//visibility:private"],

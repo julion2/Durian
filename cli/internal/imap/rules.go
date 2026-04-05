@@ -2,12 +2,19 @@ package imap
 
 import (
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"strings"
 
 	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/store"
 )
+
+// ValidateRuleQuery checks if a rule match expression is syntactically valid.
+func ValidateRuleQuery(query string) error {
+	_, err := parseRuleQuery(query)
+	return err
+}
 
 // MatchingRules returns the rules whose match expression matches the message.
 // account is the account identifier (e.g. alias); header is the parsed mail header.
@@ -19,7 +26,8 @@ func MatchingRules(rules []config.RuleConfig, msg *store.Message, attachmentCoun
 		}
 		expr, err := parseRuleQuery(rule.Match)
 		if err != nil {
-			continue // skip malformed rules
+			slog.Warn("Skipping malformed rule", "module", "RULES", "name", rule.Name, "match", rule.Match, "err", err)
+			continue
 		}
 		if evalExpr(expr, msg, attachmentCount, header) {
 			matched = append(matched, rule)
