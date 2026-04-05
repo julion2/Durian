@@ -1,0 +1,14 @@
+sh_test(
+    name = "integration_test",
+    size = "medium",
+    srcs = ["integration_test.sh"],
+    args = [
+        "$(location //cli/cmd/testseeder)",
+        "$(location //cli/cmd/durian)",
+    ],
+    data = [
+        "//cli/cmd/testseeder",
+        "//cli/cmd/durian",
+    ],
+    tags = ["integration"],
+)
