@@ -34,6 +34,27 @@ type ExecOutput struct {
 
 const defaultExecTimeout = 10 // seconds
 
+// filterAllowedTags returns only tags that are in the allowed list.
+// Rejected tags are logged as warnings.
+func filterAllowedTags(tags, allowed []string, ruleName string) []string {
+	if len(tags) == 0 {
+		return tags
+	}
+	set := make(map[string]bool, len(allowed))
+	for _, t := range allowed {
+		set[t] = true
+	}
+	var filtered []string
+	for _, t := range tags {
+		if set[t] {
+			filtered = append(filtered, t)
+		} else {
+			slog.Warn("Exec rule returned disallowed tag", "module", "RULES", "rule", ruleName, "tag", t)
+		}
+	}
+	return filtered
+}
+
 // RunExecRule runs an external command for a matched rule and returns tag operations.
 // Returns nil, nil if the rule has no exec command.
 func RunExecRule(rule config.RuleConfig, msg *store.Message, tags []string, account string) (*ExecOutput, error) {

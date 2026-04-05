@@ -1589,8 +1589,17 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 				if err != nil {
 					slog.Warn("Exec rule failed, using static tags", "module", "RULES", "rule", rule.Name, "err", err)
 				} else if execOut != nil {
-					addTags = append(addTags, execOut.AddTags...)
-					removeTags = append(removeTags, execOut.RemoveTags...)
+					execAdd := execOut.AddTags
+					execRemove := execOut.RemoveTags
+
+					// Filter by allowed_tags if set
+					if len(rule.AllowedTags) > 0 {
+						execAdd = filterAllowedTags(execAdd, rule.AllowedTags, rule.Name)
+						execRemove = filterAllowedTags(execRemove, rule.AllowedTags, rule.Name)
+					}
+
+					addTags = append(addTags, execAdd...)
+					removeTags = append(removeTags, execRemove...)
 				}
 			}
 

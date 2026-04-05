@@ -140,6 +140,27 @@ echo 'not json'
 	}
 }
 
+func TestFilterAllowedTags(t *testing.T) {
+	filtered := filterAllowedTags(
+		[]string{"finance", "spam", "unknown", "important"},
+		[]string{"finance", "important", "newsletter"},
+		"test-rule",
+	)
+	if len(filtered) != 2 {
+		t.Fatalf("got %d tags, want 2", len(filtered))
+	}
+	if filtered[0] != "finance" || filtered[1] != "important" {
+		t.Errorf("filtered = %v, want [finance, important]", filtered)
+	}
+}
+
+func TestFilterAllowedTags_Empty(t *testing.T) {
+	filtered := filterAllowedTags(nil, []string{"a"}, "test")
+	if len(filtered) != 0 {
+		t.Errorf("expected empty, got %v", filtered)
+	}
+}
+
 func TestRunExecRule_DefaultTimeout(t *testing.T) {
 	// Just verify it doesn't panic with zero timeout (should use default)
 	script := writeTestScript(t, "quick.sh", `#!/bin/bash

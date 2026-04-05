@@ -73,8 +73,9 @@ bazel build -c opt //macos:Durian # GUI (macOS only, release)
 ## Test
 
 ```bash
-bazel test //cli/...            # CLI tests
-bazel test //macos/...            # GUI tests (requires Xcode 26)
+bazel test //cli/...                       # CLI unit tests
+bazel test //macos/...                     # GUI tests (requires Xcode 26)
+bazel test //integration:integration_test  # API contract tests (real server)
 ```
 
 ## CLI
@@ -85,6 +86,8 @@ durian auth status              # show auth status
 durian sync work                # sync an account
 durian search "tag:inbox" -l 10 # search
 durian search "date:today"      # relative date search
+durian validate                 # check all config files for errors
+durian validate rules           # check just rules.toml
 ```
 
 ## Config
@@ -96,7 +99,7 @@ All configuration lives in `~/.config/durian/` (or `$XDG_CONFIG_HOME/durian/`):
 | `config.toml` | Accounts, signatures, settings |
 | `profiles.toml` | Sidebar profiles (account groups, folders) |
 | `keymaps.toml` | Vim-style keyboard shortcuts |
-| `rules.toml` | Client-side filter rules |
+| `rules.toml` | Filter rules (static tags + exec hooks for external commands) |
 
 Examples:
 - [config-example.toml](docs/config-example.toml) — Accounts, signatures, settings

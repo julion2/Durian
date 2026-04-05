@@ -1,5 +1,8 @@
 # Filter rules — applied automatically when syncing new messages.
 # Copy to ~/.config/durian/rules.toml and customize.
+# Validate with: durian validate rules
+
+# ── Static tag rules ──────────────────────────────────────────────────
 
 [[rules]]
 name = "Work emails"
@@ -20,7 +23,7 @@ add_tags = ["invoice"]
 [[rules]]
 name = "Mailing list"
 match = "header:list-id:dev-list"
-accounts = ["personal"]
+accounts = ["personal"]                    # Only apply to this account
 add_tags = ["mailing-list"]
 remove_tags = ["inbox"]
 
@@ -29,33 +32,40 @@ name = "Bounce detection"
 match = "header:return-path:bounces@"
 add_tags = ["bounce"]
 
-# Supported match syntax:
-#   from:value              — case-insensitive contains on sender address
-#   to:value                — case-insensitive contains on recipient addresses
-#   subject:value           — case-insensitive contains on subject
-#   header:Name:value       — case-insensitive contains on any email header
-#   has:attachment           — message has at least one attachment
-#   bare words              — case-insensitive contains on subject + body
-#   AND (implicit)          — adjacent terms are ANDed
-#   OR                      — explicit OR between terms
-#   NOT                     — negates the next term
-#   ( )                     — grouping
+# ── Exec hook (external command) ──────────────────────────────────────
+# Runs a command for each matching email. The command receives email
+# data as JSON on stdin and returns tag operations on stdout.
 #
-# Optional fields:
-#   accounts = ["alias"]    — only apply this rule to specific accounts (by alias)
-#   exec = "command"        — run external command (stdin=email JSON, stdout=tag ops JSON)
-#   exec_timeout = 10       — timeout in seconds (default: 10)
+# stdin:  {"from":"...", "to":"...", "subject":"...", "body":"...",
+#          "account":"...", "tags":["..."], "has_attachment":false}
+# stdout: {"add_tags":["label1"], "remove_tags":["label2"]}
 #
-# Exec hook example:
-#   The command receives email data as JSON on stdin:
-#     {"from":"...", "to":"...", "subject":"...", "body":"...", "account":"...", "tags":["..."], "has_attachment":false}
-#   It should output tag operations as JSON on stdout:
-#     {"add_tags":["label1"], "remove_tags":["label2"]}
-#   Non-zero exit = error (rule skipped, static add_tags/remove_tags used as fallback).
+# Non-zero exit = error (rule skipped, static add_tags/remove_tags
+# used as fallback if set).
 
 # [[rules]]
 # name = "ML Classifier"
-# match = "*"
-# exec = "durian-classify"
-# exec_timeout = 5
-# accounts = ["work", "uni"]
+# match = "*"                              # Wildcard: matches every email
+# exec = "durian-classify"                 # Command in PATH (or full path)
+# exec_timeout = 5                         # Seconds (default: 10)
+# accounts = ["work", "uni"]              # Optional: limit to accounts
+# allowed_tags = ["finance", "spam", "newsletter"]  # Optional: restrict exec output tags
+
+# ── Match syntax reference ────────────────────────────────────────────
+#   *                         — wildcard, matches everything
+#   from:value                — case-insensitive contains on sender
+#   to:value                  — case-insensitive contains on recipients
+#   subject:value             — case-insensitive contains on subject
+#   header:Name:value         — case-insensitive contains on any header
+#   has:attachment            — message has at least one attachment
+#   bare words                — case-insensitive contains on subject + body
+#   AND (implicit)            — adjacent terms are ANDed
+#   OR                        — explicit OR
+#   NOT                       — negates the next term
+#   ( )                       — grouping
+#
+# Optional fields:
+#   accounts = ["alias"]      — only apply to specific accounts
+#   exec = "command"          — run external command
+#   exec_timeout = 10         — exec timeout in seconds (default: 10)
+#   allowed_tags = [...]      — restrict exec output to these tags only
