@@ -1,4 +1,4 @@
-# Durian Linux GUI (Early Preview)
+# Durian Linux GUI
 
 > **Read-only early test.** This is an experimental Qt6/QML client to evaluate Linux compatibility and Qt performance for the future. Many features are missing (compose, reply, tag actions, etc.).
 

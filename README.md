@@ -5,7 +5,7 @@
 <h1 align="center">Durian</h1>
 
 <p align="center">
-  A native macOS email client with vim-style navigation.
+  A native email client with vim-style navigation.
 </p>
 
 ![Status](https://img.shields.io/badge/status-alpha-orange)
@@ -26,7 +26,7 @@
 </p>
 </details>
 
-Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Microsoft 365) and password auth. IMAP sync to a local SQLite store — fast offline search, no Maildir. Configurable keybindings, filter rules, and HTML signatures. All in a SwiftUI app backed by a Go CLI.
+Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Microsoft 365) and password auth. IMAP sync to a local SQLite store — fast offline search, no Maildir. Configurable keybindings, filter rules, and HTML signatures. All in a native GUI backed by a Go CLI.
 
 > **Early Alpha** — Expect bugs and breaking changes. No security audit. Use at your own risk.
 > This is a side project — features, improvements, and bug fixes happen as time allows.
@@ -47,6 +47,8 @@ brew install --cask durian      # GUI
 brew tap julion2/tap
 brew install durian
 ```
+
+> An experimental Linux GUI is available — see [linux/README.md](linux/README.md).
 
 Or download pre-built binaries from [GitHub Releases](https://github.com/julion2/Durian/releases). Or build from source (see below).
 
