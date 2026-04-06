@@ -43,7 +43,7 @@ struct TagChipsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.accentColor.opacity(0.75))
+        .background(ProfileManager.shared.resolvedAccentColor.opacity(0.75))
         .cornerRadius(4)
     }
 
@@ -60,7 +60,7 @@ struct TagChipsView: View {
                 .background(Color(NSColor.controlBackgroundColor))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.accentColor, lineWidth: 1.5)
+                        .stroke(ProfileManager.shared.resolvedAccentColor, lineWidth: 1.5)
                 )
                 .cornerRadius(6)
                 .onSubmit {

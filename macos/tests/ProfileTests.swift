@@ -166,4 +166,24 @@ final class ProfileTests: XCTestCase {
         let profile = makeAccountProfile(accounts: ["work"])
         XCTAssertFalse(profile.isAll)
     }
+
+    // MARK: - Resolved Accent Color
+
+    func testResolvedAccentColor_PerProfileOverride() async {
+        let profile = Profile(name: "Work", accounts: ["work"], isDefault: false,
+                              color: "#FF0000", folders: Self.testDefaultFolders)
+        let manager = await ProfileManager(profiles: [profile], currentProfile: profile)
+        // Per-profile color takes precedence
+        let color = await manager.resolvedAccentColor
+        XCTAssertEqual(color, Color(hex: "#FF0000"))
+    }
+
+    func testResolvedAccentColor_NoProfileColor() async {
+        let profile = Profile(name: "Plain", accounts: ["work"], isDefault: false,
+                              color: nil, folders: Self.testDefaultFolders)
+        let manager = await ProfileManager(profiles: [profile], currentProfile: profile)
+        // Without a profile color and without an app accent, falls back to system
+        let color = await manager.resolvedAccentColor
+        XCTAssertEqual(color, Color.accentColor)
+    }
 }

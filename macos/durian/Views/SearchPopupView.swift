@@ -293,7 +293,7 @@ struct SearchResultRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
     }

@@ -78,11 +78,13 @@ struct AppSettings: Codable {
     var notificationsEnabled: Bool = true
     var theme: String = "system"
     var loadRemoteImages: Bool = false  // Security: block tracking pixels by default
+    var accentColor: String? = nil      // Hex color, e.g. "#3B82F6". Nil = system default.
 
     enum CodingKeys: String, CodingKey {
         case notificationsEnabled = "notifications_enabled"
         case theme
         case loadRemoteImages = "load_remote_images"
+        case accentColor = "accent_color"
     }
 
     // Default initializer
@@ -94,5 +96,6 @@ struct AppSettings: Codable {
         notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         theme = try container.decodeIfPresent(String.self, forKey: .theme) ?? "system"
         loadRemoteImages = try container.decodeIfPresent(Bool.self, forKey: .loadRemoteImages) ?? false
+        accentColor = try container.decodeIfPresent(String.self, forKey: .accentColor)
     }
 }

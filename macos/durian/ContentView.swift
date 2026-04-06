@@ -85,6 +85,7 @@ struct ContentView: View {
             markedEmails = [threadId]
             handleEmailSelection(threadId)
         }
+        .tint(profileManager.resolvedAccentColor)
     }
 
     // MARK: - Search Popup Overlay
@@ -432,7 +433,7 @@ struct ContentView: View {
                         .fontWeight(.medium)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.accentColor)
+                        .background(profileManager.resolvedAccentColor)
                         .foregroundColor(.white)
                         .cornerRadius(6)
                         .padding(16)

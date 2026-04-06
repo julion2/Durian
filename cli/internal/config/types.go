@@ -14,6 +14,7 @@ type SettingsConfig struct {
 	Theme                string `toml:"theme"`
 	NotificationsEnabled bool   `toml:"notifications_enabled"`
 	LoadRemoteImages     bool   `toml:"load_remote_images"`
+	AccentColor          string `toml:"accent_color"` // Hex color, e.g. "#3B82F6"
 }
 
 // SyncConfig contains sync settings

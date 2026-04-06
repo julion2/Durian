@@ -95,7 +95,7 @@ struct EmailRowView: View, Equatable {
                 bottomTrailingRadius: isLastInGroup ? 6 : 0,
                 topTrailingRadius: isFirstInGroup ? 6 : 0
             )
-            .fill(isSelected ? Color.accentColor : Color.clear)
+            .fill(isSelected ? ProfileManager.shared.resolvedAccentColor : Color.clear)
         )
         .padding(.horizontal, 8)
         .drawingGroup()

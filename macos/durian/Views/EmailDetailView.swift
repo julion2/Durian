@@ -299,7 +299,7 @@ struct EmailDetailView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.accentColor)
+                    .background(ProfileManager.shared.resolvedAccentColor)
                     .foregroundColor(.white)
                     .cornerRadius(6)
                 }
@@ -456,7 +456,7 @@ struct ThreadMessageCardView: View {
         .overlay(
             HStack(spacing: 0) {
                 if isFocused {
-                    Color.accentColor.frame(width: 3)
+                    ProfileManager.shared.resolvedAccentColor.frame(width: 3)
                 }
                 Spacer()
             }
@@ -666,23 +666,23 @@ struct ThreadMessageCardView: View {
                     .truncationMode(.middle)
                 Text(sizeLabel)
                     .font(.system(size: 10))
-                    .foregroundColor(isSelected ? Color.accentColor.opacity(0.8) : Color.Detail.textTertiary)
+                    .foregroundColor(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.8) : Color.Detail.textTertiary)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
             isFailed ? Color.red.opacity(0.12) :
-            isSelected ? Color.accentColor.opacity(0.1) :
+            isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.1) :
             Color(NSColor.controlBackgroundColor)
         )
-        .foregroundColor(isFailed ? .red : isSelected ? Color.accentColor : Color.Detail.textSecondary)
+        .foregroundColor(isFailed ? .red : isSelected ? ProfileManager.shared.resolvedAccentColor : Color.Detail.textSecondary)
         .cornerRadius(8)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(
                     isFailed ? Color.red.opacity(0.3) :
-                    isSelected ? Color.accentColor.opacity(0.5) :
+                    isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.5) :
                     Color(NSColor.separatorColor).opacity(0.5),
                     lineWidth: isSelected ? 1.5 : 0.5
                 )
@@ -946,7 +946,7 @@ struct ThreadMessageCardView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.accentColor)
+                    .background(ProfileManager.shared.resolvedAccentColor)
                     .foregroundColor(.white)
                     .cornerRadius(6)
                 }

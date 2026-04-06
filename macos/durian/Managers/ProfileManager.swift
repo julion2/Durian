@@ -131,6 +131,20 @@ class ProfileManager: ObservableObject {
         }
     }
     
+    /// Resolved app-wide accent color following the precedence:
+    ///   1. currentProfile.color (per-profile override)
+    ///   2. settings.accent_color (app-wide default in [settings])
+    ///   3. system Color.accentColor (fallback)
+    var resolvedAccentColor: Color {
+        if let hex = currentProfile?.color {
+            return Color(hex: hex)
+        }
+        if let hex = SettingsManager.shared.settings.accentColor {
+            return Color(hex: hex)
+        }
+        return Color.accentColor
+    }
+
     /// Build search query for a folder name
     /// - Looks up query from profile's folder config
     /// - Adds profile path filter for non-"All" profiles

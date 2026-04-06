@@ -6,6 +6,7 @@
 theme = "light"                   # "light", "dark", or "system"
 notifications_enabled = true      # Global notification toggle
 load_remote_images = false        # Block tracking pixels by default
+# accent_color = "#3B82F6"        # Optional: app-wide accent color (hex). Per-profile colors override this.
 
 [sync]
 gui_auto_sync = true              # GUI auto-syncs on launch and periodically
