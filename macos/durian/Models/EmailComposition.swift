@@ -335,11 +335,8 @@ extension EmailDraft {
         return draft
     }
     
-    /// Create a forward draft from a mail message
-    /// - Parameters:
-    ///   - message: The original message to forward
-    ///   - fromAccount: The email address to send from
-    /// - Returns: A new EmailDraft configured as a forward
+    /// Create a forward draft from a mail message (without attachments).
+    /// Use `createForwardWithAttachments(from:fromAccount:)` to include attachments.
     static func createForward(from message: MailMessage, fromAccount: String) -> EmailDraft {
         // Build subject with Fwd: prefix
         let subject = message.subject.hasPrefix("Fwd:")
@@ -381,6 +378,87 @@ extension EmailDraft {
         )
         draft.replyThreadId = message.id
         return draft
+    }
+
+    /// Result of collecting attachments for a forward, including any that had to be skipped.
+    struct ForwardAttachmentResult {
+        var attachments: [EmailAttachment]
+        var skipped: [String]  // filenames that couldn't be downloaded or were too large
+    }
+
+    /// Download non-inline attachments from a message (or all messages in its thread)
+    /// so they can be included in a forward draft. Inline attachments referenced by
+    /// cid: in the HTML are intentionally skipped — they're already embedded in the
+    /// forwarded body.
+    ///
+    /// Returns the downloaded attachments plus filenames of any that had to be skipped
+    /// due to size limits or download errors. The 25 MB per-file / 50 MB total /
+    /// 10-file limits from ComposeForm apply.
+    static func collectForwardAttachments(
+        from message: MailMessage,
+        backend: EmailBackend
+    ) async -> ForwardAttachmentResult {
+        // Attachments are downloaded via /messages/{message_id}/attachments/{part_id}.
+        // ThreadMessage already carries per-message attachment metadata including
+        // partId, so thread-based forwards work directly. Single-message fallback
+        // is intentionally skipped — incomingAttachments lacks partId, and in
+        // practice forwardSelected() requires the body to be loaded which also
+        // populates threadMessages.
+        var sources: [(messageId: String, atts: [AttachmentInfo])] = []
+
+        if let threadMessages = message.threadMessages, !threadMessages.isEmpty {
+            for tm in threadMessages {
+                guard let atts = tm.attachments, !atts.isEmpty else { continue }
+                sources.append((tm.id, atts))
+            }
+        }
+
+        var result = ForwardAttachmentResult(attachments: [], skipped: [])
+        let maxPerFile: Int64 = 25 * 1024 * 1024
+        let maxTotal: Int64 = 50 * 1024 * 1024
+        let maxCount = 10
+        var totalSize: Int64 = 0
+
+        for source in sources {
+            for att in source.atts {
+                // Skip inline attachments — they're embedded via cid: in the HTML body
+                if att.disposition.lowercased() == "inline" {
+                    continue
+                }
+
+                // Enforce limits before download
+                if result.attachments.count >= maxCount {
+                    result.skipped.append(att.filename)
+                    continue
+                }
+                if Int64(att.size) > maxPerFile {
+                    result.skipped.append(att.filename)
+                    continue
+                }
+                if totalSize + Int64(att.size) > maxTotal {
+                    result.skipped.append(att.filename)
+                    continue
+                }
+
+                do {
+                    let (data, _) = try await backend.downloadAttachment(
+                        messageId: source.messageId,
+                        partId: att.partId
+                    )
+                    result.attachments.append(EmailAttachment(
+                        filename: att.filename,
+                        mimeType: att.contentType,
+                        data: data
+                    ))
+                    totalSize += Int64(data.count)
+                } catch {
+                    Log.warning("COMPOSE", "Forward attachment download failed: \(att.filename) — \(error)")
+                    result.skipped.append(att.filename)
+                }
+            }
+        }
+
+        return result
     }
     
     // MARK: - Reply Target Resolution
@@ -542,9 +620,9 @@ extension EmailDraft {
     
     /// Build forwarded thread body (plain text, all messages oldest-first)
     private static func buildForwardThread(_ messages: [ThreadMessage]) -> String {
-        // Thread messages are newest-first from API, reverse for chronological order
-        let chronological = messages.reversed()
-        return chronological.map { msg in
+        // Thread messages arrive newest-first from API; keep that order
+        // in forwards so the most recent reply is at the top.
+        return messages.map { msg in
             var part = "---------- Forwarded message ----------\n"
             part += "From: \(msg.from)\n"
             if let to = msg.to { part += "To: \(to)\n" }
@@ -555,10 +633,11 @@ extension EmailDraft {
         }.joined(separator: "\n\n")
     }
 
-    /// Build forwarded thread body (HTML, all messages oldest-first)
+    /// Build forwarded thread body (HTML, newest-first to match the app view)
     private static func buildForwardThreadHTML(_ messages: [ThreadMessage]) -> String {
-        let chronological = messages.reversed()
-        let parts = chronological.map { msg -> String in
+        // Thread messages arrive newest-first from API; keep that order
+        // in forwards so the most recent reply is at the top.
+        let parts = messages.map { msg -> String in
             var html = """
             <div style="color: #666; margin-bottom: 16px;">
             <p style="font-size: 12px; color: #888; margin-bottom: 8px;">---------- Forwarded message ----------</p>
