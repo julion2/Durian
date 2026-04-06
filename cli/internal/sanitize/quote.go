@@ -21,11 +21,44 @@ var quotePatterns = []string{
 	`<div class="gmail_extra"`,
 	`<blockquote class="gmail_quote"`,
 
-	// Apple Mail
+	// Apple Mail / iCloud
 	`<blockquote type="cite"`,
+	`<div id="AppleMailSignature"`,
 
-	// Generic blockquote (fallback)
-	`<blockquote`,
+	// Yahoo Mail
+	`<div class="yahoo_quoted"`,
+	`<div id="yahoo_quoted_`,
+
+	// ProtonMail
+	`<div class="protonmail_quote"`,
+	`<blockquote class="protonmail_quote"`,
+
+	// Thunderbird
+	`<div class="moz-cite-prefix"`,
+	`<blockquote cite="mid:`,
+
+	// Spark (uses messageReplySection in some versions)
+	`<div name="messageReplySection"`,
+
+	// NOTE: Generic <blockquote> is intentionally NOT in this list.
+	// It would strip legitimate user quotes (citations, code, etc.).
+}
+
+// mobileSignatures are auto-generated client signatures that should be treated
+// as "no real user content" — when only these appear above a quote, the original
+// (with the forward/reply intact) is kept.
+var mobileSignatures = []string{
+	"sent from outlook for ios",
+	"sent from outlook for android",
+	"sent from my iphone",
+	"sent from my ipad",
+	"sent from my android",
+	"sent from mail for windows",
+	"get outlook for ios",
+	"get outlook for android",
+	"von meinem iphone gesendet",
+	"von meinem ipad gesendet",
+	"gesendet von outlook für ios",
 }
 
 // quoteRegexPatterns defines regex patterns for quoted content that can't be matched
@@ -43,6 +76,12 @@ var quoteRegexPatterns = []*regexp.Regexp{
 
 	// Durian: <div style="color: #555;"><p ...>On ..., ... wrote:</p>
 	regexp.MustCompile(`(?i)<div[^>]*style="color:\s*#555;?"[^>]*>\s*<p[^>]*>On\s`),
+
+	// Spark / generic "On <date> ... wrote:" line directly followed by a blockquote.
+	// Spark uses no distinguishing class/id, but the pattern is reliable:
+	// matches "On 5 Apr 2026 ... wrote:<br/><blockquote>" (and similar variants).
+	// The opening <div> or <p> wrapping this attribution is the cut point.
+	regexp.MustCompile(`(?i)<(?:div|p)[^>]*>\s*On\s+\d[^<]*?wrote:\s*<br[^>]*>\s*<blockquote`),
 }
 
 // StripQuotedContent removes quoted reply content from HTML.
@@ -75,9 +114,10 @@ func StripQuotedContent(html string) string {
 	stripped := html[:earliestIdx]
 	stripped = strings.TrimRight(stripped, " \t\n\r")
 
-	// If stripping leaves only empty HTML (e.g. a pure forward with no added text),
-	// keep the original so the forwarded content remains visible.
-	if isEmptyHTML(stripped) {
+	// If stripping leaves only empty HTML or just a mobile signature
+	// (e.g. "Sent from Outlook for iOS"), keep the original so the
+	// forwarded content remains visible.
+	if isEffectivelyEmpty(stripped) {
 		return html
 	}
 
@@ -90,4 +130,29 @@ var htmlTagOrSpace = regexp.MustCompile(`(?:<[^>]*>|\s|&nbsp;)+`)
 // isEmptyHTML returns true if the HTML contains no visible text content.
 func isEmptyHTML(html string) bool {
 	return strings.TrimSpace(htmlTagOrSpace.ReplaceAllString(html, "")) == ""
+}
+
+// isEffectivelyEmpty returns true if the HTML contains no meaningful user
+// content — either truly empty or only an auto-generated mobile signature.
+func isEffectivelyEmpty(html string) bool {
+	// Strip all tags and entities to get plain text
+	text := htmlTagOrSpace.ReplaceAllString(html, " ")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return true
+	}
+
+	textLower := strings.ToLower(text)
+	for _, sig := range mobileSignatures {
+		// Check if the text is JUST the signature (with optional surrounding noise)
+		if strings.Contains(textLower, sig) {
+			// Remove the signature and check if anything substantive remains
+			remainder := strings.ReplaceAll(textLower, sig, "")
+			remainder = strings.TrimSpace(remainder)
+			if len(remainder) < 5 {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -15,8 +15,9 @@ go_test(
     name = "sanitize_test",
     size = "small",
     srcs = [
-        "sanitize_test.go",
         "fixture_test.go",
+        "quote_test.go",
+        "sanitize_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":sanitize"],
