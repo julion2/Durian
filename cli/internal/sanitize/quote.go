@@ -24,8 +24,25 @@ var quotePatterns = []string{
 	// Apple Mail
 	`<blockquote type="cite"`,
 
-	// Generic blockquote (fallback)
-	`<blockquote`,
+	// NOTE: Generic <blockquote> is intentionally NOT in this list.
+	// It would strip legitimate user quotes (citations, code, etc.).
+}
+
+// mobileSignatures are auto-generated client signatures that should be treated
+// as "no real user content" — when only these appear above a quote, the original
+// (with the forward/reply intact) is kept.
+var mobileSignatures = []string{
+	"sent from outlook for ios",
+	"sent from outlook for android",
+	"sent from my iphone",
+	"sent from my ipad",
+	"sent from my android",
+	"sent from mail for windows",
+	"get outlook for ios",
+	"get outlook for android",
+	"von meinem iphone gesendet",
+	"von meinem ipad gesendet",
+	"gesendet von outlook für ios",
 }
 
 // quoteRegexPatterns defines regex patterns for quoted content that can't be matched
@@ -75,9 +92,10 @@ func StripQuotedContent(html string) string {
 	stripped := html[:earliestIdx]
 	stripped = strings.TrimRight(stripped, " \t\n\r")
 
-	// If stripping leaves only empty HTML (e.g. a pure forward with no added text),
-	// keep the original so the forwarded content remains visible.
-	if isEmptyHTML(stripped) {
+	// If stripping leaves only empty HTML or just a mobile signature
+	// (e.g. "Sent from Outlook for iOS"), keep the original so the
+	// forwarded content remains visible.
+	if isEffectivelyEmpty(stripped) {
 		return html
 	}
 
@@ -90,4 +108,29 @@ var htmlTagOrSpace = regexp.MustCompile(`(?:<[^>]*>|\s|&nbsp;)+`)
 // isEmptyHTML returns true if the HTML contains no visible text content.
 func isEmptyHTML(html string) bool {
 	return strings.TrimSpace(htmlTagOrSpace.ReplaceAllString(html, "")) == ""
+}
+
+// isEffectivelyEmpty returns true if the HTML contains no meaningful user
+// content — either truly empty or only an auto-generated mobile signature.
+func isEffectivelyEmpty(html string) bool {
+	// Strip all tags and entities to get plain text
+	text := htmlTagOrSpace.ReplaceAllString(html, " ")
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return true
+	}
+
+	textLower := strings.ToLower(text)
+	for _, sig := range mobileSignatures {
+		// Check if the text is JUST the signature (with optional surrounding noise)
+		if strings.Contains(textLower, sig) {
+			// Remove the signature and check if anything substantive remains
+			remainder := strings.ReplaceAll(textLower, sig, "")
+			remainder = strings.TrimSpace(remainder)
+			if len(remainder) < 5 {
+				return true
+			}
+		}
+	}
+	return false
 }
