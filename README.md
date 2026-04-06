@@ -128,6 +128,16 @@ durian sync --debug                   # debug output on stderr
 - [Tag Sync](docs/TAG_SYNC.md) — Multi-machine tag sync via self-hosted server
 - [Vim Compose](docs/vim-compose.md) — Vim keybindings in the compose editor
 
+## Alternatives
+
+If Durian isn't for you, check out these excellent more classic vim-style email clients:
+
+- [**aerc**](https://aerc-mail.org/) — TUI client with multiple-account support, written in Go
+- [**neomutt**](https://neomutt.org/) — fork of mutt with active development
+- [**himalaya**](https://github.com/soywod/himalaya) — CLI/TUI mail client written in Rust
+- [**meli**](https://meli-email.org/) — terminal mail client with sane defaults
+- [**astroid**](https://github.com/astroidmail/astroid) — GTK frontend for notmuch
+
 ## Contributing
 
 Found a bug or have a feature request? [Open an issue](https://github.com/julion2/Durian/issues).
