@@ -9,6 +9,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **Tests:** `bazel test //cli/...` (CLI) / `bazel test //macos/...` (GUI, requires Xcode 26) / `bazel test //...` (all)
 - **CI Tests (GUI):** `bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test //macos:ci_sync_manager_test //macos:ci_search_manager_test //macos:ci_outbox_manager_test` (uses `durian_core` target, no Views, works on Xcode 16+)
 - **Integration Tests:** `bazel test //integration:integration_test` (starts real server, validates API contract via curl+jq)
+- **Validate Config:** `durian validate` (checks config.toml, rules.toml, profiles.toml, keymaps.toml)
 - **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
 - **Logs (CLI/Go):** `~/.config/durian/serve.log` (truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
 

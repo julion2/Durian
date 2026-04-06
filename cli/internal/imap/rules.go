@@ -294,6 +294,9 @@ func evalExpr(node ruleNode, msg *store.Message, attachmentCount int, header mai
 			return false
 		}
 	case *ruleBareNode:
+		if n.value == "*" {
+			return true // wildcard: match everything
+		}
 		v := strings.ToLower(n.value)
 		return strings.Contains(strings.ToLower(msg.Subject), v) ||
 			strings.Contains(strings.ToLower(msg.BodyText), v)

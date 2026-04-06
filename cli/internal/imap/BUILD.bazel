@@ -4,6 +4,7 @@ go_library(
     name = "imap",
     srcs = [
         "client.go",
+        "exec.go",
         "flags.go",
         "rules.go",
         "state.go",
@@ -27,6 +28,7 @@ go_test(
     name = "imap_test",
     size = "small",
     srcs = [
+        "exec_test.go",
         "flags_test.go",
         "gmail_test.go",
         "rules_test.go",

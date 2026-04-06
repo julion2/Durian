@@ -15,11 +15,14 @@ type RulesConfig struct {
 
 // RuleConfig defines a single filter rule applied at sync time
 type RuleConfig struct {
-	Name       string   `toml:"name"`
-	Match      string   `toml:"match"`
-	AddTags    []string `toml:"add_tags"`
-	RemoveTags []string `toml:"remove_tags"`
-	Accounts   []string `toml:"accounts"` // If set, only apply to these accounts (by alias)
+	Name        string   `toml:"name"`
+	Match       string   `toml:"match"`
+	AddTags     []string `toml:"add_tags"`
+	RemoveTags  []string `toml:"remove_tags"`
+	Accounts    []string `toml:"accounts"`     // If set, only apply to these accounts (by alias)
+	Exec        string   `toml:"exec"`          // Optional: external command to run (stdin=email JSON, stdout=tag ops JSON)
+	ExecTimeout int      `toml:"exec_timeout"`  // Timeout in seconds (default: 10)
+	AllowedTags []string `toml:"allowed_tags"`  // Optional: restrict exec output to these tags
 }
 
 // LoadRules loads filter rules from the given path.

@@ -1577,13 +1577,38 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 	// Apply user-defined filter rules
 	if len(s.options.FilterRules) > 0 {
 		matched := MatchingRules(s.options.FilterRules, storeMsg, len(content.Attachments), parsed.Header, s.accountName())
+		slog.Debug("Filter rules matched", "module", "RULES", "matched", len(matched), "total", len(s.options.FilterRules), "message_id", messageID)
 		for _, rule := range matched {
-			for _, tag := range rule.AddTags {
+			addTags := rule.AddTags
+			removeTags := rule.RemoveTags
+
+			// Run exec hook if configured
+			if rule.Exec != "" {
+				currentTags, _ := s.store.GetTagsByMessageID(storeMsg.MessageID)
+				execOut, err := RunExecRule(rule, storeMsg, currentTags, s.accountName())
+				if err != nil {
+					slog.Warn("Exec rule failed, using static tags", "module", "RULES", "rule", rule.Name, "err", err)
+				} else if execOut != nil {
+					execAdd := execOut.AddTags
+					execRemove := execOut.RemoveTags
+
+					// Filter by allowed_tags if set
+					if len(rule.AllowedTags) > 0 {
+						execAdd = filterAllowedTags(execAdd, rule.AllowedTags, rule.Name)
+						execRemove = filterAllowedTags(execRemove, rule.AllowedTags, rule.Name)
+					}
+
+					addTags = append(addTags, execAdd...)
+					removeTags = append(removeTags, execRemove...)
+				}
+			}
+
+			for _, tag := range addTags {
 				if err := s.store.AddTag(storeMsg.ID, tag); err != nil {
 					return fmt.Errorf("add rule tag %q: %w", tag, err)
 				}
 			}
-			for _, tag := range rule.RemoveTags {
+			for _, tag := range removeTags {
 				if err := s.store.RemoveTag(storeMsg.ID, tag); err != nil {
 					return fmt.Errorf("remove rule tag %q: %w", tag, err)
 				}
