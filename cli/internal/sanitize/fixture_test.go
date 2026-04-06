@@ -477,6 +477,7 @@ func TestAllFixturesPresent(t *testing.T) {
 		"outlook_ios_forward":        true, // quote_test.go: Fixture_OutlookIOSForward
 		"outlook_order_confirmation": true,
 		"protonmail_reply":           true, // quote_test.go: Fixture_ProtonMail
+		"spark_mail_forward":         true, // quote_test.go: Fixture_SparkForward
 		"spark_mail_reply":           true, // quote_test.go: Fixture_SparkMail
 		"thunderbird_reply":          true, // quote_test.go: Fixture_Thunderbird
 		"yahoo_mail_reply":           true, // quote_test.go: Fixture_YahooMail

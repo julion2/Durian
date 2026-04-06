@@ -37,7 +37,7 @@ var quotePatterns = []string{
 	`<div class="moz-cite-prefix"`,
 	`<blockquote cite="mid:`,
 
-	// Spark
+	// Spark (uses messageReplySection in some versions)
 	`<div name="messageReplySection"`,
 
 	// NOTE: Generic <blockquote> is intentionally NOT in this list.
@@ -76,6 +76,12 @@ var quoteRegexPatterns = []*regexp.Regexp{
 
 	// Durian: <div style="color: #555;"><p ...>On ..., ... wrote:</p>
 	regexp.MustCompile(`(?i)<div[^>]*style="color:\s*#555;?"[^>]*>\s*<p[^>]*>On\s`),
+
+	// Spark / generic "On <date> ... wrote:" line directly followed by a blockquote.
+	// Spark uses no distinguishing class/id, but the pattern is reliable:
+	// matches "On 5 Apr 2026 ... wrote:<br/><blockquote>" (and similar variants).
+	// The opening <div> or <p> wrapping this attribution is the cut point.
+	regexp.MustCompile(`(?i)<(?:div|p)[^>]*>\s*On\s+\d[^<]*?wrote:\s*<br[^>]*>\s*<blockquote`),
 }
 
 // StripQuotedContent removes quoted reply content from HTML.

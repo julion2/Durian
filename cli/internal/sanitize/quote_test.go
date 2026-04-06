@@ -364,10 +364,23 @@ func TestStripQuotedContent_Fixture_SparkMail(t *testing.T) {
 	html := loadQuoteFixture(t, "spark_mail_reply.html")
 	result := StripQuotedContent(html)
 
-	mustContain(t, result, "that timeline works", "user reply")
-	mustContain(t, result, "design draft", "user reply body")
-	mustNotContain(t, result, "Review round", "quoted content")
+	mustContain(t, result, "sounds good", "user reply")
+	mustContain(t, result, "Alice Anderson", "user signature")
+	mustNotContain(t, result, "Design draft: end of week 1", "quoted content")
 	mustNotContain(t, result, "Final handoff", "quoted content")
+}
+
+func TestStripQuotedContent_Fixture_SparkForward(t *testing.T) {
+	// Spark forward with no user text — should keep entire forward content.
+	// Format: "---------- Forwarded message ----------" + From/To/Subject
+	// followed by an unclassed <blockquote> containing the forwarded HTML.
+	html := loadQuoteFixture(t, "spark_mail_forward.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "Forwarded message", "forward marker")
+	mustContain(t, result, "Upgrade your account", "forwarded body heading")
+	mustContain(t, result, "Subscription ID", "forwarded body details")
+	mustContain(t, result, "noreply@example.com", "forwarded sender")
 }
 
 // --- isEmptyHTML ---
