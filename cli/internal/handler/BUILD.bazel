@@ -38,6 +38,7 @@ go_test(
     name = "handler_test",
     size = "small",
     srcs = [
+        "convert_thread_test.go",
         "handler_test.go",
         "http_test.go",
     ],
