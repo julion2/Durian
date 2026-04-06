@@ -470,7 +470,10 @@ func TestAllFixturesPresent(t *testing.T) {
 		"darkmode_digest":            true,
 		"example_newsletter":          true,
 		"gmail_forwarded_chain":      true,
+		"gmail_mobile_forward":       true, // quote_test.go: TestStripQuotedContent_Fixture_GmailMobileForward
 		"legacy_marketing_sale":      true,
+		"outlook_desktop_german":     true, // quote_test.go: TestStripQuotedContent_Fixture_OutlookDesktopGerman
+		"outlook_ios_forward":        true, // quote_test.go: TestStripQuotedContent_Fixture_OutlookIOSForward
 		"outlook_order_confirmation": true,
 	}
 

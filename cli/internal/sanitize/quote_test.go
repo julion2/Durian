@@ -1,9 +1,21 @@
 package sanitize
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// loadQuoteFixture reads an HTML test fixture from testdata/.
+func loadQuoteFixture(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", name, err)
+	}
+	return string(data)
+}
 
 // assertStripped verifies that stripping keeps the reply and removes the quoted part.
 func assertStripped(t *testing.T, name, input, expectedKeep, expectedRemove string) {
@@ -256,6 +268,56 @@ func TestStripQuotedContent_MultiLevelForward(t *testing.T) {
 	if !strings.Contains(result, "My reply") {
 		t.Error("should keep reply")
 	}
+}
+
+// --- Real-world fixture tests (anonymized) ---
+
+func TestStripQuotedContent_Fixture_OutlookIOSForward(t *testing.T) {
+	// Real Outlook iOS forward: user wrote nothing, only "Sent from Outlook for iOS"
+	// auto-signature appears above the forward. The forward content must NOT be lost.
+	html := loadQuoteFixture(t, "outlook_ios_forward.html")
+	result := StripQuotedContent(html)
+
+	// Forward content must be preserved
+	mustContain(t, result, "Quarterly Update Q1 2026", "newsletter heading")
+	mustContain(t, result, "Annual Award 2026", "section heading")
+	mustContain(t, result, "Catalog Entry Deadline", "section heading")
+	mustContain(t, result, "newsletter@example.com", "forwarded sender")
+
+	// Length check: should be close to original (only minor whitespace trim possible)
+	if len(result) < len(html)-100 {
+		t.Errorf("result too short: %d vs original %d (forward content was stripped)", len(result), len(html))
+	}
+}
+
+func TestStripQuotedContent_Fixture_GmailMobileForward(t *testing.T) {
+	// Gmail mobile app forward with nested Outlook "Original Message" inside.
+	// User wrote nothing — pure forward, must keep everything.
+	html := loadQuoteFixture(t, "gmail_mobile_forward.html")
+	result := StripQuotedContent(html)
+
+	// Both forward layers must survive (the isEffectivelyEmpty guard kicks in)
+	mustContain(t, result, "Forwarded message", "outer Gmail forward marker")
+	mustContain(t, result, "Original Message", "inner Outlook forward marker")
+	mustContain(t, result, "Spring Conference 2026", "deepest forwarded subject")
+	mustContain(t, result, "Registration deadline", "deepest forwarded body")
+}
+
+func TestStripQuotedContent_Fixture_OutlookDesktopGerman(t *testing.T) {
+	// Classic Outlook Desktop forward (German): user wrote a real reply,
+	// then forward header with border-top:solid style, then forwarded body.
+	// User text must be kept, forward must be stripped.
+	html := loadQuoteFixture(t, "outlook_desktop_german.html")
+	result := StripQuotedContent(html)
+
+	// User reply text must survive
+	mustContain(t, result, "Hallo Alice", "user greeting")
+	mustContain(t, result, "nächstes Meeting", "user message body")
+
+	// Forwarded content must be stripped
+	mustNotContain(t, result, "Industry Report Q1 2026", "forwarded subject")
+	mustNotContain(t, result, "Marktwachstum um 12", "forwarded body")
+	mustNotContain(t, result, "Charlie Newsletter", "forwarded sender")
 }
 
 // --- isEmptyHTML ---
