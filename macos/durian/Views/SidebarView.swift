@@ -10,14 +10,11 @@
 //
 
 import SwiftUI
-import AppKit
 
 struct SidebarView: View {
     @Binding var selectedTagID: String?
     @ObservedObject var accountManager: AccountManager
     @ObservedObject var profileManager: ProfileManager
-
-    @FocusState private var isFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -55,25 +52,6 @@ struct SidebarView: View {
                 .padding(.vertical, 4)
             }
         }
-        .focusable()
-        .focused($isFocused)
-        .focusEffectDisabled()
-        .onKeyPress(.upArrow) {
-            moveSelection(offset: -1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            moveSelection(offset: 1)
-            return .handled
-        }
-    }
-
-    private func moveSelection(offset: Int) {
-        let folders = accountManager.mailFolders
-        guard !folders.isEmpty else { return }
-        let currentIndex = folders.firstIndex { $0.name == selectedTagID } ?? -1
-        let newIndex = (currentIndex + offset).clamped(to: 0...(folders.count - 1))
-        selectedTagID = folders[newIndex].name
     }
 }
 
@@ -134,31 +112,3 @@ private struct SidebarRow: View {
     }
 }
 
-// MARK: - Visual Effect (native sidebar material)
-
-private struct VisualEffectBackground: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .followsWindowActiveState
-        view.isEmphasized = true
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-        view.blendingMode = blendingMode
-    }
-}
-
-// MARK: - Helpers
-
-private extension Int {
-    func clamped(to range: ClosedRange<Int>) -> Int {
-        return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
-    }
-}
