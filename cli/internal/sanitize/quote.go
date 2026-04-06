@@ -21,8 +21,24 @@ var quotePatterns = []string{
 	`<div class="gmail_extra"`,
 	`<blockquote class="gmail_quote"`,
 
-	// Apple Mail
+	// Apple Mail / iCloud
 	`<blockquote type="cite"`,
+	`<div id="AppleMailSignature"`,
+
+	// Yahoo Mail
+	`<div class="yahoo_quoted"`,
+	`<div id="yahoo_quoted_`,
+
+	// ProtonMail
+	`<div class="protonmail_quote"`,
+	`<blockquote class="protonmail_quote"`,
+
+	// Thunderbird
+	`<div class="moz-cite-prefix"`,
+	`<blockquote cite="mid:`,
+
+	// Spark
+	`<div name="messageReplySection"`,
 
 	// NOTE: Generic <blockquote> is intentionally NOT in this list.
 	// It would strip legitimate user quotes (citations, code, etc.).

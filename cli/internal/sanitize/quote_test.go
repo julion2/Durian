@@ -320,6 +320,56 @@ func TestStripQuotedContent_Fixture_OutlookDesktopGerman(t *testing.T) {
 	mustNotContain(t, result, "Charlie Newsletter", "forwarded sender")
 }
 
+func TestStripQuotedContent_Fixture_YahooMail(t *testing.T) {
+	html := loadQuoteFixture(t, "yahoo_mail_reply.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "Thanks for the update", "user reply")
+	mustContain(t, result, "Best,", "user signature")
+	mustNotContain(t, result, "phase 1 is complete", "quoted content")
+	mustNotContain(t, result, "Friday standup", "quoted content")
+}
+
+func TestStripQuotedContent_Fixture_ProtonMail(t *testing.T) {
+	html := loadQuoteFixture(t, "protonmail_reply.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "Got it", "user reply")
+	mustContain(t, result, "Cheers,", "user signature")
+	mustNotContain(t, result, "API rate limit", "quoted content")
+	mustNotContain(t, result, "deprecated legacy", "quoted content")
+}
+
+func TestStripQuotedContent_Fixture_iCloudMail(t *testing.T) {
+	html := loadQuoteFixture(t, "icloud_mail_reply.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "Sounds good", "user reply")
+	mustContain(t, result, "book the meeting room", "user reply body")
+	mustNotContain(t, result, "Q2 roadmap", "quoted content")
+	mustNotContain(t, result, "Tuesday or Wednesday afternoon", "quoted content")
+}
+
+func TestStripQuotedContent_Fixture_Thunderbird(t *testing.T) {
+	html := loadQuoteFixture(t, "thunderbird_reply.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "danke für die schnelle", "user reply")
+	mustContain(t, result, "Viele Grüße", "user signature")
+	mustNotContain(t, result, "Race-Condition", "quoted content")
+	mustNotContain(t, result, "fix/sync-race", "quoted branch name")
+}
+
+func TestStripQuotedContent_Fixture_SparkMail(t *testing.T) {
+	html := loadQuoteFixture(t, "spark_mail_reply.html")
+	result := StripQuotedContent(html)
+
+	mustContain(t, result, "that timeline works", "user reply")
+	mustContain(t, result, "design draft", "user reply body")
+	mustNotContain(t, result, "Review round", "quoted content")
+	mustNotContain(t, result, "Final handoff", "quoted content")
+}
+
 // --- isEmptyHTML ---
 
 func TestIsEmptyHTML(t *testing.T) {
