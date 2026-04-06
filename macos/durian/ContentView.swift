@@ -213,39 +213,11 @@ struct ContentView: View {
     @ViewBuilder
     private var emailView: some View {
         NavigationSplitView {
-            // Sidebar: Profile Header + Tags + Network Status
-            VStack(spacing: 0) {
-                // Profile Header - just the name, switch via menubar
-                Text(profileManager.currentProfile?.name ?? "All")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                
-                List(selection: $selectedTagID) {
-                    Section("Tags") {
-                        ForEach(accountManager.mailFolders) { folder in
-                            Label {
-                                HStack {
-                                    Text(folder.displayName)
-                                    Spacer()
-                                    if let count = accountManager.folderUnreadCounts[folder.name], count > 0 {
-                                        Text("\(count)")
-                                            .font(.caption2)
-                                            .fontWeight(.medium)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: folder.icon)
-                            }
-                            .tag(folder.name)
-                        }
-                    }
-                }
-                .listStyle(.sidebar)
-                
-            }
+            SidebarView(
+                selectedTagID: $selectedTagID,
+                accountManager: accountManager,
+                profileManager: profileManager
+            )
             .navigationTitle("")
         } content: {
             // Email List

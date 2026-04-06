@@ -15,7 +15,8 @@ struct ComposeWindow: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var draftService = DraftService.shared
     @StateObject private var sendingManager = EmailSendingManager.shared
-    
+    @StateObject private var profileManager = ProfileManager.shared
+
     @State private var triggerSend: Bool = false
     @State private var showSaveError: Bool = false
     @State private var saveErrorMessage: String = ""
@@ -24,22 +25,25 @@ struct ComposeWindow: View {
     @State private var allowClose: Bool = false
     @State private var showInvalidEmailWarning: Bool = false
     @State private var invalidEmails: [String] = []
-    
+
     var body: some View {
-        let accounts = ConfigManager.shared.getAccounts()
-        
-        if isSaving {
-            // Window is closing — show nothing to avoid "Draft Not Found" flash
-            Color.clear
-        } else if accounts.isEmpty {
-            noAccountsView
-        } else if let draft = draftService.getDraft(id: draftId) {
-            composeView(draft: draft, accounts: accounts)
-        } else {
-            // Draft not found - might have been discarded
-            ContentUnavailableView("Draft Not Found", systemImage: "doc.questionmark")
-                .onAppear { closeWindow() }
+        Group {
+            let accounts = ConfigManager.shared.getAccounts()
+
+            if isSaving {
+                // Window is closing — show nothing to avoid "Draft Not Found" flash
+                Color.clear
+            } else if accounts.isEmpty {
+                noAccountsView
+            } else if let draft = draftService.getDraft(id: draftId) {
+                composeView(draft: draft, accounts: accounts)
+            } else {
+                // Draft not found - might have been discarded
+                ContentUnavailableView("Draft Not Found", systemImage: "doc.questionmark")
+                    .onAppear { closeWindow() }
+            }
         }
+        .tint(profileManager.resolvedAccentColor)
     }
     
     // MARK: - Subviews
