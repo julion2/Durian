@@ -540,24 +540,22 @@ class SyncManager: ObservableObject {
                 process.standardError = errorPipe
                 
                 // Set up timeout
-                var timeoutWorkItem: DispatchWorkItem?
                 var didTimeout = false
-                
-                timeoutWorkItem = DispatchWorkItem {
+                let timeoutWorkItem = DispatchWorkItem {
                     if process.isRunning {
                         Log.error("SYNC", "Command timed out after \(timeout)s, terminating process")
                         didTimeout = true
                         process.terminate()
                     }
                 }
-                DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem!)
+                DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem)
                 
                 do {
                     try process.run()
                     process.waitUntilExit()
                     
                     // Cancel timeout timer if process completed
-                    timeoutWorkItem?.cancel()
+                    timeoutWorkItem.cancel()
                     
                     if didTimeout {
                         continuation.resume(returning: CommandResult(
@@ -577,7 +575,7 @@ class SyncManager: ObservableObject {
                     let success = process.terminationStatus == 0
                     continuation.resume(returning: CommandResult(success: success, output: output, error: error))
                 } catch {
-                    timeoutWorkItem?.cancel()
+                    timeoutWorkItem.cancel()
                     continuation.resume(returning: CommandResult(success: false, output: nil, error: error.localizedDescription))
                 }
             }
