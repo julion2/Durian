@@ -26,13 +26,13 @@ enum DetailViewMode: Equatable {
 
 struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var accountManager = AccountManager.shared
-    @StateObject private var keymapsManager = KeymapsManager.shared
-    @StateObject private var keymapHandler = KeymapHandler.shared
-    @StateObject private var profileManager = ProfileManager.shared
-    @StateObject private var syncManager = SyncManager.shared
-    @StateObject private var networkMonitor = NetworkMonitor.shared
-    @StateObject private var bannerManager = BannerManager.shared
+    @ObservedObject private var accountManager = AccountManager.shared
+    @ObservedObject private var keymapsManager = KeymapsManager.shared
+    @ObservedObject private var keymapHandler = KeymapHandler.shared
+    @ObservedObject private var profileManager = ProfileManager.shared
+    @ObservedObject private var syncManager = SyncManager.shared
+    @ObservedObject private var networkMonitor = NetworkMonitor.shared
+    @ObservedObject private var bannerManager = BannerManager.shared
     @State private var selectedTagID: String? = "inbox"
     @State private var cursorEmailId: String? = nil       // Highlighted email (cursor position)
     @State private var markedEmails: Set<String> = []     // Marked emails (selection for batch ops)
