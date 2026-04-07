@@ -97,6 +97,7 @@ struct DurianApp: App {
                 
                 Button("Reload Config") {
                     SettingsManager.shared.reloadSettings()
+                    ProfileManager.shared.loadProfiles()
                 }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 

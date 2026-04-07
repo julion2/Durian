@@ -233,7 +233,7 @@ struct TagPickerRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                .foregroundStyle(isActive ? ProfileManager.shared.resolvedAccentColor : .secondary)
                 .font(.body)
 
             Text(tag)
@@ -244,7 +244,7 @@ struct TagPickerRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
     }
@@ -259,7 +259,7 @@ struct TagPickerCreateRow: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "plus.circle")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(ProfileManager.shared.resolvedAccentColor)
                 .font(.body)
 
             Text("Create \"\(tagName)\"")
@@ -270,7 +270,7 @@ struct TagPickerCreateRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, 6)
         .contentShape(Rectangle())
     }

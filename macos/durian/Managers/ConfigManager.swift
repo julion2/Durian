@@ -243,7 +243,11 @@ class ConfigManager {
         toml += "[settings]\n"
         toml += "notifications_enabled = \(config.settings.notificationsEnabled)\n"
         toml += "theme = \"\(config.settings.theme)\"\n"
-        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n\n"
+        toml += "load_remote_images = \(config.settings.loadRemoteImages)\n"
+        if let accent = config.settings.accentColor {
+            toml += "accent_color = \"\(accent)\"\n"
+        }
+        toml += "\n"
         
         // Sync section
         toml += "[sync]\n"

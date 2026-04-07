@@ -931,10 +931,10 @@ struct AttachmentChip: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(isSelected ? Color.accentColor.opacity(0.3) : Color.accentColor.opacity(0.1))
+        .background(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.3) : ProfileManager.shared.resolvedAccentColor.opacity(0.1))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
+                .stroke(isSelected ? ProfileManager.shared.resolvedAccentColor : Color.clear, lineWidth: 2)
         )
         .cornerRadius(8)
         .onTapGesture {

@@ -246,7 +246,7 @@ struct ToolbarIconButton: View {
                 .frame(width: 28, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isActive ? Color.accentColor.opacity(0.15) : (isHovered ? Color.Detail.buttonBackground : Color.clear))
+                        .fill(isActive ? ProfileManager.shared.resolvedAccentColor.opacity(0.15) : (isHovered ? Color.Detail.buttonBackground : Color.clear))
                 )
         }
         .buttonStyle(.plain)

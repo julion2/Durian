@@ -35,6 +35,14 @@ func ValidateConfig(cfg *Config) []ValidationError {
 		errs = append(errs, ValidationError{File: "config.toml", Field: field, Message: msg, Severity: "warning"})
 	}
 
+	// Settings validation
+	if cfg.Settings.AccentColor != "" {
+		hexColor := regexp.MustCompile(`^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$`)
+		if !hexColor.MatchString(cfg.Settings.AccentColor) {
+			add("settings.accent_color", fmt.Sprintf("invalid hex color: %q (expected #RGB or #RRGGBB)", cfg.Settings.AccentColor))
+		}
+	}
+
 	if len(cfg.Accounts) == 0 {
 		warn("accounts", "no accounts configured")
 		return errs
