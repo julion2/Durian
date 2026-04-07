@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
@@ -55,15 +56,15 @@ func StartFlow(provider *Provider, clientID, redirectURI string, pkce *PKCE) (*F
 		authURL = provider.AuthorizationURL(clientID, actualRedirectURI, state, pkce)
 	}
 
-	// Open browser
-	fmt.Printf("Opening browser for authorization...\n")
-	fmt.Printf("If browser doesn't open, visit:\n%s\n\n", authURL)
+	// Open browser (user-facing CLI prompts go to stderr per CLI convention)
+	fmt.Fprintln(os.Stderr, "Opening browser for authorization...")
+	fmt.Fprintf(os.Stderr, "If browser doesn't open, visit:\n%s\n\n", authURL)
 
 	if err := openBrowser(authURL); err != nil {
-		fmt.Printf("Warning: Could not open browser automatically: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: Could not open browser automatically: %v\n", err)
 	}
 
-	fmt.Printf("Waiting for authorization (timeout: %v)...\n", DefaultTimeout)
+	fmt.Fprintf(os.Stderr, "Waiting for authorization (timeout: %v)...\n", DefaultTimeout)
 
 	// Wait for callback or timeout
 	select {
@@ -182,7 +183,7 @@ func startCallbackServer(expectedState string, resultChan chan *FlowResult, errC
 		}
 	}()
 
-	fmt.Printf("OAuth callback server listening on http://localhost:%d%s\n", port, CallbackPath)
+	fmt.Fprintf(os.Stderr, "OAuth callback server listening on http://localhost:%d%s\n", port, CallbackPath)
 
 	return server, port, nil
 }
@@ -229,7 +230,7 @@ func Authenticate(provider *Provider, clientID, clientSecret, email string) (*To
 	// Determine actual redirect URI (port might have changed)
 	// For now, we'll reconstruct it - in practice the server handles this
 
-	fmt.Println("Exchanging authorization code for tokens...")
+	fmt.Fprintln(os.Stderr, "Exchanging authorization code for tokens...")
 
 	// Exchange code for tokens
 	token, err := ExchangeCode(provider, clientID, clientSecret, redirectURI, result.Code, pkce.Verifier)

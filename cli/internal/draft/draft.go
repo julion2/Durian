@@ -3,6 +3,7 @@ package draft
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -63,7 +64,8 @@ func (s *Service) Save(msg *smtp.Message, replaceMessageID string) (*SaveResult,
 	if replaceMessageID != "" {
 		if err := s.deleteByMessageID(client, draftsMailbox, replaceMessageID); err != nil {
 			// Log but don't fail - the old draft might not exist anymore
-			fmt.Printf("Warning: failed to delete old draft: %v\n", err)
+			slog.Warn("Failed to delete old draft",
+				"module", "DRAFT", "message_id", replaceMessageID, "err", err)
 		}
 	}
 
