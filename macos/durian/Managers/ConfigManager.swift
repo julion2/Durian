@@ -98,15 +98,34 @@ struct AppConfig: Codable {
 
 class ConfigManager {
     static let shared = ConfigManager()
-    private var config: AppConfig?
-    
+
+    // The config is accessed from many contexts (Views on MainActor, but also
+    // background Tasks in AccountManager/DraftService). An NSLock guards the
+    // stored value so concurrent reads/writes are race-free without forcing
+    // @MainActor on every call site.
+    private let lock = NSLock()
+    private var _config: AppConfig?
+
+    private var config: AppConfig? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _config
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _config = newValue
+        }
+    }
+
     init() {
         loadConfig()
     }
 
     /// Test-only initializer: inject config directly, skip file loading
     init(config: AppConfig) {
-        self.config = config
+        self._config = config
     }
     
     private func loadConfig() {
