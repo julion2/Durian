@@ -385,6 +385,79 @@ func TestConvertThread_MixedHTMLAndPlaintext(t *testing.T) {
 	}
 }
 
+// --- Light mode (used for search enrichment) ---
+
+func TestConvertThread_LightOmitsHTMLAndReplyHeaders(t *testing.T) {
+	db := newTestStore(t)
+	now := time.Now().Unix()
+
+	seedThreadMessage(t, db, &store.Message{
+		MessageID: "light@test", Subject: "Light",
+		FromAddr:  "a@example.com",
+		InReplyTo: "<prev@test>",
+		Refs:      "<prev@test>",
+		Date:      now, CreatedAt: now,
+		BodyText: "plain body",
+		BodyHTML: "<p>html body</p>",
+		Mailbox:  "INBOX",
+	})
+
+	m, _ := db.GetByMessageID("light@test")
+	msgs, _ := db.GetByThread(m.ThreadID)
+	h := New(db, nil)
+
+	thread := h.convertThread(m.ThreadID, msgs, true)
+	if len(thread.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(thread.Messages))
+	}
+	msg := thread.Messages[0]
+
+	// Light mode: Body is preserved
+	if msg.Body != "plain body" {
+		t.Errorf("Body = %q, want %q", msg.Body, "plain body")
+	}
+	// Light mode: HTML is omitted
+	if msg.HTML != "" {
+		t.Errorf("HTML should be empty in light mode, got %q", msg.HTML)
+	}
+	// Light mode: reply headers are omitted
+	if msg.InReplyTo != "" {
+		t.Errorf("InReplyTo should be empty in light mode, got %q", msg.InReplyTo)
+	}
+	if msg.References != "" {
+		t.Errorf("References should be empty in light mode, got %q", msg.References)
+	}
+}
+
+func TestConvertThread_LightKeepsTagsAndAttachments(t *testing.T) {
+	db := newTestStore(t)
+	now := time.Now().Unix()
+
+	m := seedThreadMessage(t, db, &store.Message{
+		MessageID: "lightatts@test", Subject: "With stuff",
+		FromAddr: "a@example.com", Date: now, CreatedAt: now,
+		BodyText: "hello", Mailbox: "INBOX",
+	})
+	db.AddTag(m.ID, "inbox")
+	db.InsertAttachment(&store.Attachment{
+		MessageDBID: m.ID, PartID: 1,
+		Filename: "doc.pdf", ContentType: "application/pdf",
+		Size: 1024, Disposition: "attachment",
+	})
+
+	msgs, _ := db.GetByThread(m.ThreadID)
+	h := New(db, nil)
+	thread := h.convertThread(m.ThreadID, msgs, true)
+
+	if len(thread.Messages[0].Tags) == 0 {
+		t.Error("light mode should still populate tags")
+	}
+	if len(thread.Messages[0].Attachments) != 1 {
+		t.Errorf("light mode should still populate attachments, got %d",
+			len(thread.Messages[0].Attachments))
+	}
+}
+
 // --- ThreadID propagation ---
 
 func TestConvertThread_ThreadIDPropagated(t *testing.T) {

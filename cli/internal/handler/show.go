@@ -43,7 +43,7 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 		return protocol.Fail(protocol.ErrNotFound, errors.New("no messages found for thread"))
 	}
 
-	thread := h.convertThread(threadID, msgs)
+	thread := h.convertThread(threadID, msgs, false)
 	return protocol.SuccessWithThread(thread)
 }
 
@@ -64,24 +64,29 @@ func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 	})
 }
 
-// convertThread converts store messages into ThreadContent format.
-func (h *Handler) convertThread(threadID string, msgs []*store.Message) *internmail.ThreadContent {
+// convertThread converts store messages into ThreadContent format, sorted
+// newest-first. When light=true, HTML and reply headers (InReplyTo,
+// References) are omitted — used by search enrichment to keep response
+// size small; the full thread is loaded on demand via /threads/{id}.
+func (h *Handler) convertThread(threadID string, msgs []*store.Message, light bool) *internmail.ThreadContent {
 	messages := make([]internmail.MessageInfo, 0, len(msgs))
 	var subject string
 
 	for _, msg := range msgs {
 		info := internmail.MessageInfo{
-			ID:         msg.MessageID,
-			From:       msg.FromAddr,
-			To:         msg.ToAddrs,
-			CC:         msg.CCAddrs,
-			Date:       time.Unix(msg.Date, 0).Format(time.RFC1123Z),
-			Timestamp:  msg.Date,
-			MessageID:  msg.MessageID,
-			InReplyTo:  msg.InReplyTo,
-			References: msg.Refs,
-			Body:       msg.BodyText,
-			HTML:       sanitize.StripQuotedContent(msg.BodyHTML),
+			ID:        msg.MessageID,
+			From:      msg.FromAddr,
+			To:        msg.ToAddrs,
+			CC:        msg.CCAddrs,
+			Date:      time.Unix(msg.Date, 0).Format(time.RFC1123Z),
+			Timestamp: msg.Date,
+			MessageID: msg.MessageID,
+			Body:      msg.BodyText,
+		}
+		if !light {
+			info.InReplyTo = msg.InReplyTo
+			info.References = msg.Refs
+			info.HTML = sanitize.StripQuotedContent(msg.BodyHTML)
 		}
 
 		if subject == "" {
@@ -109,60 +114,6 @@ func (h *Handler) convertThread(threadID string, msgs []*store.Message) *internm
 	}
 
 	// Sort newest first
-	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].Timestamp > messages[j].Timestamp
-	})
-
-	return &internmail.ThreadContent{
-		ThreadID: threadID,
-		Subject:  subject,
-		Messages: messages,
-	}
-}
-
-// convertThreadLight creates a lightweight thread for search enrichment.
-// Bodies are trimmed to 200 chars plaintext, no HTML. This reduces search
-// response size by ~95% compared to full thread content.
-func (h *Handler) convertThreadLight(threadID string, msgs []*store.Message) *internmail.ThreadContent {
-	messages := make([]internmail.MessageInfo, 0, len(msgs))
-	var subject string
-
-	for _, msg := range msgs {
-		info := internmail.MessageInfo{
-			ID:        msg.MessageID,
-			From:      msg.FromAddr,
-			To:        msg.ToAddrs,
-			CC:        msg.CCAddrs,
-			Date:      time.Unix(msg.Date, 0).Format(time.RFC1123Z),
-			Timestamp: msg.Date,
-			MessageID: msg.MessageID,
-			Body:      msg.BodyText,
-			// HTML omitted — loaded on thread click via /threads/{id}
-		}
-
-		if subject == "" {
-			subject = msg.Subject
-		}
-
-		if tags, err := h.store.GetMessageTags(msg.ID); err == nil {
-			info.Tags = tags
-		}
-		if atts, err := h.store.GetAttachmentsByMessage(msg.ID); err == nil {
-			for _, a := range atts {
-				info.Attachments = append(info.Attachments, internmail.AttachmentInfo{
-					PartID:      a.PartID,
-					Filename:    a.Filename,
-					ContentType: a.ContentType,
-					Size:        a.Size,
-					Disposition: a.Disposition,
-					ContentID:   a.ContentID,
-				})
-			}
-		}
-
-		messages = append(messages, info)
-	}
-
 	sort.Slice(messages, func(i, j int) bool {
 		return messages[i].Timestamp > messages[j].Timestamp
 	})
