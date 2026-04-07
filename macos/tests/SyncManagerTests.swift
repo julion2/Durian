@@ -51,4 +51,26 @@ final class SyncManagerTests: XCTestCase {
         XCTAssertNotEqual(SyncState.failed("a"), SyncState.failed("b"))
         XCTAssertNotEqual(SyncState.idle, SyncState.syncing)
     }
+
+    // MARK: - SyncManager Singleton Contract
+
+    func testSharedReturnsSameInstance() {
+        XCTAssertTrue(SyncManager.shared === SyncManager.shared)
+    }
+
+    func testIsSyncingFalseWhenIdle() {
+        // When state is idle, no sync is in progress
+        XCTAssertFalse(SyncManager.shared.syncState == .syncing)
+    }
+
+    func testStopTimersDoesNotCrash() {
+        // stopTimers() should be idempotent and safe to call without setup
+        SyncManager.shared.stopTimers()
+        SyncManager.shared.stopTimers()  // Called twice — must not crash
+    }
+
+    // Note: Deeper SyncManager coverage (concurrent sync lock behavior,
+    // consecutiveFailures threshold, banner suppression) requires
+    // dependency injection for NetworkMonitor / ConfigManager /
+    // ProfileManager / runDurianSync. That's a separate refactor.
 }

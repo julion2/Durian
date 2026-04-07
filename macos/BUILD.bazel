@@ -223,6 +223,36 @@ swift_test(
     deps = [":durian_core"],
 )
 
+swift_test(
+    name = "key_buffer_test",
+    size = "small",
+    srcs = ["tests/KeyBufferTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_key_buffer_test",
+    size = "small",
+    srcs = ["tests/KeyBufferTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
+    name = "sequence_matcher_test",
+    size = "small",
+    srcs = ["tests/SequenceMatcherTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_sequence_matcher_test",
+    size = "small",
+    srcs = ["tests/SequenceMatcherTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
 genrule(
     name = "StampedInfoPlist",
     srcs = ["Info.plist"],
