@@ -670,9 +670,24 @@ struct ContentView: View {
               case .loaded = email.bodyState,
               let fromAccount = defaultFromAccount else { return }
 
-        let forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)
-        let draftId = DraftService.shared.createDraft(with: forwardDraft)
-        openWindow(value: draftId)
+        Task {
+            var forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)
+
+            // Copy attachments from the original message(s) into the forward draft.
+            // Requires the email backend to fetch attachment bytes via IMAP.
+            if let backend = AccountManager.shared.emailBackend {
+                let result = await EmailDraft.collectForwardAttachments(from: email, backend: backend)
+                forwardDraft.attachments = result.attachments
+
+                if !result.skipped.isEmpty {
+                    let msg = "Some attachments were skipped: " + result.skipped.joined(separator: ", ")
+                    BannerManager.shared.showWarning(title: "Forward Attachments", message: msg)
+                }
+            }
+
+            let draftId = DraftService.shared.createDraft(with: forwardDraft)
+            openWindow(value: draftId)
+        }
     }
 
     private func editSelectedDraft() {
