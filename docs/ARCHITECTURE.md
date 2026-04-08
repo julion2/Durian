@@ -1,0 +1,150 @@
+# Architecture
+
+Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GUI MVP on Linux. This document explains how the pieces fit together so you can navigate the codebase without reading every file.
+
+## Components
+
+```
+┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
+│  Swift GUI       │       │  Qt GUI (Linux,  │       │  Tag Sync Server │
+│  (macos/)        │       │  experimental)   │       │  (sync/, opt.)   │
+└────────┬─────────┘       └────────┬─────────┘       └────────▲─────────┘
+         │ HTTP                      │ HTTP                      │ HTTP
+         │ localhost:9723            │ localhost:9723            │ Tailnet / LAN
+         ▼                           ▼                           │
+┌────────────────────────────────────────────────────┐           │
+│  Go CLI (`durian serve`)                            │           │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │           │
+│  │ handler  │ │ watcher  │ │   imap   │ │ store  │ │           │
+│  │ (HTTP)   │ │ (IDLE)   │ │  (sync)  │ │(SQLite)│ │           │
+│  └──────────┘ └──────────┘ └────▲─────┘ └────────┘ │           │
+└──────────────────────────────────┼──────────────────┘           │
+                                   │ IMAP/IDLE                    │
+                                   ▼                              │
+                         ┌──────────────────┐                     │
+                         │  Provider IMAP/  │                     │
+                         │  SMTP servers    │                     │
+                         │  (Gmail, etc.)   │                     │
+                         └──────────────────┘                     │
+                                                                  │
+                         (tag changes pushed/pulled ──────────────┘
+                          via `durian tagsync push/pull`)
+```
+
+**One backend, many frontends.** The Go CLI is the only component that talks IMAP/SMTP and owns the SQLite store. Both GUIs are thin HTTP clients to `localhost:9723` — they never touch the DB directly. This boundary is enforced by convention (see `CLAUDE.md`).
+
+## Directory layout
+
+| Path | Purpose |
+|---|---|
+| `cli/cmd/durian/` | CLI commands (`sync`, `serve`, `auth`, `search`, `send`, `validate`, `contacts`, …) |
+| `cli/internal/handler/` | HTTP API handlers + IMAP IDLE watcher + SSE event hub |
+| `cli/internal/imap/` | IMAP sync logic (mailbox discovery, flag sync, message insertion, Gmail label handling) |
+| `cli/internal/store/` | SQLite schema, FTS5 search, tags, attachments, local drafts, outbox |
+| `cli/internal/config/` | TOML parsing + `durian validate` |
+| `cli/internal/oauth/` | OAuth flows (Google, Microsoft) |
+| `cli/internal/smtp/`, `draft/`, `sanitize/`, `contacts/` | Supporting packages |
+| `macos/durian/` | Swift GUI: `Managers/` (state), `Views/` (SwiftUI), `Models/`, `Network/EmailBackend.swift`, `Keymaps/` (vim engine) |
+| `linux/` | Qt6/QML GUI (read-only MVP) — see [linux/README.md](../linux/README.md) |
+| `sync/` | Optional self-hosted tag sync server — see [sync/README.md](../sync/README.md) |
+| `integration/` | Shell-based API contract tests |
+
+## Runtime topology
+
+### The CLI as the one-and-only IMAP client
+
+When the GUI launches, it spawns `durian serve` as a child process (see `macos/durian/Network/EmailBackend.swift`). `durian serve`:
+
+1. Starts an HTTP server on `localhost:9723` (configurable via `--port`).
+2. Opens the SQLite store at `~/.config/durian/email.db`.
+3. Starts one IDLE watcher goroutine per configured account (`cli/internal/handler/watcher.go`).
+4. Streams `new_mail` and `outbox_update` events to connected SSE subscribers via `cli/internal/handler/events.go`.
+
+The GUI never talks IMAP directly. Every action the user takes in the UI — opening a thread, changing a tag, sending a draft — becomes an HTTP call to the backend.
+
+### Config file ownership
+
+`~/.config/durian/config.toml` is **read by both the Go CLI and the Swift GUI**, each with its own TOML parser. Fields land in one of three categories:
+
+- **Go-only** (e.g. `accounts.imap.host`, `sync.tag_sync.url`) — consumed by `durian sync`, `durian serve`, etc.
+- **Swift-only** (e.g. `settings.theme`, `sync.gui_auto_sync`) — read directly by `macos/durian/Managers/ConfigManager.swift`.
+- **Shared for validation** (e.g. `settings.accent_color`) — Go's `durian validate` checks format before Swift loads.
+
+Go's TOML parser is **non-strict**, so unknown keys are silently ignored on each side. This is intentional: adding a GUI-only field to config.toml doesn't need a matching Go struct.
+
+### The HTTP API
+
+All endpoints are under `/api/v1/` — see `openapi.yaml` for the full contract. The main categories:
+
+| Category | Examples |
+|---|---|
+| Reading | `GET /search`, `GET /search/count`, `GET /threads/{id}`, `GET /message/body`, `GET /tags` |
+| Writing | `POST /threads/{id}/tags`, `POST /outbox/send`, `PUT /local-drafts/{id}`, `POST /contacts/usage` |
+| Real-time | `GET /events` (Server-Sent Events stream with heartbeat) |
+| Attachments | `GET /messages/{id}/attachments/{part_id}` (streams raw bytes) |
+
+Integration tests in `integration/integration_test.sh` exercise the contract end-to-end against a real `durian serve` process.
+
+## Storage model
+
+One SQLite file at `~/.config/durian/email.db`:
+
+- `messages` — core email rows (message_id, thread_id, account, mailbox, UID, flags, body, html, timestamps)
+- `message_tags` — tag join table (one row per (message_id, tag))
+- `message_headers` — raw headers used by filter rules (List-Id, Authentication-Results, …)
+- `attachments` — per-part metadata (filename, content_type, size, partId, disposition)
+- `local_drafts` — crash-recovery drafts (kept locally until saved to IMAP)
+- `outbox` — queued outgoing messages (with `send_after` timestamp for undo-send)
+- `messages_fts` — FTS5 virtual table for full-text search
+
+Search uses notmuch-style query syntax (`tag:inbox AND from:boss@example.com`) parsed in `cli/internal/store/search.go` into SQL + FTS5 MATCH.
+
+## Sync model
+
+Per account, `durian serve` runs an IDLE loop in `handler/watcher.go`:
+
+1. On startup, run a full sync via `imap.Syncer` (`cli/internal/imap/sync.go` and helpers in `sync_mailbox.go`, `sync_flags.go`, `sync_discovery.go`, `sync_store.go`).
+2. Enter IMAP IDLE on the INBOX.
+3. On IDLE wake (new mail event) or on explicit `TriggerSync` signal (e.g. user tagged something), break IDLE and run an incremental sync.
+4. Broadcast `new_mail` events via the EventHub so the GUI can refresh.
+5. On connection loss, reconnect with exponential backoff.
+
+**Deduplication**: before downloading new UIDs, `dedupUnsyncedUIDs` fetches envelopes and checks whether each Message-ID already exists in the store (from another folder). Existing messages get their folder tags updated instead of being re-downloaded. See `cli/internal/imap/sync_mailbox.go`.
+
+**Gmail**: labels come via `X-GM-LABELS`, not folders. The Gmail code path syncs only `All Mail`, `Spam`, and `Trash` — regular folders are virtual. Label → tag mapping lives in `sync_discovery.go` (`gmailLabelsToTags`).
+
+**Flag sync**: bidirectional. Local tag changes are uploaded to IMAP (mapped to the corresponding flag or folder move), and server-side flag changes are pulled down. See `cli/internal/imap/sync_flags.go`.
+
+## Optional tag sync (`sync/`)
+
+For multi-machine setups, `sync/` contains a small self-hosted server that stores `(message_id, account, tag, action, timestamp)` tuples. Clients push local changes and pull remote ones via HTTP. Auth is a shared API key; **run it only on a trusted network** (Tailnet, LAN) — it has no TLS and no rate limiting. See [sync/README.md](../sync/README.md) for setup.
+
+## Design decisions
+
+**Why one HTTP API instead of direct DB access?**
+The GUI and CLI are separate processes written in different languages. Going through HTTP means the GUI never needs SQLite bindings, never has to worry about schema migrations, and gets a stable contract it can rely on. It also lets us ship a Linux GUI in Qt without duplicating Go code.
+
+**Why SQLite + FTS5 instead of Maildir + notmuch?**
+A single file is easier to back up, move between machines, and query with SQL when debugging. FTS5 is fast enough for a few hundred thousand messages and supports the same tag-based search model as notmuch.
+
+**Why Swift for the macOS GUI instead of one cross-platform GUI?**
+Native SwiftUI integrates cleanly with macOS features (keychain, notifications, look and feel, window management). The Linux Qt GUI is a separate, deliberately independent implementation — we'd rather have two small native clients than one big Electron-style shell.
+
+**Why Bazel?**
+Three languages (Go, Swift, C++/Qt), two platforms, one binary cache, reproducible builds. The alternative would be `go build` + `xcodebuild` + `cmake` + shell glue. The cost is a higher learning curve; the benefit is that CI and local builds stay identical.
+
+## Logging
+
+- **Go CLI**: `log/slog` with a `"module"` key. `durian serve` writes to `~/.config/durian/serve.log` (truncated on each start). Other commands write to stderr. Debug level via `--debug`.
+- **Swift GUI**: wrapped in `macos/durian/Utilities/Log.swift` using `os.Logger`. View in Console.app with subsystem filter `org.js-lab.durian` (release) or `org.js-lab.durian.nightly` (debug).
+- **Tag sync server**: stdout + systemd journal.
+
+See `CLAUDE.md` for the exact log commands.
+
+## Where to look next
+
+- **Adding a new API endpoint**: `cli/internal/handler/` + matching entry in `cli/cmd/durian/serve.go` route list + `openapi.yaml`.
+- **Changing the sync logic**: `cli/internal/imap/sync_mailbox.go` is the main loop; `sync_flags.go` handles flag/tag propagation.
+- **Adding a GUI feature**: start in the appropriate Swift Manager (`macos/durian/Managers/`), wire it to views.
+- **Adding a CLI command**: `cli/cmd/durian/` — each command is a Cobra subcommand.
+- **Onboarding end users**: [GETTING_STARTED.md](GETTING_STARTED.md).

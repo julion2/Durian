@@ -123,6 +123,8 @@ durian sync --debug                   # debug output on stderr
 
 ## Docs
 
+- [Getting Started](docs/GETTING_STARTED.md) — Install → config → first sync
+- [Architecture](docs/ARCHITECTURE.md) — How CLI, GUI, and sync server fit together
 - [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
 - [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
 - [Tag Sync](sync/README.md) — Multi-machine tag sync via self-hosted server
