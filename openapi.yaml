@@ -5,6 +5,20 @@ info:
 servers:
   - url: http://localhost:9723/api/v1
 paths:
+  /version:
+    get:
+      summary: Durian server version and git commit
+      description: >
+        Returns the version string and short git commit of the running
+        `durian serve` process. Useful for the GUI to detect CLI mismatch
+        after upgrades.
+      responses:
+        '200':
+          description: Version info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionResponse'
   /search:
     get:
       summary: Search for emails
@@ -32,6 +46,57 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Missing or invalid query / limit / enrich parameter
+  /search/count:
+    get:
+      summary: Count matching threads without fetching them
+      description: >
+        Returns the number of threads matching the query. Cheaper than
+        /search when only the count is needed (e.g. folder unread badges).
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Match count
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchCountResponse'
+        '400':
+          description: Missing query parameter
+        '500':
+          description: Store error
+  /message/body:
+    get:
+      summary: Get the full unstripped body of a single message
+      description: >
+        Returns the raw plain-text body and optional HTML body of the
+        message identified by its RFC Message-ID. Used by the compose
+        window for reply quoting — the sync path stores stripped bodies
+        to save space, but replies need the original.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: RFC Message-ID of the message (including angle brackets)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Message body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageBodyResponse'
+        '400':
+          description: Missing id parameter
+        '404':
+          description: Message not found
   /tags:
     get:
       summary: List all known tags
@@ -342,6 +407,48 @@ paths:
 
 components:
   schemas:
+    VersionResponse:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Semantic version (e.g. "0.5.0" or "dev")
+          example: "0.5.0"
+        commit:
+          type: string
+          description: Short git commit hash
+          example: "a1b2c3d"
+      required: [version, commit]
+    SearchCountResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Number of threads matching the query
+          example: 42
+      required: [count]
+    MessageBodyResponse:
+      type: object
+      description: >
+        Wraps a single message's body in the standard Durian response envelope.
+        Mirrors protocol.Response with only the message_body field populated.
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string
+        message_body:
+          $ref: '#/components/schemas/MessageBody'
+    MessageBody:
+      type: object
+      properties:
+        body:
+          type: string
+          description: Plain-text body (full, unstripped)
+        html:
+          type: string
+          description: HTML body if present, omitted otherwise
+      required: [body]
     SearchResponse:
       type: object
       properties:
