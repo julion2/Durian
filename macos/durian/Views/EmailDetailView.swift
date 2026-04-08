@@ -68,8 +68,9 @@ struct EmailDetailView: View {
             sv.reflectScrolledClipView(sv.contentView)
         }
         .onReceive(NotificationCenter.default.publisher(for: .threadScrollToBottom)) { _ in
-            guard let sv = detailScrollView else { return }
-            let maxY = max(sv.documentView!.frame.height - sv.contentView.bounds.height, 0)
+            guard let sv = detailScrollView,
+                  let docView = sv.documentView else { return }
+            let maxY = max(docView.frame.height - sv.contentView.bounds.height, 0)
             sv.contentView.setBoundsOrigin(NSPoint(x: 0, y: maxY))
             sv.reflectScrolledClipView(sv.contentView)
         }
@@ -192,9 +193,10 @@ struct EmailDetailView: View {
     }
     
     private func scrollBy(_ delta: CGFloat) {
-        guard let sv = detailScrollView else { return }
+        guard let sv = detailScrollView,
+              let docView = sv.documentView else { return }
         let current = sv.contentView.bounds.origin
-        let maxY = max(sv.documentView!.frame.height - sv.contentView.bounds.height, 0)
+        let maxY = max(docView.frame.height - sv.contentView.bounds.height, 0)
         let newY = min(max(current.y + delta, 0), maxY)
         sv.contentView.setBoundsOrigin(NSPoint(x: current.x, y: newY))
         sv.reflectScrolledClipView(sv.contentView)
