@@ -79,24 +79,6 @@ func TestLoadValidConfig(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	// Settings
-	if cfg.Settings.Theme != "dark" {
-		t.Errorf("Settings.Theme = %q, want %q", cfg.Settings.Theme, "dark")
-	}
-	if !cfg.Settings.NotificationsEnabled {
-		t.Error("Settings.NotificationsEnabled = false, want true")
-	}
-	if cfg.Settings.LoadRemoteImages {
-		t.Error("Settings.LoadRemoteImages = true, want false")
-	}
-
-	// Sync
-	if !cfg.Sync.AutoFetchEnabled {
-		t.Error("Sync.AutoFetchEnabled = false, want true")
-	}
-	if cfg.Sync.AutoFetchInterval != 120 {
-		t.Errorf("Sync.AutoFetchInterval = %v, want %v", cfg.Sync.AutoFetchInterval, 120)
-	}
 	// Signatures
 	if len(cfg.Signatures) != 2 {
 		t.Errorf("Signatures count = %d, want 2", len(cfg.Signatures))
@@ -271,20 +253,11 @@ func TestDefault(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("Default() returned nil")
 	}
-	if cfg.Settings.Theme != "light" {
-		t.Errorf("Default Settings.Theme = %q, want %q", cfg.Settings.Theme, "light")
-	}
-	if !cfg.Settings.NotificationsEnabled {
-		t.Error("Default Settings.NotificationsEnabled = false, want true")
-	}
-	if !cfg.Sync.AutoFetchEnabled {
-		t.Error("Default Sync.AutoFetchEnabled = false, want true")
-	}
-	if cfg.Sync.AutoFetchInterval != 120 {
-		t.Errorf("Default Sync.AutoFetchInterval = %v, want %v", cfg.Sync.AutoFetchInterval, 120)
-	}
 	if len(cfg.Accounts) != 0 {
 		t.Errorf("Default Accounts length = %d, want 0", len(cfg.Accounts))
+	}
+	if cfg.Signatures == nil {
+		t.Error("Default Signatures is nil")
 	}
 }
 

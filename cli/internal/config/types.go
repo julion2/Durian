@@ -9,19 +9,18 @@ type Config struct {
 	Accounts   []AccountConfig   `toml:"accounts"`
 }
 
-// SettingsConfig contains GUI-only settings (ignored by CLI)
+// SettingsConfig holds settings that `durian validate` can check before
+// the Swift GUI loads the same config file. All other GUI-only fields
+// (theme, notifications_enabled, load_remote_images, …) are parsed by
+// Swift directly and silently ignored here.
 type SettingsConfig struct {
-	Theme                string `toml:"theme"`
-	NotificationsEnabled bool   `toml:"notifications_enabled"`
-	LoadRemoteImages     bool   `toml:"load_remote_images"`
-	AccentColor          string `toml:"accent_color"` // Hex color, e.g. "#3B82F6"
+	AccentColor string `toml:"accent_color"` // Hex color, e.g. "#3B82F6"
 }
 
-// SyncConfig contains sync settings
+// SyncConfig contains sync settings consumed by the Go CLI.
+// The GUI auto-sync interval fields (gui_auto_sync, auto_fetch_interval,
+// full_sync_interval) are read by Swift directly and silently ignored here.
 type SyncConfig struct {
-	AutoFetchEnabled  bool    `toml:"auto_fetch_enabled"`
-	AutoFetchInterval float64 `toml:"auto_fetch_interval"` // seconds
-	FullSyncInterval  float64 `toml:"full_sync_interval"`  // seconds
 	// TagSync configures the optional tag sync server for multi-machine setups
 	TagSync TagSyncConfig `toml:"tag_sync"`
 }
