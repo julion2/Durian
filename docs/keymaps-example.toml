@@ -161,6 +161,11 @@ action = "toggle_selection"
 key = " "
 description = "Toggle current email in selection"
 
+[[keymaps]]
+action = "exit_visual_mode"
+key = "Escape"
+description = "Exit visual mode and keep cursor position"
+
 # ── Search Popup (context = "search") ────────────────────────────────
 # These bindings are only active when the search popup is open.
 # Arrow keys, Return, and Escape are always available (built-in).
