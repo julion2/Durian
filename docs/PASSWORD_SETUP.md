@@ -19,6 +19,11 @@ port = 587
 auth = "password"
 max_attachment_size = "20MB"
 
+[accounts.imap]
+host = "imap.gmx.net"
+port = 993
+auth = "password"
+
 [accounts.auth]
 username = "you@gmx.de"
 ```

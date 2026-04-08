@@ -7,7 +7,7 @@ INSTALL_DIR="/Applications"
 # Build first (must run as normal user, not sudo — sudo uses a different bazel cache)
 if [ "$(id -u)" -eq 0 ]; then
     echo "Error: Do not run the entire script with sudo."
-    echo "Usage: ./gui/install.sh"
+    echo "Usage: ./macos/install.sh"
     exit 1
 fi
 
