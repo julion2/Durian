@@ -24,10 +24,10 @@ struct ComposeForm: View {
     @Binding var currentDraft: EmailDraft?
     let onDismiss: () -> Void
     
-    @State private var draft: EmailDraft
+    @State var draft: EmailDraft
     @State private var showError = false
     @State private var errorMessage = ""
-    @State private var autoSaveCancellable: AnyCancellable?
+    @State var autoSaveCancellable: AnyCancellable?
     @State private var selectedSignature: String?
     @State private var selectedAttachmentIndex: Int? = nil
     @State private var keyMonitor: Any?
@@ -48,14 +48,14 @@ struct ComposeForm: View {
     @State private var showVimSearch: Bool = false
     @State private var vimSearchText: String = ""
     @FocusState private var focusedField: ComposeField?  // Shared focus state
-    
-    // Contact suggestion popup state
-    @State private var contactSuggestions: [Contact] = []
-    @State private var selectedSuggestionIndex: Int = 0
-    @State private var activeTokenField: ComposeField? = nil
-    @State private var activeNSTokenField: NSTokenField? = nil  // Reference to actual NSTokenField
-    @State private var showingContactPopup = false
-    @State private var contactSearchTask: Task<Void, Never>?
+
+    // Contact suggestion popup state (internal so ComposeForm+Contacts extension can access)
+    @State var contactSuggestions: [Contact] = []
+    @State var selectedSuggestionIndex: Int = 0
+    @State var activeTokenField: ComposeField? = nil
+    @State var activeNSTokenField: NSTokenField? = nil  // Reference to actual NSTokenField
+    @State var showingContactPopup = false
+    @State var contactSearchTask: Task<Void, Never>?
 
     private let signatures: [String: String]
     private let maxAttachmentSize: Int64 = 25_000_000
@@ -637,7 +637,7 @@ struct ComposeForm: View {
     
     // MARK: - Auto-Save
     
-    private func scheduleAutoSave() {
+    func scheduleAutoSave() {
         autoSaveCancellable?.cancel()
         
         autoSaveCancellable = Just(())
@@ -760,221 +760,5 @@ struct ComposeForm: View {
         }
     }
     
-    // MARK: - Contact Suggestion Handling
-    
-    /// Handle partial text changes from TokenField for autocomplete
-    private func handlePartialTextChange(query: String, tokenField: NSTokenField, field: ComposeField) {
-        activeTokenField = field
-        activeNSTokenField = tokenField  // Store reference for later use
-
-        // Require at least 2 characters to search
-        guard query.count >= 2 else {
-            contactSearchTask?.cancel()
-            dismissContactSuggestions()
-            return
-        }
-
-        // Debounce: cancel previous search, wait 150ms before firing
-        contactSearchTask?.cancel()
-        contactSearchTask = Task {
-            try? await Task.sleep(for: .milliseconds(80))
-            guard !Task.isCancelled else { return }
-
-            // Get existing tokens to filter out duplicates
-            let existingEmails = currentTokensForField(field)
-
-            // Search contacts via HTTP API
-            let results = await ContactsManager.shared.search(query: query, limit: 8)
-                .filter { contact in
-                    !existingEmails.contains { existing in
-                        existing.lowercased().contains(contact.email.lowercased())
-                    }
-                }
-
-            guard !Task.isCancelled else { return }
-
-            guard !results.isEmpty else {
-                dismissContactSuggestions()
-                return
-            }
-
-            contactSuggestions = results
-            selectedSuggestionIndex = 0
-            showingContactPopup = true
-
-            // Show popup at cursor position
-            ContactSuggestionController.shared.show(
-                for: tokenField,
-                contacts: results,
-                selectedIndex: 0,
-                onSelect: { [self] contact in
-                    selectContact(contact)
-                },
-                onDismiss: { [self] in
-                    dismissContactSuggestions()
-                }
-            )
-        }
-    }
-    
-    /// Handle keyboard commands when suggestion popup is visible
-    private func handleSuggestionKeyCommand(_ command: SuggestionKeyCommand) -> Bool {
-        guard showingContactPopup, !contactSuggestions.isEmpty else {
-            return false
-        }
-        
-        switch command {
-        case .up:
-            selectedSuggestionIndex = max(0, selectedSuggestionIndex - 1)
-            ContactSuggestionController.shared.update(
-                contacts: contactSuggestions,
-                selectedIndex: selectedSuggestionIndex
-            )
-            return true
-            
-        case .down:
-            selectedSuggestionIndex = min(contactSuggestions.count - 1, selectedSuggestionIndex + 1)
-            ContactSuggestionController.shared.update(
-                contacts: contactSuggestions,
-                selectedIndex: selectedSuggestionIndex
-            )
-            return true
-            
-        case .enter, .tab:
-            selectContact(contactSuggestions[selectedSuggestionIndex])
-            return true
-            
-        case .escape:
-            dismissContactSuggestions()
-            return true
-        }
-    }
-    
-    /// Select a contact and add it to the appropriate field
-    private func selectContact(_ contact: Contact) {
-        guard let field = activeTokenField,
-              let tokenField = activeNSTokenField else { return }
-        
-        // Clear partial text and insert the token
-        TokenFieldHelper.replacePartialTextWithToken(contact.displayString, in: tokenField)
-        
-        // Update our binding to match the tokenField's new state
-        DispatchQueue.main.async {
-            if let newTokens = tokenField.objectValue as? [String] {
-                switch field {
-                case .to:
-                    self.draft.to = newTokens
-                case .cc:
-                    self.draft.cc = newTokens
-                case .bcc:
-                    self.draft.bcc = newTokens
-                default:
-                    break
-                }
-            }
-            self.dismissContactSuggestions()
-            self.scheduleAutoSave()
-        }
-    }
-    
-    /// Dismiss the contact suggestions popup
-    private func dismissContactSuggestions() {
-        showingContactPopup = false
-        contactSuggestions = []
-        selectedSuggestionIndex = 0
-        activeTokenField = nil
-        activeNSTokenField = nil
-        ContactSuggestionController.shared.dismiss()
-    }
-    
-    /// Get current tokens for a field (for duplicate filtering)
-    private func currentTokensForField(_ field: ComposeField) -> [String] {
-        switch field {
-        case .to: return draft.to
-        case .cc: return draft.cc
-        case .bcc: return draft.bcc
-        default: return []
-        }
-    }
 }
 
-// MARK: - Attachment Chip
-
-struct AttachmentChip: View {
-    let filename: String
-    let size: String
-    let isSelected: Bool
-    let onClick: () -> Void
-    let onRemove: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "doc.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(filename)
-                    .font(.caption)
-                    .lineLimit(1)
-                Text(size)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(isSelected ? ProfileManager.shared.resolvedAccentColor.opacity(0.3) : ProfileManager.shared.resolvedAccentColor.opacity(0.1))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isSelected ? ProfileManager.shared.resolvedAccentColor : Color.clear, lineWidth: 2)
-        )
-        .cornerRadius(8)
-        .onTapGesture {
-            onClick()
-        }
-    }
-}
-
-// MARK: - Vim Search Pill
-
-struct VimSearchPill: View {
-    @Binding var text: String
-    var onSubmit: () -> Void
-    var onDismiss: () -> Void
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text("/")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(Color.Detail.textTertiary)
-            TextField("", text: $text)
-                .font(.system(size: 12, design: .monospaced))
-                .textFieldStyle(.plain)
-                .frame(width: 180)
-                .focused($isFocused)
-                .onSubmit { onSubmit() }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.Detail.cardBackground)
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.Detail.border, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
-        .onAppear { isFocused = true }
-        .onChange(of: isFocused) { _, focused in
-            if !focused { onDismiss() }
-        }
-    }
-}
