@@ -89,16 +89,6 @@ func Exists(path string) bool {
 // Default returns an empty default config
 func Default() *Config {
 	return &Config{
-		Settings: SettingsConfig{
-			Theme:                "light",
-			NotificationsEnabled: true,
-			LoadRemoteImages:     true,
-		},
-		Sync: SyncConfig{
-			AutoFetchEnabled:  true,
-			AutoFetchInterval: 120,
-			FullSyncInterval:  7200,
-		},
 		Signatures: map[string]string{},
 		Accounts:   []AccountConfig{},
 	}
