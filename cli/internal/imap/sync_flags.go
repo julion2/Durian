@@ -23,36 +23,52 @@ func (s *Syncer) getFolderTagMapping(mailboxName string) *FolderTagMapping {
 	}
 
 	// Find the mailbox in our cached list and check its SPECIAL-USE attributes
+	if m := s.specialUseMappingForMailbox(mailboxName); m != nil {
+		return m
+	}
+
+	// No special-use attribute — check if the folder name matches a known role fallback
+	for role, fallbacks := range defaultRoleFallbacks {
+		if !slices.ContainsFunc(fallbacks, func(name string) bool {
+			return strings.EqualFold(mailboxName, name)
+		}) {
+			continue
+		}
+		if m := lookupSpecialUseMapping(string(role)); m != nil {
+			return m
+		}
+	}
+
+	return nil
+}
+
+// specialUseMappingForMailbox looks up the cached mailbox by name and returns
+// the tag mapping for its first recognized SPECIAL-USE attribute, or nil.
+func (s *Syncer) specialUseMappingForMailbox(mailboxName string) *FolderTagMapping {
 	for _, mbox := range s.serverMailboxes {
 		if mbox.Name != mailboxName {
 			continue
 		}
 		for _, attr := range mbox.Attributes {
-			// Normalize attribute for lookup (case-insensitive)
-			normalizedAttr := strings.ToLower(attr)
-			for specialUse, mapping := range specialUseFolderTags {
-				if strings.EqualFold(normalizedAttr, strings.ToLower(specialUse)) {
-					return &mapping
-				}
+			if m := lookupSpecialUseMapping(attr); m != nil {
+				return m
 			}
 		}
-		break
+		return nil
 	}
+	return nil
+}
 
-	// No special-use attribute — check if the folder name matches a known role fallback
-	for role, fallbacks := range defaultRoleFallbacks {
-		for _, name := range fallbacks {
-			if strings.EqualFold(mailboxName, name) {
-				roleStr := string(role)
-				for specialUse, mapping := range specialUseFolderTags {
-					if strings.EqualFold(roleStr, specialUse) {
-						return &mapping
-					}
-				}
-			}
+// lookupSpecialUseMapping returns the FolderTagMapping for a SPECIAL-USE
+// attribute (case-insensitive), or nil if the attribute is unknown.
+func lookupSpecialUseMapping(attr string) *FolderTagMapping {
+	normalized := strings.ToLower(attr)
+	for specialUse, mapping := range specialUseFolderTags {
+		if strings.EqualFold(normalized, strings.ToLower(specialUse)) {
+			m := mapping
+			return &m
 		}
 	}
-
 	return nil
 }
 

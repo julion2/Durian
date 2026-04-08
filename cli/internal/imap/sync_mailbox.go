@@ -21,77 +21,99 @@ var selectedHeaders = []string{
 // are already in the store but don't have entries in message_headers yet.
 func (s *Syncer) backfillHeaders(mailboxes []string) {
 	fmt.Fprintf(s.output, "  Backfilling headers...\n")
-
 	for _, mboxName := range mailboxes {
-		mboxState := s.state.GetMailboxState(mboxName)
-		if _, err := s.client.SelectMailbox(mboxName); err != nil {
-			slog.Debug("Backfill: skip mailbox", "module", "SYNC", "mailbox", mboxName, "err", err)
-			continue
-		}
-
-		// Get all synced UIDs that have a Message-ID mapping
-		var uidsToFetch []uint32
-		for _, uid := range mboxState.SyncedUIDs {
-			messageID, ok := mboxState.GetMessageID(uid)
-			if !ok || messageID == "" {
-				continue
-			}
-			// Check if this message already has headers in the DB
-			dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
-			if err != nil || dbID == 0 {
-				continue
-			}
-			if has, _ := s.store.HasHeaders(dbID); has {
-				continue
-			}
-			uidsToFetch = append(uidsToFetch, uid)
-		}
-
-		if len(uidsToFetch) == 0 {
-			continue
-		}
-
-		fmt.Fprintf(s.output, "    %s: fetching headers for %d messages...\n", mboxName, len(uidsToFetch))
-
-		// Fetch in batches
-		const batchSize = 500
-		stored := 0
-		for i := 0; i < len(uidsToFetch); i += batchSize {
-			end := i + batchSize
-			if end > len(uidsToFetch) {
-				end = len(uidsToFetch)
-			}
-			batch := uidsToFetch[i:end]
-
-			headers, err := s.client.FetchHeadersOnly(batch)
-			if err != nil {
-				slog.Debug("Backfill fetch failed", "module", "SYNC", "mailbox", mboxName, "err", err)
-				continue
-			}
-
-			for uid, rawHeader := range headers {
-				messageID, _ := mboxState.GetMessageID(uid)
-				dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
-				if err != nil || dbID == 0 {
-					continue
-				}
-
-				parsed, err := mail.ReadMessage(bytes.NewReader(append(rawHeader, '\r', '\n')))
-				if err != nil {
-					continue
-				}
-
-				for _, hdrName := range selectedHeaders {
-					if v := parsed.Header.Get(hdrName); v != "" {
-						_ = s.store.InsertHeader(dbID, strings.ToLower(hdrName), v)
-					}
-				}
-				stored++
-			}
-		}
-
-		fmt.Fprintf(s.output, "    ✓ %d messages backfilled\n", stored)
+		s.backfillHeadersForMailbox(mboxName)
 	}
+}
+
+// backfillHeadersForMailbox fetches and stores raw headers for messages in a
+// single mailbox that don't yet have their selected headers populated.
+func (s *Syncer) backfillHeadersForMailbox(mboxName string) {
+	mboxState := s.state.GetMailboxState(mboxName)
+	if _, err := s.client.SelectMailbox(mboxName); err != nil {
+		slog.Debug("Backfill: skip mailbox", "module", "SYNC", "mailbox", mboxName, "err", err)
+		return
+	}
+
+	uidsToFetch := s.uidsNeedingHeaderBackfill(mboxState)
+	if len(uidsToFetch) == 0 {
+		return
+	}
+
+	fmt.Fprintf(s.output, "    %s: fetching headers for %d messages...\n", mboxName, len(uidsToFetch))
+
+	const batchSize = 500
+	stored := 0
+	for i := 0; i < len(uidsToFetch); i += batchSize {
+		end := i + batchSize
+		if end > len(uidsToFetch) {
+			end = len(uidsToFetch)
+		}
+		stored += s.backfillHeaderBatch(mboxName, mboxState, uidsToFetch[i:end])
+	}
+
+	fmt.Fprintf(s.output, "    ✓ %d messages backfilled\n", stored)
+}
+
+// uidsNeedingHeaderBackfill returns UIDs in the given mailbox whose messages
+// are in the store but don't yet have header rows.
+func (s *Syncer) uidsNeedingHeaderBackfill(mboxState *MailboxState) []uint32 {
+	var uids []uint32
+	for _, uid := range mboxState.SyncedUIDs {
+		messageID, ok := mboxState.GetMessageID(uid)
+		if !ok || messageID == "" {
+			continue
+		}
+		dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
+		if err != nil || dbID == 0 {
+			continue
+		}
+		if has, _ := s.store.HasHeaders(dbID); has {
+			continue
+		}
+		uids = append(uids, uid)
+	}
+	return uids
+}
+
+// backfillHeaderBatch fetches headers for a batch of UIDs and writes the
+// selected headers to the store. Returns the number of messages that had
+// headers stored.
+func (s *Syncer) backfillHeaderBatch(mboxName string, mboxState *MailboxState, batch []uint32) int {
+	headers, err := s.client.FetchHeadersOnly(batch)
+	if err != nil {
+		slog.Debug("Backfill fetch failed", "module", "SYNC", "mailbox", mboxName, "err", err)
+		return 0
+	}
+	stored := 0
+	for uid, rawHeader := range headers {
+		if s.storeHeadersForUID(uid, rawHeader, mboxState) {
+			stored++
+		}
+	}
+	return stored
+}
+
+// storeHeadersForUID parses raw headers for one message and inserts the
+// selectedHeaders into the store. Returns true if the message was processed.
+func (s *Syncer) storeHeadersForUID(uid uint32, rawHeader []byte, mboxState *MailboxState) bool {
+	messageID, _ := mboxState.GetMessageID(uid)
+	dbID, err := s.store.GetMessageDBID(messageID, s.accountName())
+	if err != nil || dbID == 0 {
+		return false
+	}
+	parsed, err := mail.ReadMessage(bytes.NewReader(append(rawHeader, '\r', '\n')))
+	if err != nil {
+		return false
+	}
+	for _, hdrName := range selectedHeaders {
+		if v := parsed.Header.Get(hdrName); v != "" {
+			if err := s.store.InsertHeader(dbID, strings.ToLower(hdrName), v); err != nil {
+				slog.Debug("InsertHeader failed", "module", "SYNC", "uid", uid, "header", hdrName, "err", err)
+			}
+		}
+	}
+	return true
 }
 
 
@@ -141,31 +163,9 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 			// instead of deleting the message. The message may have been moved to
 			// another folder (e.g. archived) and will reappear during that folder's sync.
 			tagMapping := s.getFolderTagMapping(mailboxName)
-
 			fmt.Fprintf(s.output, "  ✗ %s: %d removed\n", mailboxName, len(deletedUIDs))
 			for _, uid := range deletedUIDs {
-				messageID, hasID := mboxState.GetMessageID(uid)
-				if hasID && messageID != "" {
-					if tagMapping != nil && len(tagMapping.AddTags) > 0 {
-						// Remove the folder's tags (reverse of adding them on download)
-						slog.Debug("Removing folder tags for moved message", "module", "SYNC",
-							"uid", uid, "message_id", messageID, "folder", mailboxName, "tags", tagMapping.AddTags)
-						if err := s.store.ModifyTagsByMessageIDAndAccount(
-							messageID, s.accountName(), nil, tagMapping.AddTags); err != nil {
-							slog.Warn("remove tags failed", "module", "SYNC", "uid", uid, "err", err)
-						}
-					} else {
-						// No tag mapping for this folder — delete the message
-						slog.Debug("Deleting message removed from untagged folder", "module", "SYNC",
-							"uid", uid, "message_id", messageID, "folder", mailboxName)
-						if err := s.store.DeleteByMessageIDAndAccount(messageID, s.accountName()); err != nil {
-							slog.Warn("store delete failed", "module", "SYNC", "uid", uid, "err", err)
-						}
-					}
-				} else {
-					slog.Debug("No Message-ID for deleted UID, skipping", "module", "SYNC", "uid", uid)
-				}
-				mboxState.RemoveSyncedUID(uid)
+				s.handleDeletedUID(uid, mailboxName, mboxState, tagMapping)
 				result.DeletedMsgs++
 			}
 		}
@@ -196,92 +196,7 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 
 	// Deduplication: Check if messages already exist locally (moved from another folder)
 	// Fetch Message-IDs for unsynced UIDs first
-	var toDownload []uint32
-	if !s.options.DryRun && len(unsyncedUIDs) > 0 {
-		slog.Debug("Checking for duplicates among unsynced UIDs", "module", "SYNC", "count", len(unsyncedUIDs))
-
-		// Fetch envelopes to get Message-IDs
-		envelopes, err := s.client.FetchEnvelopes(unsyncedUIDs)
-		if err != nil {
-			slog.Debug("Failed to fetch envelopes for dedup", "module", "SYNC", "err", err)
-			// Fall back to downloading everything
-			toDownload = unsyncedUIDs
-		} else {
-			// Store ALL Message-IDs from envelopes now, so ensureMessageIDMapping
-			// in syncFlags doesn't re-fetch them from the server
-			for uid, messageID := range envelopes {
-				if messageID != "" {
-					mboxState.SetMessageID(uid, messageID)
-				}
-			}
-
-			// Get folder tag mapping for this mailbox.
-			// For Gmail All Mail, skip folder mapping — labels are synced
-			// via syncGmailLabels instead (the Archive mapping would
-			// incorrectly strip inbox tags).
-			var tagMapping *FolderTagMapping
-			if !s.isGmailAllMail(mailboxName) {
-				tagMapping = s.getFolderTagMapping(mailboxName)
-			}
-
-			// Check each message for duplicates
-			for _, uid := range unsyncedUIDs {
-				messageID, hasID := envelopes[uid]
-				if !hasID || messageID == "" {
-					// No Message-ID, must download
-					toDownload = append(toDownload, uid)
-					continue
-				}
-
-				// Check if this message already exists in the store
-				exists, err := s.store.MessageExistsForAccount(messageID, s.accountName())
-				if err != nil {
-					slog.Debug("Failed to check message existence", "module", "SYNC", "message_id", messageID, "err", err)
-					toDownload = append(toDownload, uid)
-					continue
-				}
-
-				if exists {
-					// Message exists! Update tags instead of downloading
-					slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
-
-					if tagMapping != nil {
-						addTags := s.filterConflictingTags(messageID, tagMapping.AddTags)
-						if len(addTags) > 0 || len(tagMapping.RemoveTags) > 0 {
-							if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, tagMapping.RemoveTags); err != nil {
-								slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
-							}
-						}
-					} else if !strings.EqualFold(mailboxName, "INBOX") {
-						// Custom folder with no special-use mapping — remove inbox tag
-						// since the message was moved out of INBOX
-						if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"}); err != nil {
-							slog.Debug("Failed to remove inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
-						}
-					}
-
-					// Update mailbox and UID to reflect the message's current server folder
-					if err := s.store.UpdateMailbox(messageID, s.accountName(), mailboxName, uid); err != nil {
-						slog.Debug("Failed to update mailbox", "module", "SYNC", "message_id", messageID, "err", err)
-					}
-
-					// Mark as synced (we don't need to download)
-					mboxState.AddSyncedUID(uid)
-					mboxState.SetMessageID(uid, messageID)
-					result.DeduplicatedMsgs++
-				} else {
-					// Message doesn't exist, need to download
-					toDownload = append(toDownload, uid)
-				}
-			}
-
-			if result.DeduplicatedMsgs > 0 {
-				fmt.Fprintf(s.output, "  ~ %s: %d deduplicated\n", mailboxName, result.DeduplicatedMsgs)
-			}
-		}
-	} else {
-		toDownload = unsyncedUIDs
-	}
+	toDownload := s.dedupUnsyncedUIDs(mailboxName, mboxState, unsyncedUIDs, &result)
 
 	// Nothing left to download after deduplication
 	if len(toDownload) == 0 {
@@ -384,6 +299,146 @@ func (s *Syncer) syncMailbox(mailboxName string) MailboxResult {
 	}
 
 	return result
+}
+
+// handleDeletedUID processes a single UID that disappeared from the server.
+// If the folder has a tag mapping, the folder tags are removed (message was
+// likely moved). Otherwise the message is deleted from the store. The UID is
+// always removed from the synced set.
+func (s *Syncer) handleDeletedUID(uid uint32, mailboxName string, mboxState *MailboxState, tagMapping *FolderTagMapping) {
+	defer mboxState.RemoveSyncedUID(uid)
+
+	messageID, hasID := mboxState.GetMessageID(uid)
+	if !hasID || messageID == "" {
+		slog.Debug("No Message-ID for deleted UID, skipping", "module", "SYNC", "uid", uid)
+		return
+	}
+
+	if tagMapping != nil && len(tagMapping.AddTags) > 0 {
+		// Remove the folder's tags (reverse of adding them on download)
+		slog.Debug("Removing folder tags for moved message", "module", "SYNC",
+			"uid", uid, "message_id", messageID, "folder", mailboxName, "tags", tagMapping.AddTags)
+		if err := s.store.ModifyTagsByMessageIDAndAccount(
+			messageID, s.accountName(), nil, tagMapping.AddTags); err != nil {
+			slog.Warn("remove tags failed", "module", "SYNC", "uid", uid, "err", err)
+		}
+		return
+	}
+
+	// No tag mapping for this folder — delete the message
+	slog.Debug("Deleting message removed from untagged folder", "module", "SYNC",
+		"uid", uid, "message_id", messageID, "folder", mailboxName)
+	if err := s.store.DeleteByMessageIDAndAccount(messageID, s.accountName()); err != nil {
+		slog.Warn("store delete failed", "module", "SYNC", "uid", uid, "err", err)
+	}
+}
+
+// dedupUnsyncedUIDs fetches envelopes for unsynced UIDs and checks each one
+// against the store. Already-known messages get their tags updated in-place
+// (they were moved from another folder). Returns the list of UIDs that still
+// need to be downloaded. In dry-run mode or when envelopes can't be fetched,
+// all unsynced UIDs are returned unchanged.
+func (s *Syncer) dedupUnsyncedUIDs(mailboxName string, mboxState *MailboxState, unsyncedUIDs []uint32, result *MailboxResult) []uint32 {
+	if s.options.DryRun || len(unsyncedUIDs) == 0 {
+		return unsyncedUIDs
+	}
+
+	slog.Debug("Checking for duplicates among unsynced UIDs", "module", "SYNC", "count", len(unsyncedUIDs))
+
+	envelopes, err := s.client.FetchEnvelopes(unsyncedUIDs)
+	if err != nil {
+		slog.Debug("Failed to fetch envelopes for dedup", "module", "SYNC", "err", err)
+		return unsyncedUIDs
+	}
+
+	// Store ALL Message-IDs from envelopes now, so ensureMessageIDMapping
+	// in syncFlags doesn't re-fetch them from the server
+	for uid, messageID := range envelopes {
+		if messageID != "" {
+			mboxState.SetMessageID(uid, messageID)
+		}
+	}
+
+	// Get folder tag mapping for this mailbox.
+	// For Gmail All Mail, skip folder mapping — labels are synced
+	// via syncGmailLabels instead (the Archive mapping would
+	// incorrectly strip inbox tags).
+	var tagMapping *FolderTagMapping
+	if !s.isGmailAllMail(mailboxName) {
+		tagMapping = s.getFolderTagMapping(mailboxName)
+	}
+
+	var toDownload []uint32
+	for _, uid := range unsyncedUIDs {
+		if s.dedupOneUID(uid, mailboxName, mboxState, envelopes, tagMapping, result) {
+			continue
+		}
+		toDownload = append(toDownload, uid)
+	}
+
+	if result.DeduplicatedMsgs > 0 {
+		fmt.Fprintf(s.output, "  ~ %s: %d deduplicated\n", mailboxName, result.DeduplicatedMsgs)
+	}
+	return toDownload
+}
+
+// dedupOneUID handles deduplication for a single UID. Returns true if the
+// message was deduplicated (already existed locally, tags updated in place),
+// or false if the caller needs to download it.
+func (s *Syncer) dedupOneUID(uid uint32, mailboxName string, mboxState *MailboxState, envelopes map[uint32]string, tagMapping *FolderTagMapping, result *MailboxResult) bool {
+	messageID, hasID := envelopes[uid]
+	if !hasID || messageID == "" {
+		return false
+	}
+
+	exists, err := s.store.MessageExistsForAccount(messageID, s.accountName())
+	if err != nil {
+		slog.Debug("Failed to check message existence", "module", "SYNC", "message_id", messageID, "err", err)
+		return false
+	}
+	if !exists {
+		return false
+	}
+
+	// Message exists locally — update tags instead of downloading
+	slog.Debug("Message already exists, updating tags", "module", "SYNC", "uid", uid, "message_id", messageID)
+	s.applyDedupTags(messageID, mailboxName, tagMapping)
+
+	// Update mailbox and UID to reflect the message's current server folder
+	if err := s.store.UpdateMailbox(messageID, s.accountName(), mailboxName, uid); err != nil {
+		slog.Debug("Failed to update mailbox", "module", "SYNC", "message_id", messageID, "err", err)
+	}
+
+	mboxState.AddSyncedUID(uid)
+	mboxState.SetMessageID(uid, messageID)
+	result.DeduplicatedMsgs++
+	return true
+}
+
+// applyDedupTags updates the tags of an existing message that was found in a
+// new folder. If the folder has a SPECIAL-USE tag mapping, those tags are
+// added/removed. For custom folders, the inbox tag is stripped since the
+// message was moved out of INBOX.
+func (s *Syncer) applyDedupTags(messageID, mailboxName string, tagMapping *FolderTagMapping) {
+	if tagMapping != nil {
+		addTags := s.filterConflictingTags(messageID, tagMapping.AddTags)
+		if len(addTags) == 0 && len(tagMapping.RemoveTags) == 0 {
+			return
+		}
+		if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), addTags, tagMapping.RemoveTags); err != nil {
+			slog.Debug("Failed to update tags", "module", "SYNC", "message_id", messageID, "err", err)
+		}
+		return
+	}
+
+	// Custom folder with no special-use mapping — remove inbox tag since
+	// the message was moved out of INBOX.
+	if strings.EqualFold(mailboxName, "INBOX") {
+		return
+	}
+	if err := s.store.ModifyTagsByMessageIDAndAccount(messageID, s.accountName(), nil, []string{"inbox"}); err != nil {
+		slog.Debug("Failed to remove inbox tag", "module", "SYNC", "message_id", messageID, "err", err)
+	}
 }
 
 // isConnectionError checks if an error indicates a lost connection
