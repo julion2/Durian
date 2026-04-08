@@ -49,6 +49,8 @@ query = "tag:trash"
 [[profile]]
 name = "Work"
 accounts = ["work"]
+color = "#EF4444"                 # Optional: per-profile accent color (hex).
+                                  # Overrides settings.accent_color when this profile is active.
 
 [[profile.folders]]
 name = "Inbox"
