@@ -43,7 +43,12 @@ func (h *Handler) SearchHandler(w http.ResponseWriter, r *http.Request) {
 
 	var enrichLimit int
 	if enrichStr := r.URL.Query().Get("enrich"); enrichStr != "" {
-		enrichLimit, _ = strconv.Atoi(enrichStr)
+		var err error
+		enrichLimit, err = strconv.Atoi(enrichStr)
+		if err != nil {
+			http.Error(w, "Invalid enrich parameter", http.StatusBadRequest)
+			return
+		}
 	}
 
 	response := h.Search(query, limit, enrichLimit)
