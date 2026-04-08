@@ -311,7 +311,8 @@ func (a *AccountConfig) GetIMAPMaxMessages() int {
 	return a.IMAP.MaxMessages
 }
 
-// GetIMAPBatchSize returns the batch size for fetching, defaulting to 5000
+// GetIMAPBatchSize returns the batch size for fetching, defaulting to
+// DefaultIMAPBatchSize (100) when not configured.
 func (a *AccountConfig) GetIMAPBatchSize() int {
 	if a.IMAP.BatchSize <= 0 {
 		return DefaultIMAPBatchSize

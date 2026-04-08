@@ -68,8 +68,8 @@ bazel build //macos:Durian        # GUI (macOS only, debug)
 bazel build -c opt //macos:Durian # GUI (macOS only, release)
 
 ./cli/install.sh                # build & install CLI to /usr/local/bin
-./gui/install.sh                # build & install GUI to /Applications
-./gui/run.sh                    # build & run debug GUI (DurianNightly.app)
+./macos/install.sh              # build & install GUI to /Applications
+./macos/run.sh                  # build & run debug GUI (DurianNightly.app)
 ```
 
 ## Test
@@ -125,7 +125,7 @@ durian sync --debug                   # debug output on stderr
 
 - [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
 - [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
-- [Tag Sync](docs/TAG_SYNC.md) — Multi-machine tag sync via self-hosted server
+- [Tag Sync](sync/README.md) — Multi-machine tag sync via self-hosted server
 - [Vim Compose](docs/vim-compose.md) — Vim keybindings in the compose editor
 
 ## Alternatives

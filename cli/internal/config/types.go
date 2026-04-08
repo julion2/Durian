@@ -78,7 +78,7 @@ type IMAPConfig struct {
 	Port        int      `toml:"port"`
 	Auth        string   `toml:"auth"`         // "password" or "oauth2"
 	MaxMessages int      `toml:"max_messages"` // Default: 5000, 0 = unlimited
-	BatchSize   int      `toml:"batch_size"`   // Default: 5000
+	BatchSize   int      `toml:"batch_size"`   // Default: 100 (see DefaultIMAPBatchSize)
 	Mailboxes   []string `toml:"mailboxes"`    // Optional: specific mailboxes to sync
 }
 
