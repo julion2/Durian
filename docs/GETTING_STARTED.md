@@ -1,21 +1,26 @@
 # Getting Started
 
-A sequential walkthrough from zero to a working inbox. If you already know how to install and configure an email client, skip to step 3.
+A sequential walkthrough from zero to a working inbox. If you already know how to install and configure an email client, skip to step 2.
 
 ## 1. Install the CLI
 
 The CLI is the backend for everything — install it first, even if you plan to use the GUI.
 
-**macOS (Homebrew):**
+**macOS or Linux (Homebrew):**
 ```bash
-brew install julion2/tap/durian
+brew tap julion2/tap
+brew install durian             # CLI
+brew install --cask durian      # GUI (optional, macOS only)
 ```
 
-**macOS or Linux (from source):**
+Linuxbrew (Homebrew on Linux) works for the CLI the same way. The macOS GUI cask is macOS-only; on Linux see [linux/README.md](../linux/README.md) for the experimental Qt GUI.
+
+**From source (macOS or Linux):**
 ```bash
 git clone https://github.com/julion2/Durian.git
 cd Durian
-./cli/install.sh            # copies to /usr/local/bin
+./cli/install.sh            # CLI → /usr/local/bin
+./macos/install.sh          # GUI → /Applications/Durian.app (macOS only)
 ```
 
 Verify:
@@ -23,17 +28,9 @@ Verify:
 durian --version
 ```
 
-## 2. Install the macOS GUI (optional)
+The GUI launches `durian serve` automatically as a child process — no manual daemon.
 
-Only needed on macOS if you want the graphical client.
-
-```bash
-./macos/install.sh          # builds release + installs to /Applications/Durian.app
-```
-
-The GUI will launch `durian serve` automatically as a child process — no manual daemon.
-
-## 3. Create your config
+## 2. Create your config
 
 Durian reads `~/.config/durian/config.toml`. Start from the example:
 
@@ -76,7 +73,7 @@ Validate the config before touching auth:
 durian validate
 ```
 
-## 4. Authenticate
+## 3. Authenticate
 
 Pick one guide based on your provider:
 
@@ -89,7 +86,7 @@ durian auth status
 ```
 and see your account marked as authenticated.
 
-## 5. First sync
+## 4. First sync
 
 ```bash
 durian sync personal        # by alias
@@ -105,7 +102,7 @@ Syncing personal@example.com...
 
 If your mailbox is large, the first sync can take a few minutes. Subsequent syncs are incremental.
 
-## 6. Use it
+## 5. Use it
 
 ### Option A: GUI
 Launch **Durian.app** from `/Applications`. It'll auto-start the backend and show your inbox. Vim-style navigation is enabled by default:
@@ -129,7 +126,7 @@ durian send --to bob@x.com --subject Hi --body "Hello"
 
 See `durian --help` for the full command list.
 
-## 7. Common next steps
+## 6. Common next steps
 
 - **Sidebar folders and profiles** — copy `docs/profiles-example.toml` to `~/.config/durian/profiles.toml`
 - **Custom keymaps** — copy `docs/keymaps-example.toml` to `~/.config/durian/keymaps.toml`
