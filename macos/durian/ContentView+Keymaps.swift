@@ -384,6 +384,15 @@ extension ContentView {
                 await MainActor.run {
                     showSearchPopup = false
                     showTagPicker = false
+                    // ESC in search popup should exit search mode entirely —
+                    // the user pressed ESC (cancel), not Enter (confirm).
+                    // Tag picker ESC should NOT exit search mode (user may
+                    // be tagging a search result and wants to return to results).
+                    if ctx == .search && isSearchMode {
+                        isSearchMode = false
+                        searchResults = []
+                        lastSearchQuery = ""
+                    }
                 }
             }
         }

@@ -131,8 +131,9 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
     private var currentFolder = "inbox"
     private var currentQuery = "tag:inbox"
     
-    // Cancellation support for prefetch
+    // Cancellation support for prefetch and active search
     private var prefetchTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
     private var shouldCancelPrefetch = false
 
     // Generation counter to discard stale search results on rapid folder/profile switches
@@ -262,11 +263,16 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         shouldCancelPrefetch = true
         prefetchTask?.cancel()
         prefetchTask = nil
-        
+        searchTask?.cancel()
+
         currentFolder = name
         currentQuery = ProfileManager.shared.buildQuery(folderName: name)
         Log.debug("BACKEND", "selectFolder: \(currentQuery)")
-        await search(currentQuery)
+
+        // Wrap search in a stored Task so the next selectFolder() can cancel it
+        let task = Task { await search(currentQuery) }
+        searchTask = task
+        await task.value
     }
 
     // MARK: - Generic HTTP Request Function
@@ -410,6 +416,12 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         }
 
         let response: DurianResponse? = await request(endpoint: endpoint)
+
+        // Cancelled by a newer selectFolder() call — bail out
+        guard !Task.isCancelled else {
+            Log.debug("BACKEND", "Search cancelled (gen \(myGeneration))")
+            return
+        }
 
         // A newer search has started — discard this stale result silently
         guard myGeneration == searchGeneration else {
