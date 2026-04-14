@@ -115,7 +115,9 @@ class AccountManager: ObservableObject {
     func selectTag(_ tag: String) async {
         guard let backend = emailBackend else { return }
         selectedFolder = tag
-        mailMessages.removeAll()
+        // Don't clear mailMessages eagerly — the old list stays visible
+        // until search() replaces it with fresh results. This avoids the
+        // blank-screen flash on rapid folder switching (gi → gs → gd).
         await backend.selectFolder(tag)
         syncFromBackend()
         await refreshFolderCounts()

@@ -76,6 +76,9 @@ struct EmailListView: View {
             .onChange(of: emailListGeneration) { _, _ in
                 cachedItems = buildEmailList()
             }
+            .onChange(of: emails) { _, _ in
+                cachedItems = buildEmailList()
+            }
             .onAppear {
                 if cachedItems.isEmpty { cachedItems = buildEmailList() }
             }
