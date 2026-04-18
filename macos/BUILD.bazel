@@ -53,10 +53,7 @@ swift_library(
         "durian/Utilities/**/*.swift",
         "durian/Network/**/*.swift",
         "durian/Keymaps/**/*.swift",
-    ]) + [
-        "durian/SettingsManager.swift",
-        "durian/EmailHTMLParser.swift",
-    ],
+    ]),
     deps = ["@toml_decoder//:TOMLDecoder"],
 )
 

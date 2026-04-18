@@ -3,7 +3,6 @@
 //  Durian
 //
 //  Vim-style keymap handler registration for ContentView.
-//  Split out of ContentView.swift to keep the main view file under 800 lines.
 //
 
 import SwiftUI
