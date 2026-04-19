@@ -31,7 +31,7 @@ enum DateGrouping: Hashable, Comparable {
         case .thisWeek: return 2
         case .lastWeek: return 3
         case .month(let year, let month): 
-            // Muss > 3 sein (nach lastWeek), neuere Monate = kleinerer Wert
+            // Must be > 3 (after lastWeek), newer months = smaller value
             return 100 + (2100 - year) * 12 + (12 - month)
         }
     }
@@ -52,6 +52,9 @@ struct EmailListView: View {
     var onTogglePin: ((String) -> Void)?
     var onToggleRead: ((String) -> Void)?
     var onDelete: ((String) -> Void)?
+    var onReply: ((String) -> Void)?
+    var onForward: ((String) -> Void)?
+    var onShowTagPicker: ((String) -> Void)?
 
     @State private var cachedItems: [ListItem] = []
 
@@ -201,6 +204,21 @@ struct EmailListView: View {
                 cursorId = email.id
                 selection = [email.id]
                 onDelete?(email.id)
+            },
+            onReply: {
+                cursorId = email.id
+                selection = [email.id]
+                onReply?(email.id)
+            },
+            onForward: {
+                cursorId = email.id
+                selection = [email.id]
+                onForward?(email.id)
+            },
+            onShowTagPicker: {
+                cursorId = email.id
+                selection = [email.id]
+                onShowTagPicker?(email.id)
             }
         ))
         .id(email.id)
@@ -230,7 +248,7 @@ struct EmailListView: View {
             if groups[group] == nil { groups[group] = [] }
             groups[group]?.append(email)
         }
-        // Innerhalb jeder Gruppe nach timestamp sortieren (neueste zuerst)
+        // Sort within each group by timestamp (newest first)
         return groups.map { ($0.key, $0.value.sorted { $0.timestamp > $1.timestamp }) }
             .sorted { $0.0 < $1.0 }
     }

@@ -40,6 +40,7 @@ struct TagChipsView: View {
                     .foregroundColor(.white.opacity(0.7))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove tag \(tag)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -87,6 +88,7 @@ struct TagChipsView: View {
                     .foregroundColor(Color.Detail.textTertiary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Add tag")
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .background(Color(NSColor.controlBackgroundColor))
