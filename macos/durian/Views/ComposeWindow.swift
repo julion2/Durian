@@ -93,13 +93,12 @@ struct ComposeWindow: View {
             
             // Action icons (right)
             ToolbarItemGroup(placement: .primaryAction) {
-                // AI / Sparkles
-                Button(action: {}) {
-                    Image(systemName: "sparkles")
-                }
-                .disabled(true)
-                .help("AI Assist (Coming Soon)")
-                
+                // Placeholder: AI Assist (not yet implemented)
+                // Button(action: {}) {
+                //     Image(systemName: "sparkles")
+                // }
+                // .help("AI Assist")
+
                 // Attachment
                 Button(action: {
                     showingFilePicker = true
@@ -107,20 +106,12 @@ struct ComposeWindow: View {
                     Image(systemName: "paperclip")
                 }
                 .help("Add Attachment")
-                
-                // Templates
-                Button(action: {}) {
-                    Image(systemName: "doc.on.doc")
-                }
-                .disabled(true)
-                .help("Templates (Coming Soon)")
-                
-                // Text format
-                Button(action: {}) {
-                    Image(systemName: "textformat")
-                }
-                .disabled(true)
-                .help("Text Formatting (Coming Soon)")
+
+                // Placeholder: Templates (not yet implemented)
+                // Button(action: {}) {
+                //     Image(systemName: "doc.on.doc")
+                // }
+                // .help("Templates")
                 
                 // More options
                 Menu {
