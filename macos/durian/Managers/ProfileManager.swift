@@ -13,7 +13,7 @@ import TOMLDecoder
 
 struct FolderConfig: Hashable {
     let name: String
-    let icon: String
+    let icon: String?
     let query: String
 }
 
@@ -60,7 +60,7 @@ struct ProfilesConfig: Decodable {
     
     struct FolderEntry: Decodable {
         let name: String
-        let icon: String
+        var icon: String?
         let query: String
     }
 }
