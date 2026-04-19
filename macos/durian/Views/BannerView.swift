@@ -58,6 +58,7 @@ struct BannerView: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(12)
         .background(
@@ -65,5 +66,8 @@ struct BannerView: View {
                 .fill(Color(nsColor: .windowBackgroundColor))
                 .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(banner.title): \(banner.message)")
+        .accessibilityAddTraits(.isStaticText)
     }
 }

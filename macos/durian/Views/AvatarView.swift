@@ -38,6 +38,8 @@ struct AvatarView: View {
             }
         }
         .frame(width: size, height: size)
+        .accessibilityLabel("Avatar for \(extractDisplayName(from: name))")
+        .accessibilityHidden(true)
         .task(id: email) {
             await loadAvatarImage()
         }
