@@ -633,24 +633,24 @@ struct ThreadMessageCardView: View {
             // Yesterday
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm"
-            return "Gestern, \(formatter.string(from: date))"
+            return "Yesterday, \(formatter.string(from: date))"
         } else if let daysAgo = calendar.dateComponents([.day], from: date, to: now).day, daysAgo < 7 {
             // Within last week: show day name
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "de_DE")
+            formatter.locale = Locale(identifier: "en_US")
             formatter.dateFormat = "EEEE, HH:mm"
             return formatter.string(from: date)
         } else if calendar.component(.year, from: date) == calendar.component(.year, from: now) {
             // This year: show date without year
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "de_DE")
-            formatter.dateFormat = "d. MMM, HH:mm"
+            formatter.locale = Locale(identifier: "en_US")
+            formatter.dateFormat = "MMM d, HH:mm"
             return formatter.string(from: date)
         } else {
             // Older: show full date
             let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "de_DE")
-            formatter.dateFormat = "d. MMM yyyy, HH:mm"
+            formatter.locale = Locale(identifier: "en_US")
+            formatter.dateFormat = "MMM d, yyyy, HH:mm"
             return formatter.string(from: date)
         }
     }
