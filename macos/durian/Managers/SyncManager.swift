@@ -118,7 +118,7 @@ class SyncManager: ObservableObject {
             .sink { [weak self] isConnected in
                 Task { @MainActor in
                     if isConnected {
-                        Log.warning("SYNC", "Back online, restarting timers and syncing")
+                        Log.info("SYNC", "Back online, restarting timers and syncing")
                         self?.pendingOfflineBanner?.cancel()
                         self?.pendingOfflineBanner = nil
                         if self?.userSawFailureBanner == true {
@@ -128,7 +128,7 @@ class SyncManager: ObservableObject {
                         self?.restartTimers()
                         await self?.quickSync()
                     } else {
-                        Log.warning("SYNC", "Went offline, stopping timers")
+                        Log.info("SYNC", "Went offline, stopping timers")
                         self?.stopTimers()
                         // Delay offline banner — brief disconnects (WiFi switch) shouldn't notify
                         let work = DispatchWorkItem { [weak self] in
