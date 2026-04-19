@@ -237,44 +237,7 @@ struct ContentView: View {
                 }
                 
                 if !displayEmails.isEmpty {
-                    EmailListView(
-                        emails: displayEmails,
-                        emailListGeneration: accountManager.emailListGeneration,
-                        cursorId: $cursorEmailId,
-                        selection: $markedEmails,
-                        onEmailAppear: { email in
-                            // Only prefetch body for currently selected email (avoids request storm on scroll)
-                            guard email.id == cursorEmailId else { return }
-                            switch email.bodyState {
-                            case .notLoaded, .failed:
-                                Task {
-                                    await accountManager.fetchEmailBody(id: email.id)
-                                }
-                            case .loading, .loaded:
-                                break
-                            }
-                        },
-                        onTogglePin: { emailId in
-                            Task {
-                                await accountManager.togglePin(id: emailId)
-                            }
-                        },
-                        onToggleRead: { emailId in
-                            Task {
-                                await accountManager.toggleRead(id: emailId)
-                            }
-                        },
-                        onDelete: { emailId in
-                            Task {
-                                await accountManager.deleteMessage(id: emailId)
-                                await MainActor.run {
-                                    // Clear selection after delete
-                                    markedEmails = []
-                                    detailMode = .empty
-                                }
-                            }
-                        }
-                    )
+                    emailListView
                 } else if !isSearchMode && accountManager.isLoadingEmails {
                     VStack {
                         ProgressView()
@@ -285,16 +248,13 @@ struct ContentView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
                 } else {
-                    Text(isSearchMode ? "No results" : "No emails")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 240, maxHeight: .infinity)
+                    emptyStateView
                 }
             }
             .navigationTitle("Durian")
             .navigationSubtitle(isSearchMode ? "Search: \(lastSearchQuery)" : accountManager.selectedFolder)
             .toolbar {
-                // Mitte: Compose + Email Aktionen
+                // Center: Compose + Email Actions
                 ToolbarItemGroup(placement: .principal) {
                     Button(action: { openNewCompose() }) {
                         Image(systemName: "square.and.pencil")
@@ -340,7 +300,7 @@ struct ContentView: View {
                     .disabled(markedEmails.isEmpty)
                 }
                 
-                // Rechts: Search & Sync
+                // Right: Search & Sync
                 ToolbarItemGroup(placement: .automatic) {
                     Button(action: { showSearchPopup = true }) {
                         Image(systemName: "magnifyingglass")
@@ -502,6 +462,86 @@ struct ContentView: View {
                           ?? searchResults.first(where: { $0.id == emailId }),
               let messages = email.threadMessages else { return 1 }
         return max(messages.count, 1)
+    }
+
+    // MARK: - Email List
+
+    private var emailListView: some View {
+        EmailListView(
+            emails: displayEmails,
+            emailListGeneration: accountManager.emailListGeneration,
+            cursorId: $cursorEmailId,
+            selection: $markedEmails,
+            onEmailAppear: { email in
+                guard email.id == cursorEmailId else { return }
+                switch email.bodyState {
+                case .notLoaded, .failed:
+                    Task { await accountManager.fetchEmailBody(id: email.id) }
+                case .loading, .loaded:
+                    break
+                }
+            },
+            onTogglePin: { emailId in
+                Task { await accountManager.togglePin(id: emailId) }
+            },
+            onToggleRead: { emailId in
+                Task { await accountManager.toggleRead(id: emailId) }
+            },
+            onDelete: { emailId in
+                Task {
+                    await accountManager.deleteMessage(id: emailId)
+                    await MainActor.run {
+                        markedEmails = []
+                        detailMode = .empty
+                    }
+                }
+            },
+            onReply: { emailId in
+                handleEmailSelection(emailId)
+                Task {
+                    await accountManager.fetchEmailBody(id: emailId)
+                    await MainActor.run { replyToSelected() }
+                }
+            },
+            onForward: { emailId in
+                handleEmailSelection(emailId)
+                Task {
+                    await accountManager.fetchEmailBody(id: emailId)
+                    await MainActor.run { forwardSelected() }
+                }
+            },
+            onShowTagPicker: { _ in
+                Task {
+                    allTags = await accountManager.fetchAllTags()
+                    showTagPicker = true
+                }
+            }
+        )
+    }
+
+    // MARK: - Empty State
+
+    @ViewBuilder
+    private var emptyStateView: some View {
+        if isSearchMode {
+            ContentUnavailableView("No Results", systemImage: "magnifyingglass",
+                                   description: Text("No emails match your search."))
+        } else if ConfigManager.shared.getAccounts().isEmpty {
+            ContentUnavailableView {
+                Label("No Accounts", systemImage: "person.crop.circle.badge.exclamationmark")
+            } description: {
+                Text("Add an account in\n~/.config/durian/config.toml\nthen run durian auth login <account>")
+            }
+        } else if syncManager.lastSyncTime == nil {
+            ContentUnavailableView {
+                Label("No Emails Yet", systemImage: "tray")
+            } description: {
+                Text("Run durian sync from the terminal to fetch your emails.")
+            }
+        } else {
+            ContentUnavailableView("No Emails", systemImage: "tray",
+                                   description: Text("This folder is empty."))
+        }
     }
 
     // MARK: - Display Emails (Search Mode vs Normal)

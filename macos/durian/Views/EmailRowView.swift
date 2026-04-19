@@ -11,6 +11,9 @@ struct EmailRowView: View, Equatable {
     var onTogglePin: (() -> Void)?
     var onToggleRead: (() -> Void)?
     var onDelete: (() -> Void)?
+    var onReply: (() -> Void)?
+    var onForward: (() -> Void)?
+    var onShowTagPicker: (() -> Void)?
 
     static func == (lhs: EmailRowView, rhs: EmailRowView) -> Bool {
         lhs.email.id == rhs.email.id &&
@@ -98,6 +101,10 @@ struct EmailRowView: View, Equatable {
             .fill(isSelected ? ProfileManager.shared.resolvedAccentColor : Color.clear)
         )
         .padding(.horizontal, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(emailAccessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityAddTraits(!email.isRead ? .isHeader : [])
         .drawingGroup()
         .contextMenu {
             Button(action: { onTogglePin?() }) {
@@ -111,22 +118,19 @@ struct EmailRowView: View, Equatable {
             
             Divider()
             
-            Button(action: {}) {
+            Button(action: { onReply?() }) {
                 Label("Reply", systemImage: "arrowshape.turn.up.left")
             }
-            .disabled(true)
-            
-            Button(action: {}) {
+
+            Button(action: { onForward?() }) {
                 Label("Forward", systemImage: "arrowshape.turn.up.right")
             }
-            .disabled(true)
-            
+
             Divider()
-            
-            Button(action: {}) {
+
+            Button(action: { onShowTagPicker?() }) {
                 Label("Tags...", systemImage: "tag")
             }
-            .disabled(true)
             
             Divider()
             
@@ -134,6 +138,21 @@ struct EmailRowView: View, Equatable {
                 Label("Delete", systemImage: "trash")
             }
         }
+    }
+
+    // MARK: - Accessibility
+
+    private var emailAccessibilityLabel: String {
+        var parts: [String] = []
+        if !email.isRead { parts.append("Unread") }
+        if email.isPinned { parts.append("Pinned") }
+        let sender = cachedCounterparties.map(\.name).joined(separator: ", ")
+        parts.append(sender.isEmpty ? Self.extractName(from: email.from) : sender)
+        parts.append(email.subject.isEmpty ? "No Subject" : email.subject)
+        parts.append(email.date)
+        if email.hasAttachment { parts.append("Has attachment") }
+        if !visibleTags.isEmpty { parts.append("Tags: \(visibleTags.joined(separator: ", "))") }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Tag Row
@@ -353,6 +372,7 @@ private struct TruncatedTagsView: View {
                 Text("+\(result.overflow)")
                     .font(.caption2)
                     .foregroundStyle(isSelected ? Color.white.opacity(0.5) : Color.secondary)
+                    .accessibilityLabel("\(result.overflow) more tags")
             }
         }
     }
