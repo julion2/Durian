@@ -125,8 +125,14 @@ func (c *Client) Send(msg *Message) error {
 	}
 	defer client.Close()
 
-	// Say hello
-	if err := client.Hello("localhost"); err != nil {
+	// Say hello with sender's domain (some providers like GMX reject "localhost")
+	ehloHost := "localhost"
+	if from, err := ParseAddress(msg.From); err == nil {
+		if at := strings.LastIndex(from, "@"); at != -1 {
+			ehloHost = from[at+1:]
+		}
+	}
+	if err := client.Hello(ehloHost); err != nil {
 		return fmt.Errorf("HELO failed: %w", err)
 	}
 
