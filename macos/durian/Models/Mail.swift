@@ -105,7 +105,7 @@ struct MailFolder: Identifiable, Hashable {
     let id: String
     let name: String
     let displayName: String
-    let icon: String
+    let icon: String?
     let accountId: String
     let isSpecial: Bool  // true for inbox, sent, drafts, trash
     let specialType: SpecialFolderType?
@@ -145,7 +145,7 @@ struct MailFolder: Identifiable, Hashable {
     }
     
     /// Create from profile folder config (name, displayName, icon)
-    init(name: String, displayName: String, icon: String) {
+    init(name: String, displayName: String, icon: String?) {
         self.id = "folder:\(name)"
         self.name = name
         self.displayName = displayName
