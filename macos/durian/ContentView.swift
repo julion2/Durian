@@ -392,9 +392,20 @@ struct ContentView: View {
                 isSearchMode = false
                 searchResults = []
                 lastSearchQuery = ""
+                isThreadFocused = false
+                keymapHandler.engine.setContext(.list)
+                cursorEmailId = nil
+                markedEmails = []
                 Task {
                     await accountManager.selectTag(tagId)
                 }
+            }
+        }
+        .onChange(of: accountManager.emailListGeneration) { _, _ in
+            // Auto-select first email when list data arrives and cursor is empty
+            if cursorEmailId == nil, let firstId = accountManager.mailMessages.first?.id {
+                cursorEmailId = firstId
+                markedEmails = [firstId]
             }
         }
         .onChange(of: markedEmails) { _, newSelection in
