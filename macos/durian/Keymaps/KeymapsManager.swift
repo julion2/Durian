@@ -487,6 +487,7 @@ struct KeymapEntry: Codable {
     var sequence: Bool
     var supportsCount: Bool
     var context: String
+    var tags: String?  // For tag_op action: "+todo -inbox"
 
     enum CodingKeys: String, CodingKey {
         case action
@@ -497,6 +498,7 @@ struct KeymapEntry: Codable {
         case sequence
         case supportsCount = "supports_count"
         case context
+        case tags
     }
 
     // Custom init for backwards compatibility with old configs
@@ -507,14 +509,14 @@ struct KeymapEntry: Codable {
         modifiers = try container.decode([String].self, forKey: .modifiers)
         description = try container.decode(String.self, forKey: .description)
         enabled = try container.decode(Bool.self, forKey: .enabled)
-        // Defaults for old configs without these fields
         sequence = try container.decodeIfPresent(Bool.self, forKey: .sequence) ?? false
         supportsCount = try container.decodeIfPresent(Bool.self, forKey: .supportsCount) ?? false
         context = try container.decodeIfPresent(String.self, forKey: .context) ?? "list"
+        tags = try container.decodeIfPresent(String.self, forKey: .tags)
     }
 
     // Memberwise init for creating entries programmatically
-    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false, context: String = "list") {
+    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false, context: String = "list", tags: String? = nil) {
         self.action = action
         self.key = key
         self.modifiers = modifiers
@@ -523,6 +525,7 @@ struct KeymapEntry: Codable {
         self.sequence = sequence
         self.supportsCount = supportsCount
         self.context = context
+        self.tags = tags
     }
 }
 

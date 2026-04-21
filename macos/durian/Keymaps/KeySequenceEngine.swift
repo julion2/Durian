@@ -44,6 +44,9 @@ class KeySequenceEngine: ObservableObject {
     /// Whether engine is waiting for more keys
     @Published private(set) var isWaitingForMore: Bool = false
 
+    /// Last matched sequence string (for tag_op lookups)
+    private(set) var lastMatchedSequence: String = ""
+
     /// Current visual mode type (none, line, toggle)
     @Published private(set) var visualModeType: VisualModeType = .none
 
@@ -184,6 +187,8 @@ class KeySequenceEngine: ObservableObject {
 
         switch result {
         case .match(let action, let count):
+            let (_, seq) = matcher.parseCountAndSequence(bufferStr)
+            lastMatchedSequence = seq
             executeAction(action, count: count)
             buffer.clear()
             currentSequence = ""

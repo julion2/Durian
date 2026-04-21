@@ -78,6 +78,36 @@ action = "tag_picker"
 key = "t"
 description = "Open tag picker"
 
+# ── Tag Operations (configurable tag shortcuts) ───────────────────────
+# tag_op applies +/- tag operations defined in the "tags" field.
+# Add your own shortcuts for any tag workflow.
+
+[[keymaps]]
+action = "tag_op"
+key = "T"
+tags = "+todo -inbox"
+description = "Mark as todo"
+
+[[keymaps]]
+action = "tag_op"
+key = "W"
+tags = "+waiting -inbox"
+description = "Mark as waiting"
+
+# More examples:
+# [[keymaps]]
+# action = "tag_op"
+# key = "!"
+# tags = "+urgent"
+# description = "Mark urgent"
+#
+# [[keymaps]]
+# action = "tag_op"
+# key = "ge"
+# sequence = true
+# tags = "+ephemeral"
+# description = "Mark as ephemeral"
+
 # ── Compose ────────────────────────────────────────────────────────────
 
 [[keymaps]]

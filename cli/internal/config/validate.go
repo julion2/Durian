@@ -257,7 +257,7 @@ var (
 		"next_email": true, "prev_email": true, "first_email": true, "last_email": true,
 		"page_down": true, "page_up": true,
 		"archive": true, "compose": true, "reply": true, "reply_all": true, "forward": true,
-		"toggle_read": true, "toggle_star": true, "delete": true,
+		"toggle_read": true, "toggle_star": true, "delete": true, "tag_op": true,
 		"go_inbox": true, "go_sent": true, "go_drafts": true, "go_archive": true,
 		"search": true, "close_detail": true, "reload_inbox": true, "tag_picker": true,
 		"enter_visual_mode": true, "enter_toggle_mode": true, "toggle_selection": true, "exit_visual_mode": true,

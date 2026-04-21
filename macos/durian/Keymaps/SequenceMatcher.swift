@@ -27,6 +27,9 @@ class SequenceMatcher {
 
     /// Per-context actions that support count prefix
     private var contextCountSupported: [KeymapContext: Set<KeymapAction>] = [:]
+
+    /// Per-context tag_op tags lookup: sequence → tags string (e.g. "+todo -inbox")
+    private var contextTagOps: [KeymapContext: [String: String]] = [:]
     
     // MARK: - Init
     
@@ -75,6 +78,7 @@ class SequenceMatcher {
         contextSequenceLookup = [:]
         contextPrefixes = [:]
         contextCountSupported = [:]
+        contextTagOps = [:]
 
         for context in KeymapContext.allCases {
             let contextEntries = keymapEntries.filter {
@@ -99,6 +103,16 @@ class SequenceMatcher {
                 }
             }
             contextPrefixes[context] = prefixes
+
+            // Tag ops lookup
+            var tagOps: [String: String] = [:]
+            for entry in contextEntries where entry.action == "tag_op" {
+                if let tags = entry.tags {
+                    let seqKey = entry.modifiers == ["ctrl"] ? "ctrl+\(entry.key.lowercased())" : entry.key
+                    tagOps[seqKey] = tags
+                }
+            }
+            contextTagOps[context] = tagOps
 
             // Count support
             contextCountSupported[context] = Set(
@@ -155,6 +169,11 @@ class SequenceMatcher {
         return .noMatch
     }
     
+    /// Get tags for a tag_op sequence in a given context
+    func tagOpTags(for sequence: String, context: KeymapContext) -> String? {
+        contextTagOps[context]?[sequence]
+    }
+
     /// Get description for a sequence
     func description(for sequence: String) -> String? {
         sequences.first { $0.sequence == sequence }?.description
@@ -179,7 +198,7 @@ class SequenceMatcher {
     
     /// Parse count prefix from buffer
     /// e.g., "5j" → (5, "j"), "12gg" → (12, "gg"), "gg" → (nil, "gg")
-    private func parseCountAndSequence(_ buffer: String) -> (count: Int?, sequence: String) {
+    func parseCountAndSequence(_ buffer: String) -> (count: Int?, sequence: String) {
         var digits = ""
         var rest = ""
         var foundNonDigit = false
