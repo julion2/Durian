@@ -442,6 +442,11 @@ func (s *Syncer) uploadFolderMoves(mboxState *MailboxState, localMessages map[st
 		if archive, err := s.client.FindArchiveMailbox(); err == nil {
 			s.archiveMailbox = archive
 			slog.Debug("Resolved archive mailbox", "module", "SYNC", "account", s.accountName(), "mailbox", archive)
+		} else if _, allErr := s.client.FindMailboxByRole(RoleAll); allErr == nil {
+			// Gmail/Google Workspace: no \Archive folder, but \All (All Mail) exists.
+			// Archiving = just remove from INBOX (message stays in All Mail automatically).
+			s.archiveMailbox = "_expunge_only"
+			slog.Debug("Gmail detected: archive via expunge-only (All Mail)", "module", "SYNC", "account", s.accountName())
 		} else {
 			slog.Warn("No archive mailbox found", "module", "SYNC", "account", s.accountName(), "err", err)
 		}
@@ -464,10 +469,12 @@ func (s *Syncer) uploadFolderMoves(mboxState *MailboxState, localMessages map[st
 			continue
 		}
 
-		// COPY to destination
-		if err := s.client.CopyToMailbox(m.uid, destMailbox); err != nil {
-			slog.Debug("Copy failed for folder move", "module", "SYNC", "uid", m.uid, "dest", destMailbox, "err", err)
-			continue
+		// COPY to destination (skip for Gmail expunge-only archive)
+		if destMailbox != "_expunge_only" {
+			if err := s.client.CopyToMailbox(m.uid, destMailbox); err != nil {
+				slog.Debug("Copy failed for folder move", "module", "SYNC", "uid", m.uid, "dest", destMailbox, "err", err)
+				continue
+			}
 		}
 
 		// Set \Deleted on source (INBOX)
