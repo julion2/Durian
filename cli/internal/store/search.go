@@ -424,6 +424,9 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 	case "to":
 		return "m.to_addrs LIKE ?", []interface{}{"%" + f.value + "%"}, nil
 
+	case "cc":
+		return "m.cc_addrs LIKE ?", []interface{}{"%" + f.value + "%"}, nil
+
 	case "subject":
 		return "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)",
 			[]interface{}{"subject:" + f.value}, nil

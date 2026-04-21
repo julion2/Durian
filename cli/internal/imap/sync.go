@@ -54,8 +54,9 @@ type SyncOptions struct {
 	Mode             SyncMode            // Sync direction
 	Mailboxes        []string            // Specific mailboxes to sync (empty = all)
 	Store            *store.DB           // SQLite store (required)
-	FilterRules      []config.RuleConfig // User-defined filter rules applied at insert time
-	BackfillHeaders  bool                // Fetch and store headers for existing messages
+	FilterRules      []config.RuleConfig          // User-defined filter rules applied at insert time
+	Groups           map[string]config.GroupEntry // Contact groups for group: expansion in rules
+	BackfillHeaders  bool                         // Fetch and store headers for existing messages
 }
 
 // SyncResult contains the results of a sync operation

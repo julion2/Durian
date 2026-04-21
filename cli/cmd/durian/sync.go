@@ -104,6 +104,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		Store:           emailDB,
 		FilterRules:     rules,
 		BackfillHeaders: syncBackfillHeaders,
+		Groups:          func() map[string]config.GroupEntry { g, _ := config.LoadGroups(""); return g }(),
 	}
 
 	// Determine which accounts to sync

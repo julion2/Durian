@@ -1,38 +1,107 @@
 # Filter rules — applied automatically when syncing new messages.
+# Rules are evaluated sequentially: order matters for overlapping matches.
 # Copy to ~/.config/durian/rules.toml and customize.
 # Validate with: durian validate rules
 
-# ── Static tag rules ──────────────────────────────────────────────────
+# ============================================================
+# MAILING LISTS & NEWSLETTERS
+# ============================================================
 
 [[rules]]
-name = "Work emails"
-match = "from:@work.test"
-add_tags = ["work"]
+name = "Mailing lists"
+match = "header:list-id:"
+add_tags = ["list"]
 
 [[rules]]
-name = "Newsletters"
-match = "to:newsletter@"
-add_tags = ["newsletter"]
+name = "Newsletters (commercial)"
+match = "header:list-unsubscribe: NOT header:list-id:"
+add_tags = ["newsletter", "ephemeral"]
+remove_tags = ["inbox"]
+
+# ============================================================
+# GITHUB (split by reason — different priority levels)
+# ============================================================
+
+[[rules]]
+name = "GitHub mentions"
+match = "to:mention@noreply.github.com OR header:x-github-reason:mention"
+add_tags = ["gh", "gh/mention"]
+
+[[rules]]
+name = "GitHub review requested"
+match = "to:review_requested@noreply.github.com OR header:x-github-reason:review_requested"
+add_tags = ["gh", "gh/review"]
+
+[[rules]]
+name = "GitHub assigned"
+match = "to:assign@noreply.github.com OR header:x-github-reason:assign"
+add_tags = ["gh", "gh/assigned"]
+
+[[rules]]
+name = "GitHub subscribed (noise)"
+match = "to:subscribed@noreply.github.com OR header:x-github-reason:subscribed"
+add_tags = ["gh", "gh/subscribed", "ephemeral"]
 remove_tags = ["inbox"]
 
 [[rules]]
-name = "Invoices with attachments"
-match = "subject:invoice has:attachment"
-add_tags = ["invoice"]
+name = "GitHub CI activity"
+match = "to:ci_activity@noreply.github.com OR header:x-github-reason:ci_activity"
+add_tags = ["gh", "gh/ci", "ephemeral"]
+remove_tags = ["inbox"]
+
+# ============================================================
+# AUTOMATED / BULK (must run AFTER list/gh rules)
+# ============================================================
 
 [[rules]]
-name = "Mailing list"
-match = "header:list-id:dev-list"
-accounts = ["personal"]                    # Only apply to this account
-add_tags = ["mailing-list"]
+name = "Bulk notifications"
+match = "(header:precedence:bulk OR header:auto-submitted:auto-generated) NOT header:list-unsubscribe: NOT header:list-id: NOT header:x-github-reason:"
+add_tags = ["notification", "ephemeral"]
 remove_tags = ["inbox"]
 
 [[rules]]
-name = "Bounce detection"
-match = "header:return-path:bounces@"
-add_tags = ["bounce"]
+name = "Shipping & tracking"
+match = "(subject:Versand OR subject:Lieferung OR subject:tracking OR subject:Bestellung OR subject:shipment OR subject:delivered)"
+add_tags = ["notification", "ephemeral"]
+remove_tags = ["inbox"]
 
-# ── Exec hook (external command) ──────────────────────────────────────
+# ============================================================
+# ADDRESSING (customize per account!)
+# ============================================================
+
+# [[rules]]
+# name = "Direct to me (work)"
+# match = "to:you@company.com"
+# add_tags = ["to-me"]
+# accounts = ["work"]
+
+# [[rules]]
+# name = "CC only (work)"
+# match = "cc:you@company.com NOT to:you@company.com"
+# add_tags = ["cc-only"]
+# accounts = ["work"]
+
+# ============================================================
+# LONGTERM TYPE TAGS (10+ years retrieval)
+# ============================================================
+
+# group: in rules ONLY for persistent type tags.
+# NEVER for investor/advisor/press — those must stay query-time
+# expansion so role changes don't require backfilling old mails.
+
+# [[rules]]
+# name = "Legal (persistent tag via group)"
+# match = "group:legal"
+# add_tags = ["legal"]
+
+[[rules]]
+name = "Contracts"
+match = "(subject:Vertrag OR subject:contract OR subject:NDA OR subject:agreement OR subject:Vereinbarung OR subject:MoU) has:attachment:pdf"
+add_tags = ["finance/contract"]
+
+# ============================================================
+# EXEC HOOKS (external commands)
+# ============================================================
 # Runs a command for each matching email. The command receives email
 # data as JSON on stdin and returns tag operations on stdout.
 #
@@ -44,25 +113,32 @@ add_tags = ["bounce"]
 # used as fallback if set).
 
 # [[rules]]
-# name = "ML Classifier"
-# match = "*"                              # Wildcard: matches every email
-# exec = "durian-classify"                 # Command in PATH (or full path)
-# exec_timeout = 5                         # Seconds (default: 10)
-# accounts = ["work", "uni"]              # Optional: limit to accounts
-# allowed_tags = ["finance", "spam", "newsletter"]  # Optional: restrict exec output tags
+# name = "LLM triage"
+# match = "tag:inbox NOT tag:list NOT tag:newsletter NOT tag:notification NOT tag:gh"
+# exec = "durian-classify"
+# exec_timeout = 15
+# allowed_tags = ["urgent", "action-required", "fyi"]
 
-# ── Match syntax reference ────────────────────────────────────────────
+# ============================================================
+# MATCH SYNTAX REFERENCE
+# ============================================================
 #   *                         — wildcard, matches everything
 #   from:value                — case-insensitive contains on sender
 #   to:value                  — case-insensitive contains on recipients
+#   cc:value                  — case-insensitive contains on CC
 #   subject:value             — case-insensitive contains on subject
 #   header:Name:value         — case-insensitive contains on any header
 #   has:attachment            — message has at least one attachment
+#   has:attachment:pdf        — attachment with content-type or extension
+#   group:name                — expands to (from:X OR to:X ...) via groups.toml
 #   bare words                — case-insensitive contains on subject + body
 #   AND (implicit)            — adjacent terms are ANDed
 #   OR                        — explicit OR
 #   NOT                       — negates the next term
 #   ( )                       — grouping
+#
+# Note: subject:(X OR Y) does NOT work. Use (subject:X OR subject:Y).
+# Note: cal tag is set automatically for text/calendar content.
 #
 # Optional fields:
 #   accounts = ["alias"]      — only apply to specific accounts
