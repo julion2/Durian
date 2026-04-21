@@ -523,26 +523,46 @@ struct ContentView: View {
 
     @ViewBuilder
     private var emptyStateView: some View {
-        if isSearchMode {
+        if accountManager.isLoadingEmails {
+            // Don't flash empty state while loading
+            Color.clear
+        } else if isSearchMode {
             ContentUnavailableView("No Results", systemImage: "magnifyingglass",
-                                   description: Text("No emails match your search."))
+                                   description: Text(Self.stableMessage(from: Self.searchEmptyMessages, seed: selectedTagID ?? "search")))
         } else if ConfigManager.shared.getAccounts().isEmpty {
             ContentUnavailableView {
                 Label("No Accounts", systemImage: "person.crop.circle.badge.exclamationmark")
             } description: {
                 Text("Add an account in\n~/.config/durian/config.toml\nthen run durian auth login <account>")
             }
-        } else if syncManager.lastSyncTime == nil {
-            ContentUnavailableView {
-                Label("No Emails Yet", systemImage: "tray")
-            } description: {
-                Text("Run durian sync from the terminal to fetch your emails.")
-            }
         } else {
-            ContentUnavailableView("No Emails", systemImage: "tray",
-                                   description: Text("This folder is empty."))
+            ContentUnavailableView("Inbox Zero", systemImage: "tray",
+                                   description: Text(Self.stableMessage(from: Self.emptyFolderMessages, seed: selectedTagID ?? "default")))
         }
     }
+
+    /// Pick a message deterministically based on seed (stable per folder, varies between folders)
+    private static func stableMessage(from messages: [String], seed: String) -> String {
+        let hash = seed.utf8.reduce(0) { $0 &+ Int($1) }
+        return messages[abs(hash) % messages.count]
+    }
+
+    private static let emptyFolderMessages = [
+        "Nothing here. Suspicious.",
+        "You've read everything. Now what.",
+        "Empty. Go build something.",
+        "Inbox zero. Enjoy the 4 seconds.",
+        ":q! executed on your inbox.",
+        "/dev/null successfully achieved.",
+        "Achievement unlocked: not drowning.",
+    ]
+
+    private static let searchEmptyMessages = [
+        "No mails match. Tighten your query or loosen your expectations.",
+        "Zero results. Either very specific or very wrong.",
+        "Nothing found. Try from: + date: — it's always from: + date:.",
+        "No matches. Your query or your luck.",
+    ]
 
     // MARK: - Display Emails (Search Mode vs Normal)
 
