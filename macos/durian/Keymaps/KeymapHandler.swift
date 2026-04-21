@@ -152,8 +152,6 @@ class KeymapHandler: ObservableObject {
     }
     
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        let key = event.charactersIgnoringModifiers ?? "?"
-        Log.debug("KEYMAPS", "Key event: \(key) code=\(event.keyCode) textFocused=\(isTextInputFocused()) appFg=\(isAppInForeground) enabled=\(keymapsManager.keymaps.globalSettings.keymapsEnabled) seqs=\(SequenceMatcher.shared.allSequences.count)")
         let isPopupContext = sequenceEngine.activeContext == .search || sequenceEngine.activeContext == .tagPicker
 
         // When text input is focused: let Ctrl+ keys through to engine in popup contexts

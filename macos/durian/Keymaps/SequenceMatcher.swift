@@ -82,7 +82,7 @@ class SequenceMatcher {
 
         for context in KeymapContext.allCases {
             let contextEntries = keymapEntries.filter {
-                $0.modifiers.isEmpty || $0.modifiers == ["ctrl"]
+                ($0.modifiers.isEmpty || $0.modifiers == ["ctrl"])
                 && (KeymapContext(rawValue: $0.context) ?? .list) == context
             }
 
