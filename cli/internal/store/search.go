@@ -445,6 +445,18 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 		}
 		return "1=1", nil, nil
 
+	case "has":
+		val := strings.ToLower(f.value)
+		if val == "attachment" {
+			return "EXISTS (SELECT 1 FROM attachments WHERE attachments.message_db_id = m.id)", nil, nil
+		}
+		if strings.HasPrefix(val, "attachment:") {
+			wantType := val[len("attachment:"):]
+			return "EXISTS (SELECT 1 FROM attachments WHERE attachments.message_db_id = m.id AND (LOWER(attachments.content_type) LIKE ? OR LOWER(attachments.filename) LIKE ?))",
+				[]interface{}{"%" + wantType + "%", "%." + wantType}, nil
+		}
+		return "", nil, fmt.Errorf("unknown has: value %q (try: attachment, attachment:pdf)", f.value)
+
 	case "folder", "thread", "id", "mimetype":
 		return "1=1", nil, nil
 
