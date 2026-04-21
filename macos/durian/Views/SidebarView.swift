@@ -69,10 +69,12 @@ private struct SidebarRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: folder.icon)
-                    .font(.system(size: 14))
-                    .foregroundStyle(isSelected ? .white : .secondary)
-                    .frame(width: 20, alignment: .center)
+                if let icon = folder.icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 14))
+                        .foregroundStyle(isSelected ? .white : .secondary)
+                        .frame(width: 20, alignment: .center)
+                }
 
                 Text(folder.displayName)
                     .font(.system(size: 13))
