@@ -64,7 +64,7 @@ class SequenceMatcher {
         // Entries with ctrl modifier use normalized form ("ctrl+d", "ctrl+u")
         // Other modifier entries (Cmd+r, etc.) are handled by KeymapHandler.handleLegacyKeymap()
         sequences = keymapEntries
-            .filter { $0.enabled && ($0.modifiers.isEmpty || $0.modifiers == ["ctrl"]) }
+            .filter { $0.modifiers.isEmpty || $0.modifiers == ["ctrl"] }
             .compactMap { entry -> SequenceDefinition? in
                 guard let action = KeymapAction(rawValue: entry.action) else {
                     Log.debug("SEQMATCH", "Unknown action '\(entry.action)' - skipping")
@@ -82,7 +82,7 @@ class SequenceMatcher {
 
         for context in KeymapContext.allCases {
             let contextEntries = keymapEntries.filter {
-                $0.enabled && ($0.modifiers.isEmpty || $0.modifiers == ["ctrl"])
+                $0.modifiers.isEmpty || $0.modifiers == ["ctrl"]
                 && (KeymapContext(rawValue: $0.context) ?? .list) == context
             }
 

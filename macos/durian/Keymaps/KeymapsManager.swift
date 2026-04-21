@@ -105,67 +105,67 @@ class KeymapsManager: ObservableObject {
     private func getDefaultKeymaps() -> [KeymapEntry] {
         return [
             // Navigation
-            KeymapEntry(action: "next_email", key: "j", modifiers: [], description: "Next email (vim j)", enabled: true, sequence: false, supportsCount: true),
-            KeymapEntry(action: "prev_email", key: "k", modifiers: [], description: "Previous email (vim k)", enabled: true, sequence: false, supportsCount: true),
-            KeymapEntry(action: "next_email", key: "Down", modifiers: [], description: "Next email (arrow)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "prev_email", key: "Up", modifiers: [], description: "Previous email (arrow)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last email (Shift+G)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First email (vim gg)", enabled: true, sequence: true, supportsCount: false),
-            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down (Ctrl+d)", enabled: true, sequence: false, supportsCount: true),
-            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up (Ctrl+u)", enabled: true, sequence: false, supportsCount: true),
-            KeymapEntry(action: "archive", key: "a", modifiers: [], description: "Archive email (remove inbox)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "compose", key: "c", modifiers: [], description: "Compose new email", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "reply_all", key: "R", modifiers: [], description: "Reply to all (Shift+R)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "forward", key: "f", modifiers: [], description: "Forward email", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_read", key: "u", modifiers: [], description: "Toggle read/unread", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_star", key: "s", modifiers: [], description: "Toggle star", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "delete", key: "dd", modifiers: [], description: "Delete email (vim dd)", enabled: true, sequence: true, supportsCount: true),
+            KeymapEntry(action: "next_email", key: "j", modifiers: [], description: "Next email (vim j)", sequence: false, supportsCount: true),
+            KeymapEntry(action: "prev_email", key: "k", modifiers: [], description: "Previous email (vim k)", sequence: false, supportsCount: true),
+            KeymapEntry(action: "next_email", key: "Down", modifiers: [], description: "Next email (arrow)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "prev_email", key: "Up", modifiers: [], description: "Previous email (arrow)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last email (Shift+G)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First email (vim gg)", sequence: true, supportsCount: false),
+            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down (Ctrl+d)", sequence: false, supportsCount: true),
+            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up (Ctrl+u)", sequence: false, supportsCount: true),
+            KeymapEntry(action: "archive", key: "a", modifiers: [], description: "Archive email (remove inbox)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "compose", key: "c", modifiers: [], description: "Compose new email", sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", sequence: false, supportsCount: false),
+            KeymapEntry(action: "reply_all", key: "R", modifiers: [], description: "Reply to all (Shift+R)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "forward", key: "f", modifiers: [], description: "Forward email", sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_read", key: "u", modifiers: [], description: "Toggle read/unread", sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_star", key: "s", modifiers: [], description: "Toggle star", sequence: false, supportsCount: false),
+            KeymapEntry(action: "delete", key: "dd", modifiers: [], description: "Delete email (vim dd)", sequence: true, supportsCount: true),
             // Folder Navigation
-            KeymapEntry(action: "go_inbox", key: "gi", modifiers: [], description: "Go to inbox", enabled: true, sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_sent", key: "gs", modifiers: [], description: "Go to sent", enabled: true, sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_drafts", key: "gd", modifiers: [], description: "Go to drafts", enabled: true, sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_archive", key: "ga", modifiers: [], description: "Go to archive", enabled: true, sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_inbox", key: "gi", modifiers: [], description: "Go to inbox", sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_sent", key: "gs", modifiers: [], description: "Go to sent", sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_drafts", key: "gd", modifiers: [], description: "Go to drafts", sequence: true, supportsCount: false),
+            KeymapEntry(action: "go_archive", key: "ga", modifiers: [], description: "Go to archive", sequence: true, supportsCount: false),
             // Search
-            KeymapEntry(action: "search", key: "/", modifiers: [], description: "Search emails (vim /)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "search", key: "/", modifiers: ["cmd"], description: "Search emails (Cmd+/)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "search", key: "/", modifiers: [], description: "Search emails (vim /)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "search", key: "/", modifiers: ["cmd"], description: "Search emails (Cmd+/)", sequence: false, supportsCount: false),
             // Tag Picker
-            KeymapEntry(action: "tag_picker", key: "t", modifiers: [], description: "Open tag picker", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "tag_picker", key: "t", modifiers: [], description: "Open tag picker", sequence: false, supportsCount: false),
             // View Control
-            KeymapEntry(action: "close_detail", key: "q", modifiers: [], description: "Close/back (vim q)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Close/back (Escape)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"], description: "Reload inbox (Cmd+r)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "close_detail", key: "q", modifiers: [], description: "Close/back (vim q)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Close/back (Escape)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"], description: "Reload inbox (Cmd+r)", sequence: false, supportsCount: false),
             // Visual Mode
-            KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [], description: "Enter line visual mode (range select)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [], description: "Enter toggle visual mode (Shift+V)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_selection", key: " ", modifiers: [], description: "Toggle current email (only in toggle mode)", enabled: true, sequence: false, supportsCount: false),
-            KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [], description: "Exit visual mode and clear selection", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [], description: "Enter line visual mode (range select)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [], description: "Enter toggle visual mode (Shift+V)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "toggle_selection", key: " ", modifiers: [], description: "Toggle current email (only in toggle mode)", sequence: false, supportsCount: false),
+            KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [], description: "Exit visual mode and clear selection", sequence: false, supportsCount: false),
             // Search context
-            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next search result (Ctrl+j)", enabled: true, sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous search result (Ctrl+k)", enabled: true, sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next search result (Ctrl+n)", enabled: true, sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous search result (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next search result (Ctrl+j)", sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous search result (Ctrl+k)", sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next search result (Ctrl+n)", sequence: false, supportsCount: false, context: "search"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous search result (Ctrl+p)", sequence: false, supportsCount: false, context: "search"),
             // Tag picker context
-            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next tag (Ctrl+j)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous tag (Ctrl+k)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next tag (Ctrl+n)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous tag (Ctrl+p)", enabled: true, sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"], description: "Next tag (Ctrl+j)", sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"], description: "Previous tag (Ctrl+k)", sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"], description: "Next tag (Ctrl+n)", sequence: false, supportsCount: false, context: "tag_picker"),
+            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"], description: "Previous tag (Ctrl+p)", sequence: false, supportsCount: false, context: "tag_picker"),
             // Compose normal context
-            KeymapEntry(action: "exit_insert", key: "jk", modifiers: [], description: "Exit insert mode (jk)", enabled: true, sequence: true, supportsCount: false, context: "compose_normal"),
+            KeymapEntry(action: "exit_insert", key: "jk", modifiers: [], description: "Exit insert mode (jk)", sequence: true, supportsCount: false, context: "compose_normal"),
             // List context: enter thread
-            KeymapEntry(action: "enter_thread", key: "l", modifiers: [], description: "Enter thread view (l)", enabled: true, sequence: false, supportsCount: false),
+            KeymapEntry(action: "enter_thread", key: "l", modifiers: [], description: "Enter thread view (l)", sequence: false, supportsCount: false),
             // Thread context
-            KeymapEntry(action: "scroll_down", key: "j", modifiers: [], description: "Scroll down in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "scroll_up", key: "k", modifiers: [], description: "Scroll up in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "next_message", key: "n", modifiers: [], description: "Next message in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "prev_message", key: "N", modifiers: [], description: "Previous message in thread", enabled: true, sequence: false, supportsCount: true, context: "thread"),
-            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First message in thread", enabled: true, sequence: true, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last message in thread", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "close_detail", key: "h", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Back to email list", enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", enabled: true, sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "scroll_down", key: "j", modifiers: [], description: "Scroll down in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "scroll_up", key: "k", modifiers: [], description: "Scroll up in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"], description: "Half-page down in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"], description: "Half-page up in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "next_message", key: "n", modifiers: [], description: "Next message in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "prev_message", key: "N", modifiers: [], description: "Previous message in thread", sequence: false, supportsCount: true, context: "thread"),
+            KeymapEntry(action: "first_email", key: "gg", modifiers: [], description: "First message in thread", sequence: true, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "last_email", key: "G", modifiers: [], description: "Last message in thread", sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "h", modifiers: [], description: "Back to email list", sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [], description: "Back to email list", sequence: false, supportsCount: false, context: "thread"),
+            KeymapEntry(action: "reply", key: "r", modifiers: [], description: "Reply to email", sequence: false, supportsCount: false, context: "thread"),
         ]
     }
 
@@ -188,7 +188,6 @@ class KeymapsManager: ObservableObject {
             toml += "key = \"\(entry.key)\"\n"
             toml += "modifiers = [\(entry.modifiers.map { "\"\($0)\"" }.joined(separator: ", "))]\n"
             toml += "description = \"\(entry.description)\"\n"
-            toml += "enabled = \(entry.enabled)\n"
             toml += "sequence = \(entry.sequence)\n"
             toml += "supports_count = \(entry.supportsCount)\n"
             if entry.context != "list" {
@@ -222,187 +221,187 @@ class KeymapsManager: ObservableObject {
             // NAVIGATION - Single keys
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "next_email", key: "j", modifiers: [],
-                       description: "Next email (vim j)", enabled: true,
+                       description: "Next email (vim j)",
                        sequence: false, supportsCount: true),
             KeymapEntry(action: "prev_email", key: "k", modifiers: [],
-                       description: "Previous email (vim k)", enabled: true,
+                       description: "Previous email (vim k)",
                        sequence: false, supportsCount: true),
             KeymapEntry(action: "next_email", key: "Down", modifiers: [],
-                       description: "Next email (arrow)", enabled: true,
+                       description: "Next email (arrow)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "prev_email", key: "Up", modifiers: [],
-                       description: "Previous email (arrow)", enabled: true,
+                       description: "Previous email (arrow)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "last_email", key: "G", modifiers: [],
-                       description: "Last email (Shift+G)", enabled: true,
+                       description: "Last email (Shift+G)",
                        sequence: false, supportsCount: false),
             
             // ═══════════════════════════════════════════════════════════
             // NAVIGATION - Sequences
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "first_email", key: "gg", modifiers: [],
-                       description: "First email (vim gg)", enabled: true,
+                       description: "First email (vim gg)",
                        sequence: true, supportsCount: false),
 
             // ═══════════════════════════════════════════════════════════
             // PAGE NAVIGATION
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"],
-                       description: "Half-page down (Ctrl+d)", enabled: true,
+                       description: "Half-page down (Ctrl+d)",
                        sequence: false, supportsCount: true),
             KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"],
-                       description: "Half-page up (Ctrl+u)", enabled: true,
+                       description: "Half-page up (Ctrl+u)",
                        sequence: false, supportsCount: true),
 
             // ═══════════════════════════════════════════════════════════
             // EMAIL ACTIONS
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "archive", key: "a", modifiers: [],
-                       description: "Archive email (remove inbox)", enabled: true,
+                       description: "Archive email (remove inbox)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "compose", key: "c", modifiers: [],
-                       description: "Compose new email", enabled: true,
+                       description: "Compose new email",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "reply", key: "r", modifiers: [],
-                       description: "Reply to email", enabled: true,
+                       description: "Reply to email",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "reply_all", key: "R", modifiers: [],
-                       description: "Reply to all (Shift+R)", enabled: true,
+                       description: "Reply to all (Shift+R)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "forward", key: "f", modifiers: [],
-                       description: "Forward email", enabled: true,
+                       description: "Forward email",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "toggle_read", key: "u", modifiers: [],
-                       description: "Toggle read/unread", enabled: true,
+                       description: "Toggle read/unread",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "toggle_star", key: "s", modifiers: [],
-                       description: "Toggle star", enabled: true,
+                       description: "Toggle star",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "delete", key: "dd", modifiers: [],
-                       description: "Delete email (vim dd)", enabled: true,
+                       description: "Delete email (vim dd)",
                        sequence: true, supportsCount: true),
             
             // ═══════════════════════════════════════════════════════════
             // FOLDER NAVIGATION (go-commands)
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "go_inbox", key: "gi", modifiers: [],
-                       description: "Go to inbox", enabled: true,
+                       description: "Go to inbox",
                        sequence: true, supportsCount: false),
             KeymapEntry(action: "go_sent", key: "gs", modifiers: [],
-                       description: "Go to sent", enabled: true,
+                       description: "Go to sent",
                        sequence: true, supportsCount: false),
             KeymapEntry(action: "go_drafts", key: "gd", modifiers: [],
-                       description: "Go to drafts", enabled: true,
+                       description: "Go to drafts",
                        sequence: true, supportsCount: false),
             KeymapEntry(action: "go_archive", key: "ga", modifiers: [],
-                       description: "Go to archive", enabled: true,
+                       description: "Go to archive",
                        sequence: true, supportsCount: false),
             
             // ═══════════════════════════════════════════════════════════
             // SEARCH
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "search", key: "/", modifiers: [],
-                       description: "Search emails (vim /)", enabled: true,
+                       description: "Search emails (vim /)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "search", key: "/", modifiers: ["cmd"],
-                       description: "Search emails (Cmd+/)", enabled: true,
+                       description: "Search emails (Cmd+/)",
                        sequence: false, supportsCount: false),
             
             // ═══════════════════════════════════════════════════════════
             // TAG PICKER
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "tag_picker", key: "t", modifiers: [],
-                       description: "Open tag picker", enabled: true,
+                       description: "Open tag picker",
                        sequence: false, supportsCount: false),
 
             // ═══════════════════════════════════════════════════════════
             // VIEW CONTROL
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "close_detail", key: "q", modifiers: [],
-                       description: "Close/back (vim q)", enabled: true,
+                       description: "Close/back (vim q)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
-                       description: "Close/back (Escape)", enabled: true,
+                       description: "Close/back (Escape)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"],
-                       description: "Reload inbox (Cmd+r)", enabled: true,
+                       description: "Reload inbox (Cmd+r)",
                        sequence: false, supportsCount: false),
             
             // ═══════════════════════════════════════════════════════════
             // VISUAL MODE
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [],
-                       description: "Enter line visual mode (range select)", enabled: true,
+                       description: "Enter line visual mode (range select)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [],
-                       description: "Enter toggle visual mode (Shift+V)", enabled: true,
+                       description: "Enter toggle visual mode (Shift+V)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "toggle_selection", key: " ", modifiers: [],
-                       description: "Toggle current email (only in toggle mode)", enabled: true,
+                       description: "Toggle current email (only in toggle mode)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [],
-                       description: "Exit visual mode and clear selection", enabled: true,
+                       description: "Exit visual mode and clear selection",
                        sequence: false, supportsCount: false),
 
             // ═══════════════════════════════════════════════════════════
             // SEARCH CONTEXT
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
-                       description: "Next search result (Ctrl+j)", enabled: true,
+                       description: "Next search result (Ctrl+j)",
                        sequence: false, supportsCount: false, context: "search"),
             KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
-                       description: "Previous search result (Ctrl+k)", enabled: true,
+                       description: "Previous search result (Ctrl+k)",
                        sequence: false, supportsCount: false, context: "search"),
             KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
-                       description: "Next search result (Ctrl+n)", enabled: true,
+                       description: "Next search result (Ctrl+n)",
                        sequence: false, supportsCount: false, context: "search"),
             KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
-                       description: "Previous search result (Ctrl+p)", enabled: true,
+                       description: "Previous search result (Ctrl+p)",
                        sequence: false, supportsCount: false, context: "search"),
 
             // ═══════════════════════════════════════════════════════════
             // TAG PICKER CONTEXT
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
-                       description: "Next tag (Ctrl+j)", enabled: true,
+                       description: "Next tag (Ctrl+j)",
                        sequence: false, supportsCount: false, context: "tag_picker"),
             KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
-                       description: "Previous tag (Ctrl+k)", enabled: true,
+                       description: "Previous tag (Ctrl+k)",
                        sequence: false, supportsCount: false, context: "tag_picker"),
             KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
-                       description: "Next tag (Ctrl+n)", enabled: true,
+                       description: "Next tag (Ctrl+n)",
                        sequence: false, supportsCount: false, context: "tag_picker"),
             KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
-                       description: "Previous tag (Ctrl+p)", enabled: true,
+                       description: "Previous tag (Ctrl+p)",
                        sequence: false, supportsCount: false, context: "tag_picker"),
 
             // ═══════════════════════════════════════════════════════════
             // COMPOSE NORMAL CONTEXT
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "exit_insert", key: "jk", modifiers: [],
-                       description: "Exit insert mode (jk)", enabled: true,
+                       description: "Exit insert mode (jk)",
                        sequence: true, supportsCount: false, context: "compose_normal"),
 
             // ═══════════════════════════════════════════════════════════
             // THREAD CONTEXT
             // ═══════════════════════════════════════════════════════════
             KeymapEntry(action: "enter_thread", key: "l", modifiers: [],
-                       description: "Enter thread view (l)", enabled: true,
+                       description: "Enter thread view (l)",
                        sequence: false, supportsCount: false),
             KeymapEntry(action: "next_message", key: "j", modifiers: [],
-                       description: "Next message in thread", enabled: true,
+                       description: "Next message in thread",
                        sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "prev_message", key: "k", modifiers: [],
-                       description: "Previous message in thread", enabled: true,
+                       description: "Previous message in thread",
                        sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "close_detail", key: "h", modifiers: [],
-                       description: "Back to email list", enabled: true,
+                       description: "Back to email list",
                        sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
-                       description: "Back to email list", enabled: true,
+                       description: "Back to email list",
                        sequence: false, supportsCount: false, context: "thread"),
             KeymapEntry(action: "reply", key: "r", modifiers: [],
-                       description: "Reply to email", enabled: true,
+                       description: "Reply to email",
                        sequence: false, supportsCount: false, context: "thread"),
         ]
 
@@ -420,28 +419,21 @@ class KeymapsManager: ObservableObject {
         }
     }
     
-    func enableKeymap(for action: String, enabled: Bool) {
-        if let index = keymaps.keymaps.firstIndex(where: { $0.action == action }) {
-            keymaps.keymaps[index].enabled = enabled
-            Log.debug("KEYMAPS", "\(action) \(enabled ? "enabled" : "disabled")")
-        }
-    }
-    
     func getKeymap(for action: String) -> KeymapEntry? {
         return keymaps.keymaps.first(where: { $0.action == action })
     }
-    
+
     func getKeymapsForAction(_ action: String) -> [KeymapEntry] {
-        return keymaps.keymaps.filter { $0.action == action && $0.enabled }
+        return keymaps.keymaps.filter { $0.action == action }
     }
-    
+
     func isKeymapPressed(key: String, modifiers: [String], for action: String) -> Bool {
         guard keymaps.globalSettings.keymapsEnabled else {
             return false
         }
-        
-        let matchingKeymaps = keymaps.keymaps.filter { 
-            $0.action == action && $0.enabled 
+
+        let matchingKeymaps = keymaps.keymaps.filter {
+            $0.action == action
         }
         
         return matchingKeymaps.contains { keymap in
@@ -483,45 +475,34 @@ struct KeymapEntry: Codable {
     var key: String
     var modifiers: [String]
     var description: String
-    var enabled: Bool
     var sequence: Bool
     var supportsCount: Bool
     var context: String
     var tags: String?  // For tag_op action: "+todo -inbox"
 
     enum CodingKeys: String, CodingKey {
-        case action
-        case key
-        case modifiers
-        case description
-        case enabled
-        case sequence
+        case action, key, modifiers, description, sequence
         case supportsCount = "supports_count"
-        case context
-        case tags
+        case context, tags
     }
 
-    // Custom init for backwards compatibility with old configs
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         action = try container.decode(String.self, forKey: .action)
         key = try container.decode(String.self, forKey: .key)
-        modifiers = try container.decode([String].self, forKey: .modifiers)
-        description = try container.decode(String.self, forKey: .description)
-        enabled = try container.decode(Bool.self, forKey: .enabled)
+        modifiers = try container.decodeIfPresent([String].self, forKey: .modifiers) ?? []
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         sequence = try container.decodeIfPresent(Bool.self, forKey: .sequence) ?? false
         supportsCount = try container.decodeIfPresent(Bool.self, forKey: .supportsCount) ?? false
         context = try container.decodeIfPresent(String.self, forKey: .context) ?? "list"
         tags = try container.decodeIfPresent(String.self, forKey: .tags)
     }
 
-    // Memberwise init for creating entries programmatically
-    init(action: String, key: String, modifiers: [String], description: String, enabled: Bool, sequence: Bool = false, supportsCount: Bool = false, context: String = "list", tags: String? = nil) {
+    init(action: String, key: String, modifiers: [String] = [], description: String = "", sequence: Bool = false, supportsCount: Bool = false, context: String = "list", tags: String? = nil) {
         self.action = action
         self.key = key
         self.modifiers = modifiers
         self.description = description
-        self.enabled = enabled
         self.sequence = sequence
         self.supportsCount = supportsCount
         self.context = context
