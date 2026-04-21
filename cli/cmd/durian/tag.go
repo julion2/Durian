@@ -1,13 +1,26 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/durian-dev/durian/cli/internal/handler"
+	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/spf13/cobra"
 )
+
+var tagAccountFilter string
+
+var tagListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all tags",
+	Example: `  durian tag list
+  durian tag list --account work
+  durian tag list --account work,personal`,
+	RunE: runTagList,
+}
 
 var tagCmd = &cobra.Command{
 	Use:   "tag <query> <tags...>",
@@ -26,7 +39,40 @@ Multiple tags can be specified.`,
 
 func init() {
 	tagCmd.Flags().SetInterspersed(false)
+	tagListCmd.Flags().StringVar(&tagAccountFilter, "account", "", "filter by account (comma-separated)")
+	tagCmd.AddCommand(tagListCmd)
 	rootCmd.AddCommand(tagCmd)
+}
+
+func runTagList(cmd *cobra.Command, args []string) error {
+	emailDB, err := openEmailDB()
+	if err != nil {
+		return fmt.Errorf("email store unavailable: %w", err)
+	}
+	defer emailDB.Close()
+
+	h := handler.New(emailDB, nil)
+
+	var resp protocol.Response
+	if tagAccountFilter != "" {
+		resp = h.ListTagsForAccounts(strings.Split(tagAccountFilter, ","))
+	} else {
+		resp = h.ListTags()
+	}
+
+	if !resp.OK {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
+		os.Exit(1)
+	}
+
+	if jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(resp)
+	}
+
+	for _, tag := range resp.Tags {
+		fmt.Println(tag)
+	}
+	return nil
 }
 
 func runTag(cmd *cobra.Command, args []string) error {
