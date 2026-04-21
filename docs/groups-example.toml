@@ -1,49 +1,52 @@
 # Contact Groups — ~/.config/durian/groups.toml
 #
 # Groups map roles to email addresses or domain wildcards (*@domain.com).
-# Use group:NAME in search queries for automatic expansion:
+# Each member is an array of addresses (for people with multiple emails).
 #
+# Query syntax:
+#   group:investor              — all communication with group (from + to)
+#   group:investor/from         — only mail FROM the group (incoming)
+#   group:investor/to           — only mail TO the group (outgoing/sent)
+#   group:investor AND date:month
+#
+# Examples:
 #   durian search "group:investor AND date:month"
-#   → expands to: (from:alice@sequoia.com OR from:@fund-xyz.com) AND date:month
-#
-# Members support two patterns:
-#   "alice@example.com"   — exact email match
-#   "*@example.com"       — matches any address at that domain
+#   durian search "group:investor/to AND tag:sent AND date:week"
 
 [groups.investor]
 description = "Cap Table members"
 members = [
-  "alice@sequoia.com",
-  "bob@index.vc",
-  "*@fund-xyz.com",
+  ["alice@sequoia.com", "alice.smith@gmail.com"],
+  ["bob@index.vc"],
+  ["*@fund-xyz.com"],
 ]
 
 [groups.advisor]
 members = [
-  "carol@example.org",
+  ["carol@example.org", "carol.personal@icloud.com"],
 ]
 
 [groups.press]
 members = [
-  "*@spiegel.de",
-  "*@handelsblatt.com",
-  "*@techcrunch.com",
+  ["*@spiegel.de"],
+  ["*@handelsblatt.com"],
+  ["*@techcrunch.com"],
 ]
 
 [groups.legal]
 members = [
-  "*@kanzlei-mueller.de",
-  "notar@xy.de",
+  ["*@kanzlei-mueller.de"],
+  ["notar@xy.de"],
 ]
 
 [groups.ngo]
 members = [
-  "*@greenpeace.org",
+  ["*@greenpeace.org"],
 ]
 
 [groups.vip]
 description = "Always-surface contacts, any channel"
 members = [
-  "cofounder@firma.de",
-  "lead@sequoia.com",
+  ["cofounder@firma.de"],
+  ["lead@sequoia.com"],
 ]

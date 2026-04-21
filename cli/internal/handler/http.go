@@ -148,9 +148,9 @@ func sanitizeFilename(name string) string {
 // Returns all configured contact groups for GUI autocomplete.
 func (h *Handler) ListGroupsHandler(w http.ResponseWriter, r *http.Request) {
 	type groupResponse struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description,omitempty"`
-		Members     []string `json:"members"`
+		Name        string     `json:"name"`
+		Description string     `json:"description,omitempty"`
+		Members     [][]string `json:"members"`
 	}
 
 	groups := h.Groups()
@@ -158,7 +158,7 @@ func (h *Handler) ListGroupsHandler(w http.ResponseWriter, r *http.Request) {
 	for name, entry := range groups {
 		members := entry.Members
 		if members == nil {
-			members = []string{}
+			members = [][]string{}
 		}
 		result = append(result, groupResponse{
 			Name:        name,

@@ -21,6 +21,10 @@ func TestLoadGroups(t *testing.T) {
 	if len(inv.Members) != 3 {
 		t.Errorf("investor.Members count = %d, want 3", len(inv.Members))
 	}
+	// First member has two addresses
+	if len(inv.Members[0]) != 2 {
+		t.Errorf("investor.Members[0] addresses = %d, want 2", len(inv.Members[0]))
+	}
 }
 
 func TestLoadGroups_NotFound(t *testing.T) {
@@ -35,9 +39,20 @@ func TestLoadGroups_NotFound(t *testing.T) {
 
 func TestExpandGroupsInQuery(t *testing.T) {
 	groups := map[string]GroupEntry{
-		"investor": {Members: []string{"alice@sequoia.com", "bob@index.vc"}},
-		"press":    {Members: []string{"*@spiegel.de", "*@handelsblatt.com"}},
-		"solo":     {Members: []string{"carol@example.org"}},
+		"investor": {Members: [][]string{
+			{"alice@sequoia.com"},
+			{"bob@index.vc"},
+		}},
+		"press": {Members: [][]string{
+			{"*@spiegel.de"},
+			{"*@handelsblatt.com"},
+		}},
+		"solo": {Members: [][]string{
+			{"carol@example.org"},
+		}},
+		"multi": {Members: [][]string{
+			{"alice@work.com", "alice@gmail.com"},
+		}},
 	}
 
 	tests := []struct {
@@ -47,28 +62,48 @@ func TestExpandGroupsInQuery(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name:  "single group with multiple members",
+			name:  "bidirectional default — two members",
 			query: "group:investor",
+			want:  "(from:alice@sequoia.com OR to:alice@sequoia.com OR from:bob@index.vc OR to:bob@index.vc)",
+		},
+		{
+			name:  "domain wildcards — bidirectional",
+			query: "group:press",
+			want:  "(from:@spiegel.de OR to:@spiegel.de OR from:@handelsblatt.com OR to:@handelsblatt.com)",
+		},
+		{
+			name:  "single member — no parens",
+			query: "group:solo",
+			want:  "(from:carol@example.org OR to:carol@example.org)",
+		},
+		{
+			name:  "modifier /from — incoming only",
+			query: "group:investor/from",
 			want:  "(from:alice@sequoia.com OR from:bob@index.vc)",
 		},
 		{
-			name:  "group with domain wildcards",
-			query: "group:press",
-			want:  "(from:@spiegel.de OR from:@handelsblatt.com)",
+			name:  "modifier /to — outgoing only",
+			query: "group:investor/to",
+			want:  "(to:alice@sequoia.com OR to:bob@index.vc)",
 		},
 		{
-			name:  "single member group — no parens",
-			query: "group:solo",
-			want:  "from:carol@example.org",
+			name:  "multi-email person — all addresses expanded",
+			query: "group:multi",
+			want:  "(from:alice@work.com OR to:alice@work.com OR from:alice@gmail.com OR to:alice@gmail.com)",
+		},
+		{
+			name:  "multi-email with /from modifier",
+			query: "group:multi/from",
+			want:  "(from:alice@work.com OR from:alice@gmail.com)",
 		},
 		{
 			name:  "group with AND clause",
 			query: "group:investor AND date:month",
-			want:  "(from:alice@sequoia.com OR from:bob@index.vc) AND date:month",
+			want:  "(from:alice@sequoia.com OR to:alice@sequoia.com OR from:bob@index.vc OR to:bob@index.vc) AND date:month",
 		},
 		{
 			name:  "multiple groups in query",
-			query: "group:investor OR group:press",
+			query: "group:investor/from OR group:press/from",
 			want:  "(from:alice@sequoia.com OR from:bob@index.vc) OR (from:@spiegel.de OR from:@handelsblatt.com)",
 		},
 		{
@@ -92,9 +127,9 @@ func TestExpandGroupsInQuery(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:  "group in parentheses",
-			query: "(group:investor) AND tag:inbox",
-			want:  "((from:alice@sequoia.com OR from:bob@index.vc)) AND tag:inbox",
+			name:  "sent review pattern",
+			query: "group:investor/to AND tag:sent AND date:week",
+			want:  "(to:alice@sequoia.com OR to:bob@index.vc) AND tag:sent AND date:week",
 		},
 	}
 
@@ -137,7 +172,15 @@ func TestValidateGroups(t *testing.T) {
 		{
 			name: "valid groups",
 			groups: map[string]GroupEntry{
-				"investor": {Members: []string{"alice@vc.com", "*@fund.com"}},
+				"investor": {Members: [][]string{{"alice@vc.com"}, {"*@fund.com"}}},
+			},
+			wantErrs:  0,
+			wantWarns: 0,
+		},
+		{
+			name: "multi-email valid",
+			groups: map[string]GroupEntry{
+				"multi": {Members: [][]string{{"alice@work.com", "alice@gmail.com"}}},
 			},
 			wantErrs:  0,
 			wantWarns: 0,
@@ -145,7 +188,7 @@ func TestValidateGroups(t *testing.T) {
 		{
 			name: "empty members — warning",
 			groups: map[string]GroupEntry{
-				"empty": {Members: []string{}},
+				"empty": {Members: [][]string{}},
 			},
 			wantErrs:  0,
 			wantWarns: 1,
@@ -153,28 +196,35 @@ func TestValidateGroups(t *testing.T) {
 		{
 			name: "invalid member — no @",
 			groups: map[string]GroupEntry{
-				"bad": {Members: []string{"notanemail"}},
+				"bad": {Members: [][]string{{"notanemail"}}},
 			},
 			wantErrs: 1,
 		},
 		{
 			name: "invalid wildcard pattern",
 			groups: map[string]GroupEntry{
-				"bad": {Members: []string{"*notdomain"}},
+				"bad": {Members: [][]string{{"*notdomain"}}},
 			},
 			wantErrs: 1,
 		},
 		{
 			name: "domain wildcard without dot — warning",
 			groups: map[string]GroupEntry{
-				"broad": {Members: []string{"*@localhost"}},
+				"broad": {Members: [][]string{{"*@localhost"}}},
 			},
 			wantWarns: 1,
 		},
 		{
-			name: "empty member string — error",
+			name: "empty person array — error",
 			groups: map[string]GroupEntry{
-				"bad": {Members: []string{""}},
+				"bad": {Members: [][]string{{}}},
+			},
+			wantErrs: 1,
+		},
+		{
+			name: "empty address string — error",
+			groups: map[string]GroupEntry{
+				"bad": {Members: [][]string{{""}}},
 			},
 			wantErrs: 1,
 		},

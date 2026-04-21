@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/durian-dev/durian/cli/internal/config"
@@ -126,8 +127,12 @@ func runGroupMembers(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	for _, member := range group.Members {
-		fmt.Printf("  %s\n", member)
+	for _, person := range group.Members {
+		if len(person) == 1 {
+			fmt.Printf("  %s\n", person[0])
+		} else {
+			fmt.Printf("  %s\n", strings.Join(person, ", "))
+		}
 	}
 
 	return nil

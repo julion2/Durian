@@ -11,9 +11,11 @@ import (
 )
 
 // GroupEntry defines a single contact group.
+// Members is a list of people, where each person can have multiple addresses.
+// Example: [["alice@work.com", "alice@gmail.com"], ["bob@vc.com"], ["*@fund.com"]]
 type GroupEntry struct {
-	Description string   `toml:"description"`
-	Members     []string `toml:"members"`
+	Description string     `toml:"description"`
+	Members     [][]string `toml:"members"`
 }
 
 // groupsFile is the top-level structure of groups.toml.
@@ -46,13 +48,20 @@ func GroupsPath() string {
 	return filepath.Join(filepath.Dir(DefaultPath()), "groups.toml")
 }
 
-// groupRef matches group:name tokens in a query string.
-var groupRef = regexp.MustCompile(`\bgroup:([a-zA-Z0-9_-]+)`)
+// groupRef matches group:name and group:name/modifier tokens in a query string.
+// Supported modifiers: /from, /to. Default (no modifier) expands both directions.
+var groupRef = regexp.MustCompile(`\bgroup:([a-zA-Z0-9_-]+)(?:/(from|to))?`)
 
 // ExpandGroupsInQuery replaces all group:NAME references in a query string
-// with equivalent (from:member1 OR from:member2 ...) expressions.
-// Wildcard members (*@domain.com) are expanded to from:@domain.com
-// which matches via the existing LIKE '%@domain.com%' SQL pattern.
+// with equivalent address expressions.
+//
+// Default (bidirectional): group:X → (from:a OR to:a OR from:b OR to:b ...)
+// Directed: group:X/from → (from:a OR from:b ...) — only incoming
+//
+//	group:X/to   → (to:a OR to:b ...)   — only outgoing
+//
+// Wildcard members (*@domain.com) expand to @domain.com which matches
+// via the existing LIKE '%@domain.com%' SQL pattern.
 func ExpandGroupsInQuery(query string, groups map[string]GroupEntry) (string, error) {
 	if len(groups) == 0 {
 		return query, nil
@@ -63,7 +72,11 @@ func ExpandGroupsInQuery(query string, groups map[string]GroupEntry) (string, er
 		if expandErr != nil {
 			return match
 		}
-		name := match[len("group:"):]
+
+		sub := groupRef.FindStringSubmatch(match)
+		name := sub[1]
+		modifier := sub[2] // "", "from", or "to"
+
 		group, ok := groups[name]
 		if !ok {
 			expandErr = fmt.Errorf("unknown group: %q", name)
@@ -74,13 +87,15 @@ func ExpandGroupsInQuery(query string, groups map[string]GroupEntry) (string, er
 			return match
 		}
 
-		parts := make([]string, len(group.Members))
-		for i, member := range group.Members {
-			if strings.HasPrefix(member, "*") {
-				// Wildcard: *@domain.com → from:@domain.com
-				parts[i] = "from:" + member[1:]
-			} else {
-				parts[i] = "from:" + member
+		var parts []string
+		for _, person := range group.Members {
+			for _, addr := range person {
+				// Strip wildcard prefix for LIKE matching
+				a := addr
+				if strings.HasPrefix(a, "*") {
+					a = a[1:]
+				}
+				parts = append(parts, expandAddr(a, modifier)...)
 			}
 		}
 
@@ -94,6 +109,18 @@ func ExpandGroupsInQuery(query string, groups map[string]GroupEntry) (string, er
 		return "", expandErr
 	}
 	return result, nil
+}
+
+// expandAddr returns the from:/to: terms for a single address based on modifier.
+func expandAddr(addr, modifier string) []string {
+	switch modifier {
+	case "from":
+		return []string{"from:" + addr}
+	case "to":
+		return []string{"to:" + addr}
+	default:
+		return []string{"from:" + addr, "to:" + addr}
+	}
 }
 
 // ValidateGroups validates groups.toml entries.
@@ -114,22 +141,27 @@ func ValidateGroups(groups map[string]GroupEntry) []ValidationError {
 			continue
 		}
 
-		for i, member := range group.Members {
-			field := fmt.Sprintf("%s.members[%d]", prefix, i)
-			if member == "" {
-				add(field, "empty member entry")
+		for i, person := range group.Members {
+			if len(person) == 0 {
+				add(fmt.Sprintf("%s.members[%d]", prefix, i), "empty member entry")
 				continue
 			}
-			if strings.HasPrefix(member, "*@") {
-				// Domain wildcard — check domain part
-				domain := member[2:]
-				if !strings.Contains(domain, ".") {
-					warn(field, fmt.Sprintf("domain wildcard %q has no dot — may match too broadly", member))
+			for j, addr := range person {
+				field := fmt.Sprintf("%s.members[%d][%d]", prefix, i, j)
+				if addr == "" {
+					add(field, "empty address")
+					continue
 				}
-			} else if strings.HasPrefix(member, "*") {
-				add(field, fmt.Sprintf("invalid wildcard pattern %q (only *@domain is supported)", member))
-			} else if !strings.Contains(member, "@") {
-				add(field, fmt.Sprintf("invalid member %q (expected email or *@domain)", member))
+				if strings.HasPrefix(addr, "*@") {
+					domain := addr[2:]
+					if !strings.Contains(domain, ".") {
+						warn(field, fmt.Sprintf("domain wildcard %q has no dot — may match too broadly", addr))
+					}
+				} else if strings.HasPrefix(addr, "*") {
+					add(field, fmt.Sprintf("invalid wildcard pattern %q (only *@domain is supported)", addr))
+				} else if !strings.Contains(addr, "@") {
+					add(field, fmt.Sprintf("invalid address %q (expected email or *@domain)", addr))
+				}
 			}
 		}
 	}
