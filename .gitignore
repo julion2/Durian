@@ -16,6 +16,7 @@ build/
 # IDEs / editors
 .idea/
 .claude/
+.bazelbsp/
 
 # Go binaries (local builds outside Bazel)
 cli/durian
