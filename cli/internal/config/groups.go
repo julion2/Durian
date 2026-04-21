@@ -12,15 +12,23 @@ import (
 
 // GroupEntry defines a single contact group.
 // Members is a list of people, where each person can have multiple addresses.
-// Example: [["alice@work.com", "alice@gmail.com"], ["bob@vc.com"], ["*@fund.com"]]
 type GroupEntry struct {
-	Description string     `toml:"description"`
-	Members     [][]string `toml:"members"`
+	Description string
+	Members     [][]string
 }
 
-// groupsFile is the top-level structure of groups.toml.
-type groupsFile struct {
-	Groups map[string]GroupEntry `toml:"groups"`
+// groupEntryRaw is the intermediate TOML representation that accepts both
+// plain strings and arrays for members:
+//
+//	members = ["alice@x.com", ["bob@x.com", "bob@y.com"], "*@fund.com"]
+type groupEntryRaw struct {
+	Description string      `toml:"description"`
+	Members     interface{} `toml:"members"`
+}
+
+// groupsFileRaw is the top-level structure of groups.toml.
+type groupsFileRaw struct {
+	Groups map[string]groupEntryRaw `toml:"groups"`
 }
 
 // LoadGroups loads contact groups from the given path.
@@ -35,12 +43,61 @@ func LoadGroups(path string) (map[string]GroupEntry, error) {
 		return nil, nil
 	}
 
-	var f groupsFile
-	if _, err := toml.DecodeFile(path, &f); err != nil {
+	var raw groupsFileRaw
+	if _, err := toml.DecodeFile(path, &raw); err != nil {
 		return nil, fmt.Errorf("failed to load groups: %w", err)
 	}
 
-	return f.Groups, nil
+	groups := make(map[string]GroupEntry, len(raw.Groups))
+	for name, entry := range raw.Groups {
+		members, err := normalizeMembers(entry.Members)
+		if err != nil {
+			return nil, fmt.Errorf("groups.%s.members: %w", name, err)
+		}
+		groups[name] = GroupEntry{
+			Description: entry.Description,
+			Members:     members,
+		}
+	}
+
+	return groups, nil
+}
+
+// normalizeMembers converts the flexible TOML members format into [][]string.
+// Accepts: plain strings (single address), arrays of strings (multi-email person),
+// or a mix of both.
+func normalizeMembers(raw interface{}) ([][]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+
+	arr, ok := raw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("must be an array")
+	}
+
+	result := make([][]string, 0, len(arr))
+	for _, item := range arr {
+		switch v := item.(type) {
+		case string:
+			// Plain string → single-address person
+			result = append(result, []string{v})
+		case []interface{}:
+			// Array → multi-address person
+			strs := make([]string, 0, len(v))
+			for _, s := range v {
+				str, ok := s.(string)
+				if !ok {
+					return nil, fmt.Errorf("address must be a string, got %T", s)
+				}
+				strs = append(strs, str)
+			}
+			result = append(result, strs)
+		default:
+			return nil, fmt.Errorf("member must be a string or array of strings, got %T", item)
+		}
+	}
+	return result, nil
 }
 
 // GroupsPath returns the default groups.toml path.
@@ -90,7 +147,6 @@ func ExpandGroupsInQuery(query string, groups map[string]GroupEntry) (string, er
 		var parts []string
 		for _, person := range group.Members {
 			for _, addr := range person {
-				// Strip wildcard prefix for LIKE matching
 				a := addr
 				if strings.HasPrefix(a, "*") {
 					a = a[1:]

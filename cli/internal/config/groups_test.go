@@ -21,9 +21,13 @@ func TestLoadGroups(t *testing.T) {
 	if len(inv.Members) != 3 {
 		t.Errorf("investor.Members count = %d, want 3", len(inv.Members))
 	}
-	// First member has two addresses
-	if len(inv.Members[0]) != 2 {
-		t.Errorf("investor.Members[0] addresses = %d, want 2", len(inv.Members[0]))
+	// First member: plain string "alice@sequoia.com" → normalized to ["alice@sequoia.com"]
+	if len(inv.Members[0]) != 1 || inv.Members[0][0] != "alice@sequoia.com" {
+		t.Errorf("investor.Members[0] = %v, want [alice@sequoia.com]", inv.Members[0])
+	}
+	// Second member: array ["bob@index.vc", "bob.personal@gmail.com"]
+	if len(inv.Members[1]) != 2 {
+		t.Errorf("investor.Members[1] addresses = %d, want 2", len(inv.Members[1]))
 	}
 }
 
