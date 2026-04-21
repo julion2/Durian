@@ -36,9 +36,20 @@ The query follows notmuch search syntax. Common examples:
 	RunE: runSearch,
 }
 
+var countCmd = &cobra.Command{
+	Use:   "count <query>",
+	Short: "Count threads matching a query",
+	Example: `  durian count "tag:inbox"
+  durian count "tag:unread AND from:alice"
+  durian count "group:investor AND date:month"`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: runCount,
+}
+
 func init() {
 	searchCmd.Flags().IntVarP(&searchLimit, "limit", "l", 50, "maximum number of results")
 	rootCmd.AddCommand(searchCmd)
+	rootCmd.AddCommand(countCmd)
 }
 
 func runSearch(cmd *cobra.Command, args []string) error {
@@ -100,6 +111,33 @@ func outputSearchTable(resp protocol.Response) error {
 	}
 
 	return w.Flush()
+}
+
+func runCount(cmd *cobra.Command, args []string) error {
+	query := strings.Join(args, " ")
+
+	emailDB, err := openEmailDB()
+	if err != nil {
+		return fmt.Errorf("email store unavailable: %w", err)
+	}
+	defer emailDB.Close()
+
+	// Expand groups before counting
+	if groups, err := config.LoadGroups(""); err == nil && len(groups) > 0 {
+		expanded, err := config.ExpandGroupsInQuery(query, groups)
+		if err != nil {
+			return fmt.Errorf("expand groups: %w", err)
+		}
+		query = expanded
+	}
+
+	count, err := emailDB.SearchCount(query)
+	if err != nil {
+		return fmt.Errorf("count: %w", err)
+	}
+
+	fmt.Println(count)
+	return nil
 }
 
 func truncate(s string, maxLen int) string {
