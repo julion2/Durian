@@ -38,7 +38,7 @@ final class ProfileTests: XCTestCase {
     // MARK: - Helpers
 
     private static let testDefaultFolders: [FolderConfig] = [
-        FolderConfig(name: "Inbox", icon: "tray", query: "tag:inbox")
+        FolderConfig(name: "Inbox", icon: "tray", query: "tag:inbox", isSection: false)
     ]
 
     private func makeAllProfile() -> Profile {
