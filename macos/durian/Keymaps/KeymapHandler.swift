@@ -194,7 +194,7 @@ class KeymapHandler: ObservableObject {
         
         // Check keymaps.toml entries
         for keymapEntry in keymapsManager.keymaps.keymaps {
-            guard keymapEntry.enabled else { continue }
+            // Legacy entries require modifiers
             guard !keymapEntry.modifiers.isEmpty else { continue } // Skip no-modifier entries
             
             if keymapEntry.key.lowercased() == key && Set(keymapEntry.modifiers) == Set(modifiers) {

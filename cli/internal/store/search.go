@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -424,6 +425,9 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 	case "to":
 		return "m.to_addrs LIKE ?", []interface{}{"%" + f.value + "%"}, nil
 
+	case "cc":
+		return "m.cc_addrs LIKE ?", []interface{}{"%" + f.value + "%"}, nil
+
 	case "subject":
 		return "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)",
 			[]interface{}{"subject:" + f.value}, nil
@@ -442,19 +446,35 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 		}
 		return "1=1", nil, nil
 
+	case "has":
+		val := strings.ToLower(f.value)
+		if val == "attachment" {
+			return "EXISTS (SELECT 1 FROM attachments WHERE attachments.message_db_id = m.id)", nil, nil
+		}
+		if strings.HasPrefix(val, "attachment:") {
+			wantType := val[len("attachment:"):]
+			return "EXISTS (SELECT 1 FROM attachments WHERE attachments.message_db_id = m.id AND (LOWER(attachments.content_type) LIKE ? OR LOWER(attachments.filename) LIKE ?))",
+				[]interface{}{"%" + wantType + "%", "%." + wantType}, nil
+		}
+		return "", nil, fmt.Errorf("unknown has: value %q (try: attachment, attachment:pdf)", f.value)
+
 	case "folder", "thread", "id", "mimetype":
 		return "1=1", nil, nil
+
+	case "group":
+		return "", nil, fmt.Errorf("group:%s was not expanded — check groups.toml", f.value)
 
 	default:
 		return "", nil, fmt.Errorf("unknown query field: %q", f.field)
 	}
 }
 
-// parseDateRange parses date queries into a SQL BETWEEN clause.
+// parseDateRange parses date queries into a SQL BETWEEN/comparison clause.
 // Supports:
 //   - Relative keywords: date:today, date:yesterday, date:week, date:2week,
-//     date:month, date:2month, date:year, date:2year
+//     date:month, date:2month, date:year, date:2year, date:30d, date:90d
 //   - Ranges: date:2024-01..2024-02, date:2024-01-15..2024-02-28
+//   - Open ranges: date:..month (older than 1 month), date:month.. (since 1 month ago)
 func parseDateRange(value string) (string, []interface{}, error) {
 	// Try relative keyword first (no ".." separator)
 	if !strings.Contains(value, "..") {
@@ -470,16 +490,56 @@ func parseDateRange(value string) (string, []interface{}, error) {
 		return "", nil, fmt.Errorf("date range must be FROM..TO, got %q", value)
 	}
 
-	from, err := parseDate(parts[0])
+	now := time.Now()
+	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 0, now.Location())
+
+	// Open start: date:..X (older than X)
+	if parts[0] == "" {
+		to, err := resolveDateBound(parts[1], false)
+		if err != nil {
+			return "", nil, fmt.Errorf("parse date to: %w", err)
+		}
+		return "m.date <= ?", []interface{}{to}, nil
+	}
+
+	// Open end: date:X.. (since X)
+	if parts[1] == "" {
+		from, err := resolveDateBound(parts[0], true)
+		if err != nil {
+			return "", nil, fmt.Errorf("parse date from: %w", err)
+		}
+		return "m.date BETWEEN ? AND ?", []interface{}{from, endOfDay.Unix()}, nil
+	}
+
+	from, err := resolveDateBound(parts[0], true)
 	if err != nil {
 		return "", nil, fmt.Errorf("parse date from: %w", err)
 	}
-	to, err := parseDateEnd(parts[1])
+	to, err := resolveDateBound(parts[1], false)
 	if err != nil {
 		return "", nil, fmt.Errorf("parse date to: %w", err)
 	}
 
 	return "m.date BETWEEN ? AND ?", []interface{}{from, to}, nil
+}
+
+// resolveDateBound resolves a date string as either an absolute date or relative keyword.
+// isStart controls whether to return the start or end of the resolved period.
+func resolveDateBound(s string, isStart bool) (int64, error) {
+	// Try relative keyword first
+	from, to, err := resolveRelativeDate(s)
+	if err == nil {
+		if isStart {
+			return from, nil
+		}
+		return to, nil
+	}
+
+	// Try absolute date
+	if isStart {
+		return parseDate(s)
+	}
+	return parseDateEnd(s)
 }
 
 // resolveRelativeDate converts a relative keyword to a (from, to) Unix timestamp pair.
@@ -507,7 +567,25 @@ func resolveRelativeDate(keyword string) (int64, int64, error) {
 	case "2year":
 		return today.AddDate(-2, 0, 0).Unix(), endOfDay.Unix(), nil
 	default:
-		return 0, 0, fmt.Errorf("unknown date keyword: %q (try: today, yesterday, week, 2week, month, 2month, year, 2year)", keyword)
+		// Try relative offset syntax: Nd (days), Nw (weeks), Nm (months), Ny (years)
+		kw := strings.ToLower(keyword)
+		if len(kw) >= 2 {
+			suffix := kw[len(kw)-1]
+			n, err := strconv.Atoi(kw[:len(kw)-1])
+			if err == nil && n > 0 {
+				switch suffix {
+				case 'd':
+					return today.AddDate(0, 0, -n).Unix(), endOfDay.Unix(), nil
+				case 'w':
+					return today.AddDate(0, 0, -n*7).Unix(), endOfDay.Unix(), nil
+				case 'm':
+					return today.AddDate(0, -n, 0).Unix(), endOfDay.Unix(), nil
+				case 'y':
+					return today.AddDate(-n, 0, 0).Unix(), endOfDay.Unix(), nil
+				}
+			}
+		}
+		return 0, 0, fmt.Errorf("unknown date keyword: %q (try: today, yesterday, week, month, year, 30d, 2w, 6m, 1y)", keyword)
 	}
 }
 

@@ -119,6 +119,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	r.HandleFunc("/api/v1/threads/{thread_id}/tags", h.TagThreadHandler).Methods("POST")
 	r.HandleFunc("/api/v1/message/body", h.ShowMessageBodyHandler).Methods("GET")
 	r.HandleFunc("/api/v1/messages/{message_id}/attachments/{part_id}", h.DownloadAttachmentHandler).Methods("GET")
+	r.HandleFunc("/api/v1/groups", h.ListGroupsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/contacts/search", h.SearchContactsHandler).Methods("GET")
 	r.HandleFunc("/api/v1/contacts/usage", h.IncrementContactUsageHandler).Methods("POST")
 	r.HandleFunc("/api/v1/contacts", h.ListContactsHandler).Methods("GET")
@@ -147,6 +148,15 @@ func runServe(cmd *cobra.Command, args []string) {
 		slog.Info("Loaded filter rules", "module", "SERVE", "count", len(rules))
 	}
 
+	// Load contact groups (non-fatal if missing)
+	groups, groupsErr := config.LoadGroups("")
+	if groupsErr != nil {
+		slog.Warn("Could not load contact groups", "module", "SERVE", "err", groupsErr)
+	} else if len(groups) > 0 {
+		h.SetGroups(groups)
+		slog.Info("Loaded contact groups", "module", "SERVE", "count", len(groups))
+	}
+
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		slog.Warn("Could not load config", "module", "SERVE", "err", err)
@@ -167,7 +177,7 @@ func runServe(cmd *cobra.Command, args []string) {
 		if len(accounts) == 0 {
 			slog.Info("No IMAP accounts configured, skipping watchers", "module", "SERVE")
 		} else {
-			watcher := handler.NewWatcherManager(eventHub, emailDB, rules)
+			watcher := handler.NewWatcherManager(eventHub, emailDB, rules, groups)
 			h.SetFetcher(watcher)
 			h.SetSyncTrigger(watcher)
 			go watcher.Start(watcherCtx, accounts)

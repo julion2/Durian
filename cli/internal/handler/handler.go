@@ -31,7 +31,8 @@ type Handler struct {
 	store       *store.DB // SQLite store (primary read backend)
 	parser      *mail.Parser
 	contacts    *contacts.DB
-	cfg         *config.Config    // application config (for outbox worker)
+	cfg         *config.Config                // application config (for outbox worker)
+	groups      map[string]config.GroupEntry   // contact groups for query expansion
 	fetcher        AttachmentFetcher // optional IMAP attachment fetcher
 	syncTrigger    SyncTrigger       // optional sync trigger for tag changes
 	tagSync        *tagsync.Client   // optional remote tag sync client
@@ -67,6 +68,21 @@ func (h *Handler) SetTagSync(c *tagsync.Client) {
 // Used by CLI commands that modify tags when tag sync is configured.
 func (h *Handler) EnableTagJournal() {
 	h.tagSyncEnabled = true
+}
+
+// SetGroups sets the contact groups for query expansion.
+func (h *Handler) SetGroups(groups map[string]config.GroupEntry) {
+	h.groups = groups
+}
+
+// Groups returns the loaded contact groups.
+func (h *Handler) Groups() map[string]config.GroupEntry {
+	return h.groups
+}
+
+// expandGroups replaces group:NAME references in a query with from: OR-chains.
+func (h *Handler) expandGroups(query string) (string, error) {
+	return config.ExpandGroupsInQuery(query, h.groups)
 }
 
 // SetConfig sets the application config (needed by outbox worker for account lookup).

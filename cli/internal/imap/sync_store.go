@@ -132,7 +132,11 @@ func (s *Syncer) storeInsertMessage(mailboxName string, imapMsg *goimap.Message,
 
 	// Apply user-defined filter rules
 	if len(s.options.FilterRules) > 0 {
-		matched := MatchingRules(s.options.FilterRules, storeMsg, len(content.Attachments), parsed.Header, s.accountName())
+		atts := make([]RuleAttachment, len(content.Attachments))
+		for i, a := range content.Attachments {
+			atts[i] = RuleAttachment{ContentType: a.ContentType, Filename: a.Filename}
+		}
+		matched := MatchingRules(s.options.FilterRules, storeMsg, atts, parsed.Header, s.accountName(), s.options.Groups)
 		slog.Debug("Filter rules matched", "module", "RULES", "matched", len(matched), "total", len(s.options.FilterRules), "message_id", messageID)
 		for _, rule := range matched {
 			addTags := rule.AddTags

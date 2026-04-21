@@ -20,7 +20,8 @@ Without arguments, validates all files. Pass a name to validate just one.`,
 	Example: `  durian validate
   durian validate config
   durian validate rules
-  durian validate profiles`,
+  durian validate profiles
+  durian validate groups`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runValidate,
 }
@@ -34,9 +35,9 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		target = strings.ToLower(args[0])
 		switch target {
-		case "config", "rules", "profiles", "keymaps":
+		case "config", "rules", "profiles", "keymaps", "groups":
 		default:
-			return fmt.Errorf("unknown target %q (valid: config, rules, profiles, keymaps)", target)
+			return fmt.Errorf("unknown target %q (valid: config, rules, profiles, keymaps, groups)", target)
 		}
 	}
 
@@ -119,6 +120,22 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		} else {
 			errs := config.ValidateKeymaps(keymaps)
 			if printResults("keymaps.toml", errs, fmt.Sprintf("%d bindings", len(keymaps.Keymaps))) {
+				hasErrors = true
+			}
+		}
+	}
+
+	// Validate groups.toml
+	if target == "" || target == "groups" {
+		groups, err := config.LoadGroups("")
+		if err != nil {
+			printError("groups.toml", fmt.Sprintf("failed to parse: %v", err))
+			hasErrors = true
+		} else if groups == nil {
+			printSkipped("groups.toml", "not found (optional)")
+		} else {
+			errs := config.ValidateGroups(groups)
+			if printResults("groups.toml", errs, fmt.Sprintf("%d groups", len(groups))) {
 				hasErrors = true
 			}
 		}

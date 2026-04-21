@@ -13,25 +13,22 @@ final class SequenceMatcherTests: XCTestCase {
         let entries: [KeymapEntry] = [
             // List context
             .init(action: "next_email", key: "j", modifiers: [], description: "",
-                  enabled: true, sequence: false, supportsCount: true, context: "list"),
+                  sequence: false, supportsCount: true, context: "list"),
             .init(action: "prev_email", key: "k", modifiers: [], description: "",
-                  enabled: true, sequence: false, supportsCount: true, context: "list"),
+                  sequence: false, supportsCount: true, context: "list"),
             .init(action: "first_email", key: "gg", modifiers: [], description: "",
-                  enabled: true, sequence: true, supportsCount: false, context: "list"),
+                  sequence: true, supportsCount: false, context: "list"),
             .init(action: "go_inbox", key: "gi", modifiers: [], description: "",
-                  enabled: true, sequence: true, supportsCount: false, context: "list"),
+                  sequence: true, supportsCount: false, context: "list"),
             .init(action: "delete", key: "dd", modifiers: [], description: "",
-                  enabled: true, sequence: true, supportsCount: true, context: "list"),
+                  sequence: true, supportsCount: true, context: "list"),
             .init(action: "page_down", key: "d", modifiers: ["ctrl"], description: "",
-                  enabled: true, sequence: false, supportsCount: true, context: "list"),
+                  sequence: false, supportsCount: true, context: "list"),
             .init(action: "compose", key: "c", modifiers: [], description: "",
-                  enabled: true, sequence: false, supportsCount: false, context: "list"),
+                  sequence: false, supportsCount: false, context: "list"),
             // Thread context (to verify context isolation)
             .init(action: "reply", key: "r", modifiers: [], description: "",
-                  enabled: true, sequence: false, supportsCount: false, context: "thread"),
-            // Disabled entry (should be ignored)
-            .init(action: "archive", key: "a", modifiers: [], description: "",
-                  enabled: false, sequence: false, supportsCount: false, context: "list"),
+                  sequence: false, supportsCount: false, context: "thread"),
         ]
 
         KeymapsManager.shared.keymaps = KeymapConfig()
@@ -80,12 +77,6 @@ final class SequenceMatcherTests: XCTestCase {
 
     func testUnknownSequenceIsNoMatch() {
         let result = SequenceMatcher.shared.match(buffer: "xyz", context: .list)
-        XCTAssertEqual(result, .noMatch)
-    }
-
-    func testDisabledEntryNotMatched() {
-        // "a" is archive but disabled in setUp — should not match
-        let result = SequenceMatcher.shared.match(buffer: "a", context: .list)
         XCTAssertEqual(result, .noMatch)
     }
 

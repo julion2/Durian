@@ -4,6 +4,7 @@ go_library(
     name = "config",
     srcs = [
         "config.go",
+        "groups.go",
         "helpers.go",
         "keymaps.go",
         "profiles.go",
@@ -19,7 +20,10 @@ go_library(
 go_test(
     name = "config_test",
     size = "small",
-    srcs = ["config_test.go"],
+    srcs = [
+        "config_test.go",
+        "groups_test.go",
+    ],
     data = glob(["testdata/**"]),
     embed = [":config"],
 )

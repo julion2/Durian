@@ -39,19 +39,39 @@ struct SidebarView: View {
 
                     // Rows
                     ForEach(accountManager.mailFolders) { folder in
-                        SidebarRow(
-                            folder: folder,
-                            unreadCount: accountManager.folderUnreadCounts[folder.name] ?? 0,
-                            isSelected: selectedTagID == folder.name,
-                            accentColor: profileManager.resolvedAccentColor
-                        ) {
-                            selectedTagID = folder.name
+                        if folder.isSection {
+                            SidebarSectionHeader(title: folder.displayName)
+                        } else {
+                            SidebarRow(
+                                folder: folder,
+                                unreadCount: accountManager.folderUnreadCounts[folder.name] ?? 0,
+                                isSelected: selectedTagID == folder.name,
+                                accentColor: profileManager.resolvedAccentColor
+                            ) {
+                                selectedTagID = folder.name
+                            }
                         }
                     }
                 }
                 .padding(.vertical, 4)
             }
         }
+    }
+}
+
+// MARK: - Section Header
+
+private struct SidebarSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
     }
 }
 

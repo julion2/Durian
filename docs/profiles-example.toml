@@ -5,7 +5,10 @@
 # Profiles group accounts and define sidebar folders.
 # Switch profiles via Cmd+1, Cmd+2, etc.
 # accounts = ["*"] matches all accounts.
-# Folder queries use the search syntax (tag:, from:, date:, path:).
+# Folder queries use the search syntax (tag:, from:, date:, path:, group:).
+#
+# Section headers: omit the query field to create a non-clickable header.
+# This visually groups folders in the sidebar.
 
 # ── All Accounts ───────────────────────────────────────────────────────
 
@@ -44,13 +47,12 @@ name = "Trash"
 icon = "trash"
 query = "tag:trash"
 
-# ── Work Profile (single account) ─────────────────────────────────────
+# ── Work Profile (with section headers) ──────────────────────────────
 
 [[profile]]
 name = "Work"
 accounts = ["work"]
-color = "#EF4444"                 # Optional: per-profile accent color (hex).
-                                  # Overrides settings.accent_color when this profile is active.
+color = "#EF4444"
 
 [[profile.folders]]
 name = "Inbox"
@@ -62,15 +64,50 @@ name = "Sent"
 icon = "paperplane"
 query = "tag:sent"
 
+# Section header — no query, renders as non-clickable label
 [[profile.folders]]
-name = "Drafts"
-icon = "doc.text"
-query = "tag:draft"
+name = "Triage"
+
+[[profile.folders]]
+name = "To-Do"
+icon = "checklist"
+query = "tag:todo"
+
+[[profile.folders]]
+name = "Waiting"
+icon = "clock"
+query = "tag:waiting"
+
+[[profile.folders]]
+name = "Smart Views"
+
+[[profile.folders]]
+name = "VIP Unread"
+icon = "star"
+query = "group:vip AND tag:unread"
+
+[[profile.folders]]
+name = "Legal"
+icon = "building.columns"
+query = "tag:legal AND date:6m.."
+
+[[profile.folders]]
+name = "Calendar"
+icon = "calendar"
+query = "tag:cal AND date:2w.."
+
+[[profile.folders]]
+name = "System"
 
 [[profile.folders]]
 name = "Archive"
 icon = "archivebox"
 query = "tag:archive"
+
+[[profile.folders]]
+name = "Trash"
+icon = "trash"
+query = "tag:trash"
 
 # ── Shared Mailboxes (multiple accounts, per-account inboxes) ─────────
 

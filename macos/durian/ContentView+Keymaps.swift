@@ -159,6 +159,35 @@ extension ContentView {
             await accountManager.syncAndRefresh()
         }
 
+        // Tag Op: configurable tag operations (e.g. T → +todo -inbox, W → +waiting -inbox)
+        keymapHandler.registerSimpleHandler(for: .tagOp) { [self] in
+            let seq = keymapHandler.engine.lastMatchedSequence
+            guard let tagsStr = SequenceMatcher.shared.tagOpTags(for: seq, context: keymapHandler.engine.activeContext) else { return }
+
+            // Parse "+tag1 -tag2" into add/remove arrays
+            let parts = tagsStr.split(separator: " ").map(String.init)
+            let add = parts.filter { $0.hasPrefix("+") }.map { String($0.dropFirst()) }
+            let remove = parts.filter { $0.hasPrefix("-") }.map { String($0.dropFirst()) }
+
+            let ids = await MainActor.run { () -> Set<String> in
+                let ids = markedEmails
+                guard !ids.isEmpty else { return [] }
+                // If removing inbox, advance cursor (like archive)
+                if remove.contains("inbox") {
+                    let next = nextEmailId(after: ids)
+                    visualModeAnchor = nil
+                    keymapHandler.engine.exitVisualMode()
+                    accountManager.removeLocally(ids: ids)
+                    advanceCursor(to: next)
+                }
+                return ids
+            }
+            for id in ids {
+                await accountManager.modifyTagsWithoutSync(id: id, add: add, remove: remove)
+            }
+            await accountManager.syncAndRefresh()
+        }
+
         // Delete: dd - works with multi-selection
         keymapHandler.registerSimpleHandler(for: .deleteEmail) { [self] in
             let ids = await MainActor.run { () -> Set<String> in

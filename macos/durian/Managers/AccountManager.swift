@@ -34,9 +34,12 @@ class AccountManager: ObservableObject {
     var mailFolders: [MailFolder] {
         let profile = ProfileManager.shared.currentProfile
         let folders = profile?.folders ?? ProfileManager.defaultFolders
-        
+
         return folders.map { folder in
-            MailFolder(name: folder.name.lowercased(), displayName: folder.name, icon: folder.icon)
+            if folder.isSection {
+                return MailFolder(section: folder.name)
+            }
+            return MailFolder(name: folder.name.lowercased(), displayName: folder.name, icon: folder.icon)
         }
     }
     
@@ -80,7 +83,7 @@ class AccountManager: ObservableObject {
         guard let backend = emailBackend else { return }
 
         var counts: [String: Int] = [:]
-        for folder in mailFolders {
+        for folder in mailFolders where !folder.isSection {
             let folderQuery = ProfileManager.shared.buildQuery(folderName: folder.displayName)
             let unreadQuery = "(\(folderQuery)) AND tag:unread"
             let count = await backend.searchCount(query: unreadQuery)

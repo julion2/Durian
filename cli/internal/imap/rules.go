@@ -10,6 +10,13 @@ import (
 	"github.com/durian-dev/durian/cli/internal/store"
 )
 
+// RuleAttachment holds the attachment metadata needed for rule evaluation.
+// Kept minimal to avoid importing cli/internal/mail.
+type RuleAttachment struct {
+	ContentType string
+	Filename    string
+}
+
 // ValidateRuleQuery checks if a rule match expression is syntactically valid.
 func ValidateRuleQuery(query string) error {
 	_, err := parseRuleQuery(query)
@@ -18,18 +25,31 @@ func ValidateRuleQuery(query string) error {
 
 // MatchingRules returns the rules whose match expression matches the message.
 // account is the account identifier (e.g. alias); header is the parsed mail header.
-func MatchingRules(rules []config.RuleConfig, msg *store.Message, attachmentCount int, header mail.Header, account string) []config.RuleConfig {
+// groups enables group: expansion in rule match expressions.
+func MatchingRules(rules []config.RuleConfig, msg *store.Message, attachments []RuleAttachment, header mail.Header, account string, groups map[string]config.GroupEntry) []config.RuleConfig {
 	var matched []config.RuleConfig
 	for _, rule := range rules {
 		if len(rule.Accounts) > 0 && !accountMatches(rule.Accounts, account) {
 			continue
 		}
-		expr, err := parseRuleQuery(rule.Match)
+
+		// Expand group: references in match expression
+		matchExpr := rule.Match
+		if len(groups) > 0 {
+			expanded, err := config.ExpandGroupsInQuery(matchExpr, groups)
+			if err != nil {
+				slog.Warn("Group expansion failed in rule", "module", "RULES", "name", rule.Name, "err", err)
+			} else {
+				matchExpr = expanded
+			}
+		}
+
+		expr, err := parseRuleQuery(matchExpr)
 		if err != nil {
-			slog.Warn("Skipping malformed rule", "module", "RULES", "name", rule.Name, "match", rule.Match, "err", err)
+			slog.Warn("Skipping malformed rule", "module", "RULES", "name", rule.Name, "match", matchExpr, "err", err)
 			continue
 		}
-		if evalExpr(expr, msg, attachmentCount, header) {
+		if evalExpr(expr, msg, attachments, header) {
 			matched = append(matched, rule)
 		}
 	}
@@ -255,26 +275,42 @@ func (p *ruleParser) parsePrimary() (ruleNode, error) {
 
 // --- In-memory evaluation ---
 
-func evalExpr(node ruleNode, msg *store.Message, attachmentCount int, header mail.Header) bool {
+func evalExpr(node ruleNode, msg *store.Message, attachments []RuleAttachment, header mail.Header) bool {
 	switch n := node.(type) {
 	case *ruleBinaryNode:
 		if n.op == "OR" {
-			return evalExpr(n.left, msg, attachmentCount, header) || evalExpr(n.right, msg, attachmentCount, header)
+			return evalExpr(n.left, msg, attachments, header) || evalExpr(n.right, msg, attachments, header)
 		}
-		return evalExpr(n.left, msg, attachmentCount, header) && evalExpr(n.right, msg, attachmentCount, header)
+		return evalExpr(n.left, msg, attachments, header) && evalExpr(n.right, msg, attachments, header)
 	case *ruleNotNode:
-		return !evalExpr(n.child, msg, attachmentCount, header)
+		return !evalExpr(n.child, msg, attachments, header)
 	case *ruleFieldNode:
 		switch n.field {
 		case "from":
 			return strings.Contains(strings.ToLower(msg.FromAddr), strings.ToLower(n.value))
 		case "to":
 			return strings.Contains(strings.ToLower(msg.ToAddrs), strings.ToLower(n.value))
+		case "cc":
+			return strings.Contains(strings.ToLower(msg.CCAddrs), strings.ToLower(n.value))
 		case "subject":
 			return strings.Contains(strings.ToLower(msg.Subject), strings.ToLower(n.value))
 		case "has":
-			if strings.EqualFold(n.value, "attachment") {
-				return attachmentCount > 0
+			val := strings.ToLower(n.value)
+			if val == "attachment" {
+				return len(attachments) > 0
+			}
+			// has:attachment:TYPE — match on attachment content type
+			if strings.HasPrefix(val, "attachment:") {
+				wantType := val[len("attachment:"):]
+				for _, att := range attachments {
+					if strings.Contains(strings.ToLower(att.ContentType), wantType) {
+						return true
+					}
+					if strings.HasSuffix(strings.ToLower(att.Filename), "."+wantType) {
+						return true
+					}
+				}
+				return false
 			}
 			return false
 		case "header":

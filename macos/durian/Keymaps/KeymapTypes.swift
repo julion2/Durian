@@ -37,6 +37,7 @@ enum KeymapAction: String, CaseIterable {
     case forward = "forward"
     case deleteEmail = "delete"
     case archiveEmail = "archive"
+    case tagOp = "tag_op"
     case toggleRead = "toggle_read"
     case toggleStar = "toggle_star"
 

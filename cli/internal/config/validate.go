@@ -237,8 +237,9 @@ func ValidateProfiles(profiles []ProfileConfig, cfg *Config) []ValidationError {
 			if folder.Icon == "" {
 				warn(fp+".icon", "empty (will show no icon)")
 			}
-			if folder.Query == "" {
-				add(fp+".query", "required")
+			if folder.Query == "" && folder.Icon != "" {
+				// Section headers have no query (and typically no icon)
+				add(fp+".query", "required (omit query only for section headers)")
 			}
 		}
 	}
@@ -256,7 +257,7 @@ var (
 		"next_email": true, "prev_email": true, "first_email": true, "last_email": true,
 		"page_down": true, "page_up": true,
 		"archive": true, "compose": true, "reply": true, "reply_all": true, "forward": true,
-		"toggle_read": true, "toggle_star": true, "delete": true,
+		"toggle_read": true, "toggle_star": true, "delete": true, "tag_op": true,
 		"go_inbox": true, "go_sent": true, "go_drafts": true, "go_archive": true,
 		"search": true, "close_detail": true, "reload_inbox": true, "tag_picker": true,
 		"enter_visual_mode": true, "enter_toggle_mode": true, "toggle_selection": true, "exit_visual_mode": true,

@@ -295,15 +295,15 @@ func TestStoreTag(t *testing.T) {
 	}
 }
 
-func TestStoreTagNonThreadRejects(t *testing.T) {
+func TestStoreTagBySearchQuery(t *testing.T) {
 	db := newTestStore(t)
 	seedStoreData(t, db)
 
 	h := New(db, nil)
 	resp := h.Tag("tag:inbox", "+archived")
 
-	if resp.OK {
-		t.Error("non-thread tag query should fail")
+	if !resp.OK {
+		t.Errorf("tag by search query should succeed, got error: %s", resp.Error)
 	}
 }
 

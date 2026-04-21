@@ -1,0 +1,17 @@
+[groups.investor]
+description = "Cap Table members"
+members = [
+  "alice@sequoia.com",
+  ["bob@index.vc", "bob.personal@gmail.com"],
+  "*@fund-xyz.com",
+]
+
+[groups.press]
+members = ["*@spiegel.de", "*@handelsblatt.com"]
+
+[groups.solo]
+members = ["carol@example.org"]
+
+[groups.empty]
+description = "No members yet"
+members = []

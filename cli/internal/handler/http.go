@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -64,7 +65,14 @@ func (h *Handler) SearchCountHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count, err := h.store.SearchCount(query)
+	expanded, err := h.expandGroups(query)
+	if err != nil {
+		slog.Error("Group expansion failed", "module", "HANDLER", "query", query, "err", err)
+		http.Error(w, "invalid group reference: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	count, err := h.store.SearchCount(expanded)
 	if err != nil {
 		slog.Error("Search count failed", "module", "HANDLER", "query", query, "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -134,6 +142,36 @@ func sanitizeFilename(name string) string {
 		return "attachment"
 	}
 	return name
+}
+
+// ListGroupsHandler handles GET /api/v1/groups
+// Returns all configured contact groups for GUI autocomplete.
+func (h *Handler) ListGroupsHandler(w http.ResponseWriter, r *http.Request) {
+	type groupResponse struct {
+		Name        string     `json:"name"`
+		Description string     `json:"description,omitempty"`
+		Members     [][]string `json:"members"`
+	}
+
+	groups := h.Groups()
+	result := make([]groupResponse, 0, len(groups))
+	for name, entry := range groups {
+		members := entry.Members
+		if members == nil {
+			members = [][]string{}
+		}
+		result = append(result, groupResponse{
+			Name:        name,
+			Description: entry.Description,
+			Members:     members,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
+	writeJSON(w, map[string]any{"groups": result, "ok": true})
 }
 
 func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
