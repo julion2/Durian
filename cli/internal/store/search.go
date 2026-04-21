@@ -445,6 +445,9 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 	case "folder", "thread", "id", "mimetype":
 		return "1=1", nil, nil
 
+	case "group":
+		return "", nil, fmt.Errorf("group:%s was not expanded — check groups.toml", f.value)
+
 	default:
 		return "", nil, fmt.Errorf("unknown query field: %q", f.field)
 	}

@@ -15,7 +15,12 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 		limit = 50
 	}
 
-	results, err := h.store.Search(query, limit)
+	expanded, err := h.expandGroups(query)
+	if err != nil {
+		return protocol.FailWithMessage(protocol.ErrBackendError, "expand groups: "+err.Error())
+	}
+
+	results, err := h.store.Search(expanded, limit)
 	if err != nil {
 		return protocol.Fail(protocol.ErrBackendError, err)
 	}

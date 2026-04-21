@@ -7,6 +7,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/durian-dev/durian/cli/internal/config"
 	"github.com/durian-dev/durian/cli/internal/handler"
 	"github.com/durian-dev/durian/cli/internal/protocol"
 	"github.com/spf13/cobra"
@@ -24,10 +25,12 @@ The query follows notmuch search syntax. Common examples:
   tag:unread         - all unread emails
   from:alice@ex.com  - emails from Alice
   subject:meeting    - emails with "meeting" in subject
-  date:yesterday..   - emails from yesterday onwards`,
+  date:yesterday..   - emails from yesterday onwards
+  group:investor     - emails from contact group (expands to from: OR-chain)`,
 	Example: `  durian search "tag:inbox"
   durian search "tag:inbox AND tag:unread"
   durian search "from:alice@example.com" --limit 10
+  durian search "group:investor AND date:month"
   durian search "tag:unread" --json`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runSearch,
@@ -49,6 +52,12 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	defer emailDB.Close()
 
 	h := handler.New(emailDB, nil)
+
+	// Load contact groups for group: query expansion
+	if groups, err := config.LoadGroups(""); err == nil && len(groups) > 0 {
+		h.SetGroups(groups)
+	}
+
 	resp := h.Search(query, searchLimit, 0)
 
 	if !resp.OK {
