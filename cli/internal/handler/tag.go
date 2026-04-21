@@ -18,16 +18,38 @@ func (h *Handler) Tag(query string, tags string) protocol.Response {
 
 	add, remove := splitTagOps(tagList)
 
-	if strings.HasPrefix(query, "thread:") {
-		threadID := strings.TrimPrefix(query, "thread:")
+	// Expand group references
+	expanded, err := h.expandGroups(query)
+	if err != nil {
+		return protocol.FailWithMessage(protocol.ErrBackendError, "expand groups: "+err.Error())
+	}
+
+	// Collect thread IDs to modify
+	var threadIDs []string
+	if strings.HasPrefix(expanded, "thread:") {
+		threadIDs = []string{strings.TrimPrefix(expanded, "thread:")}
+	} else {
+		// Search for matching threads
+		results, err := h.store.Search(expanded, 1000000)
+		if err != nil {
+			return protocol.Fail(protocol.ErrBackendError, err)
+		}
+		for _, r := range results {
+			threadIDs = append(threadIDs, r.Thread)
+		}
+	}
+
+	if len(threadIDs) == 0 {
+		return protocol.Success()
+	}
+
+	for _, threadID := range threadIDs {
 		if err := h.store.ModifyTagsByThread(threadID, add, remove); err != nil {
 			return protocol.Fail(protocol.ErrBackendError, err)
 		}
-		// Record in journal for tag sync (only if tag sync is configured)
 		if h.tagSync != nil || h.tagSyncEnabled {
 			h.journalTagChanges(threadID, add, remove)
 		}
-		// Trigger IMAP sync for affected accounts to push folder moves
 		if h.syncTrigger != nil {
 			accounts, err := h.store.GetAccountsByThread(threadID)
 			if err != nil {
@@ -37,14 +59,13 @@ func (h *Handler) Tag(query string, tags string) protocol.Response {
 				h.syncTrigger.TriggerSync(account)
 			}
 		}
-		// Push tag changes to remote sync server (best-effort)
 		if h.tagSync != nil {
 			go h.pushTagChanges(threadID, add, remove)
 		}
-		return protocol.Success()
 	}
 
-	return protocol.FailWithMessage(protocol.ErrBackendError, "only thread: queries are supported for tag modifications")
+	slog.Info("Tag operation complete", "module", "TAG", "threads", len(threadIDs), "add", add, "remove", remove)
+	return protocol.Success()
 }
 
 // journalTagChanges records tag changes in the local journal for later sync.
