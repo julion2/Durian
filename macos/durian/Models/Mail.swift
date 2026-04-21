@@ -109,11 +109,24 @@ struct MailFolder: Identifiable, Hashable {
     let accountId: String
     let isSpecial: Bool  // true for inbox, sent, drafts, trash
     let specialType: SpecialFolderType?
+    let isSection: Bool  // true for section headers (no query, not clickable)
     
     enum SpecialFolderType: String {
         case inbox, sent, drafts, trash, archive, junk
     }
     
+    /// Create a section header (non-clickable divider in sidebar)
+    init(section title: String) {
+        self.id = "section:\(title)"
+        self.name = title
+        self.displayName = title
+        self.icon = nil
+        self.accountId = "default"
+        self.isSpecial = false
+        self.specialType = nil
+        self.isSection = true
+    }
+
     /// Create for tag-based folder
     init(tag: String, icon: String) {
         self.id = "tag:\(tag)"
@@ -121,7 +134,8 @@ struct MailFolder: Identifiable, Hashable {
         self.displayName = tag.capitalized
         self.icon = icon
         self.accountId = "default"
-        
+        self.isSection = false
+
         switch tag {
         case "inbox":
             self.isSpecial = true
@@ -151,7 +165,8 @@ struct MailFolder: Identifiable, Hashable {
         self.displayName = displayName
         self.icon = icon
         self.accountId = "default"
-        
+        self.isSection = false
+
         switch name.lowercased() {
         case "inbox":
             self.isSpecial = true

@@ -237,8 +237,9 @@ func ValidateProfiles(profiles []ProfileConfig, cfg *Config) []ValidationError {
 			if folder.Icon == "" {
 				warn(fp+".icon", "empty (will show no icon)")
 			}
-			if folder.Query == "" {
-				add(fp+".query", "required")
+			if folder.Query == "" && folder.Icon != "" {
+				// Section headers have no query (and typically no icon)
+				add(fp+".query", "required (omit query only for section headers)")
 			}
 		}
 	}

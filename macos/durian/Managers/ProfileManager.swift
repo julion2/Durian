@@ -15,6 +15,7 @@ struct FolderConfig: Hashable {
     let name: String
     let icon: String?
     let query: String
+    let isSection: Bool  // true = section header, not a clickable folder
 }
 
 // MARK: - Profile
@@ -61,7 +62,7 @@ struct ProfilesConfig: Decodable {
     struct FolderEntry: Decodable {
         let name: String
         var icon: String?
-        let query: String
+        var query: String?  // nil or empty = section header
     }
 }
 
@@ -76,7 +77,7 @@ class ProfileManager: ObservableObject {
     
     /// Default folders when none are defined in config
     static let defaultFolders: [FolderConfig] = [
-        FolderConfig(name: "Inbox", icon: "tray", query: "tag:inbox")
+        FolderConfig(name: "Inbox", icon: "tray", query: "tag:inbox", isSection: false)
     ]
     
     init() {
@@ -110,7 +111,10 @@ class ProfileManager: ObservableObject {
         profiles = config.profile.map { entry in
             let folders: [FolderConfig]
             if let entryFolders = entry.folders, !entryFolders.isEmpty {
-                folders = entryFolders.map { FolderConfig(name: $0.name, icon: $0.icon, query: $0.query) }
+                folders = entryFolders.map { entry in
+                    let query = entry.query ?? ""
+                    return FolderConfig(name: entry.name, icon: entry.icon, query: query, isSection: query.isEmpty)
+                }
             } else {
                 folders = Self.defaultFolders
             }
