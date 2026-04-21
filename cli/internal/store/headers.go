@@ -56,7 +56,7 @@ func (d *DB) GetMessageDBID(messageID, account string) (int64, error) {
 // AllMessages returns all messages with fields needed for rule matching.
 func (d *DB) AllMessages() ([]*Message, error) {
 	rows, err := d.db.Query(
-		"SELECT id, message_id, subject, from_addr, to_addrs, body_text, account FROM messages")
+		"SELECT id, message_id, subject, from_addr, to_addrs, cc_addrs, body_text, account FROM messages")
 	if err != nil {
 		return nil, fmt.Errorf("query messages: %w", err)
 	}
@@ -65,7 +65,7 @@ func (d *DB) AllMessages() ([]*Message, error) {
 	var msgs []*Message
 	for rows.Next() {
 		m := &Message{}
-		if err := rows.Scan(&m.ID, &m.MessageID, &m.Subject, &m.FromAddr, &m.ToAddrs, &m.BodyText, &m.Account); err != nil {
+		if err := rows.Scan(&m.ID, &m.MessageID, &m.Subject, &m.FromAddr, &m.ToAddrs, &m.CCAddrs, &m.BodyText, &m.Account); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
 		}
 		msgs = append(msgs, m)
@@ -114,6 +114,32 @@ func (d *DB) AttachmentCounts() (map[int64]int, error) {
 			return nil, fmt.Errorf("scan attachment count: %w", err)
 		}
 		result[msgID] = count
+	}
+	return result, rows.Err()
+}
+
+// AttachmentMeta holds minimal attachment info for rule matching.
+type AttachmentMeta struct {
+	ContentType string
+	Filename    string
+}
+
+// AttachmentsByMessage returns attachment metadata grouped by message DB ID.
+func (d *DB) AttachmentsByMessage() (map[int64][]AttachmentMeta, error) {
+	rows, err := d.db.Query("SELECT message_db_id, content_type, filename FROM attachments")
+	if err != nil {
+		return nil, fmt.Errorf("query attachments: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]AttachmentMeta)
+	for rows.Next() {
+		var msgID int64
+		var ct, fn string
+		if err := rows.Scan(&msgID, &ct, &fn); err != nil {
+			return nil, fmt.Errorf("scan attachment: %w", err)
+		}
+		result[msgID] = append(result[msgID], AttachmentMeta{ContentType: ct, Filename: fn})
 	}
 	return result, rows.Err()
 }

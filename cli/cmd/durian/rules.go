@@ -67,9 +67,9 @@ func runRulesApply(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load headers: %w", err)
 	}
 
-	attachCounts, err := emailDB.AttachmentCounts()
+	attachments, err := emailDB.AttachmentsByMessage()
 	if err != nil {
-		return fmt.Errorf("load attachment counts: %w", err)
+		return fmt.Errorf("load attachments: %w", err)
 	}
 
 	groups, _ := config.LoadGroups("")
@@ -92,10 +92,9 @@ func runRulesApply(cmd *cobra.Command, args []string) error {
 
 	for _, msg := range msgs {
 		hdr := mail.Header(headers[msg.ID])
-		// Build attachment metadata from stored counts (no content-type for retroactive apply)
 		var atts []imap.RuleAttachment
-		for i := 0; i < attachCounts[msg.ID]; i++ {
-			atts = append(atts, imap.RuleAttachment{})
+		for _, a := range attachments[msg.ID] {
+			atts = append(atts, imap.RuleAttachment{ContentType: a.ContentType, Filename: a.Filename})
 		}
 		matched := imap.MatchingRules(rules, msg, atts, hdr, msg.Account, groups)
 
