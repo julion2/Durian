@@ -2,12 +2,11 @@
 //  ProfileManager.swift
 //  Durian
 //
-//  Manages mail profiles (account groups) loaded from profiles.toml
+//  Manages mail profiles (account groups) loaded from profiles.pkl
 //
 
 import Foundation
 import SwiftUI
-import TOMLDecoder
 
 // MARK: - Folder Config
 
@@ -46,10 +45,10 @@ struct Profile: Identifiable, Equatable, Hashable {
     }
 }
 
-// MARK: - TOML Decoding
+// MARK: - Config Decoding
 
 struct ProfilesConfig: Decodable {
-    let profile: [ProfileEntry]
+    let profiles: [ProfileEntry]
     
     struct ProfileEntry: Decodable {
         let name: String
@@ -89,14 +88,20 @@ class ProfileManager: ObservableObject {
         self.profiles = profiles
         self.currentProfile = currentProfile ?? profiles.first
     }
-    
+
     func loadProfiles() {
-        let configPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/durian/profiles.toml")
-        
-        guard let data = try? Data(contentsOf: configPath),
-              let config = try? TOMLDecoder().decode(ProfilesConfig.self, from: data) else {
-            Log.debug("PROFILE", "Failed to load profiles.toml, using default")
+        Task { await loadProfilesAsync() }
+    }
+
+    private func loadProfilesAsync() async {
+        let configURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/durian/profiles.pkl")
+
+        let config: ProfilesConfig
+        do {
+            config = try await PklEvaluator.eval(ProfilesConfig.self, from: configURL)
+        } catch {
+            Log.error("PROFILE", "Failed to load profiles.pkl")
             profiles = [Profile(
                 name: "All",
                 accounts: ["*"],
@@ -107,8 +112,8 @@ class ProfileManager: ObservableObject {
             currentProfile = profiles.first
             return
         }
-        
-        profiles = config.profile.map { entry in
+
+        profiles = config.profiles.map { entry in
             let folders: [FolderConfig]
             if let entryFolders = entry.folders, !entryFolders.isEmpty {
                 folders = entryFolders.map { entry in

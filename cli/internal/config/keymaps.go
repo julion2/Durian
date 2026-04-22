@@ -4,41 +4,39 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/BurntSushi/toml"
 )
 
-// KeymapConfig represents the full keymaps.toml file.
+// KeymapConfig represents the full keymaps configuration.
 type KeymapConfig struct {
-	Keymaps        []KeymapEntry        `toml:"keymaps"`
-	GlobalSettings KeymapGlobalSettings `toml:"global_settings"`
+	Keymaps        []KeymapEntry        `pkl:"keymaps" json:"keymaps"`
+	GlobalSettings KeymapGlobalSettings `pkl:"global_settings" json:"global_settings"`
 }
 
 // KeymapEntry represents a single keymap binding.
 type KeymapEntry struct {
-	Action        string   `toml:"action"`
-	Key           string   `toml:"key"`
-	Modifiers     []string `toml:"modifiers"`
-	Description   string   `toml:"description"`
-	Enabled       bool     `toml:"enabled"`
-	Sequence      bool     `toml:"sequence"`
-	SupportsCount bool     `toml:"supports_count"`
-	Context       string   `toml:"context"`
+	Action        string   `pkl:"action" json:"action"`
+	Key           string   `pkl:"key" json:"key"`
+	Modifiers     []string `pkl:"modifiers" json:"modifiers"`
+	Description   string   `pkl:"description" json:"description"`
+	Enabled       bool     `pkl:"enabled" json:"enabled"`
+	Sequence      bool     `pkl:"sequence" json:"sequence"`
+	SupportsCount bool     `pkl:"supports_count" json:"supports_count"`
+	Context       string   `pkl:"context" json:"context"`
 }
 
 // KeymapGlobalSettings contains global keymap preferences.
 type KeymapGlobalSettings struct {
-	KeymapsEnabled  bool    `toml:"keymaps_enabled"`
-	ShowKeymapHints bool    `toml:"show_keymap_hints"`
-	SequenceTimeout float64 `toml:"sequence_timeout"`
+	KeymapsEnabled  bool    `pkl:"keymaps_enabled" json:"keymaps_enabled"`
+	ShowKeymapHints bool    `pkl:"show_keymap_hints" json:"show_keymap_hints"`
+	SequenceTimeout float64 `pkl:"sequence_timeout" json:"sequence_timeout"`
 }
 
-// LoadKeymaps loads and parses keymaps.toml from the given path.
+// LoadKeymaps loads and parses keymaps.pkl from the given path.
 // If path is empty, uses the default config directory.
 // Returns nil (not error) if the file doesn't exist.
 func LoadKeymaps(path string) (*KeymapConfig, error) {
 	if path == "" {
-		path = filepath.Join(filepath.Dir(DefaultPath()), "keymaps.toml")
+		path = filepath.Join(filepath.Dir(DefaultPath()), "keymaps.pkl")
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -46,7 +44,7 @@ func LoadKeymaps(path string) (*KeymapConfig, error) {
 	}
 
 	var cfg KeymapConfig
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	if err := loadInto(path, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to load keymaps: %w", err)
 	}
 

@@ -1,0 +1,50 @@
+{
+  "settings": {
+    "accent_color": ""
+  },
+  "sync": {},
+  "contacts": {},
+  "signatures": {
+    "personal": "Cheers,\nTest User",
+    "work": "Best regards,\nTest User\nTest Company"
+  },
+  "accounts": [
+    {
+      "name": "Work",
+      "email": "test@work.com",
+      "alias": "work",
+      "default": true,
+      "default_signature": "work",
+      "smtp": {
+        "host": "smtp.work.com",
+        "port": 587,
+        "ssl": false,
+        "auth": "password"
+      },
+      "imap": {},
+      "auth": {
+        "username": "test@work.com",
+        "password_keychain": "work-account"
+      },
+      "oauth": {}
+    },
+    {
+      "name": "Personal",
+      "email": "test@personal.com",
+      "alias": "personal",
+      "default": false,
+      "default_signature": "personal",
+      "smtp": {
+        "host": "smtp.personal.com",
+        "port": 465,
+        "ssl": true,
+        "auth": "oauth2"
+      },
+      "imap": {},
+      "auth": {},
+      "oauth": {
+        "provider": "google"
+      }
+    }
+  ]
+}

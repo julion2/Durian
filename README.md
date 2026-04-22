@@ -36,6 +36,7 @@ Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Micr
 ### macOS (Homebrew)
 
 ```bash
+brew install pkl                # config language runtime (required)
 brew tap julion2/tap
 brew install durian             # CLI (required — the GUI uses it as backend)
 brew install --cask durian      # GUI
@@ -59,6 +60,7 @@ Or download pre-built binaries from [GitHub Releases](https://github.com/julion2
 - **macOS:** macOS 26+, Xcode 26+ (CLI + GUI)
 - **Linux:** Go 1.24+, `secret-tool` (libsecret) for credential storage (CLI only)
 - [Bazelisk](https://github.com/bazelbuild/bazelisk)
+- [Pkl](https://pkl-lang.org) (`brew install pkl`) — config language runtime
 
 ### Build & Install
 

@@ -15,7 +15,7 @@ type Provider struct {
 	SASlMethod        string // XOAUTH2 or OAUTHBEARER
 
 	// Default credentials embedded in the binary.
-	// Users can override these in config.toml.
+	// Users can override these in config.pkl.
 	DefaultClientID     string
 	DefaultClientSecret string
 }

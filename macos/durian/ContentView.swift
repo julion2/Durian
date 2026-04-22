@@ -540,12 +540,6 @@ struct ContentView: View {
         } else if isSearchMode {
             ContentUnavailableView("No Results", systemImage: "magnifyingglass",
                                    description: Text(Self.stableMessage(from: Self.searchEmptyMessages, seed: selectedTagID ?? "search")))
-        } else if ConfigManager.shared.getAccounts().isEmpty {
-            ContentUnavailableView {
-                Label("No Accounts", systemImage: "person.crop.circle.badge.exclamationmark")
-            } description: {
-                Text("Add an account in\n~/.config/durian/config.toml\nthen run durian auth login <account>")
-            }
         } else {
             ContentUnavailableView("Inbox Zero", systemImage: "tray",
                                    description: Text(Self.stableMessage(from: Self.emptyFolderMessages, seed: selectedTagID ?? "default")))

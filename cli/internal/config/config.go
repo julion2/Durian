@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/BurntSushi/toml"
 )
 
 // Load loads configuration from the given path
@@ -19,7 +17,7 @@ func Load(path string) (*Config, error) {
 	path = ExpandPath(path)
 
 	var cfg Config
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	if err := loadInto(path, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
@@ -32,10 +30,10 @@ func Load(path string) (*Config, error) {
 }
 
 // DefaultPath returns the default config path
-// Respects XDG_CONFIG_HOME, falls back to ~/.config/durian/config.toml
+// Respects XDG_CONFIG_HOME, falls back to ~/.config/durian/config.pkl
 func DefaultPath() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "durian", "config.toml")
+		return filepath.Join(xdg, "durian", "config.pkl")
 	}
 
 	home, err := os.UserHomeDir()
@@ -43,7 +41,7 @@ func DefaultPath() string {
 		return ""
 	}
 
-	return filepath.Join(home, ".config", "durian", "config.toml")
+	return filepath.Join(home, ".config", "durian", "config.pkl")
 }
 
 // ExpandPath expands ~ and environment variables in path

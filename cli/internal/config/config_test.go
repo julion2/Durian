@@ -29,23 +29,23 @@ func TestLoad(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			file:    "testdata/valid_config.toml",
+			file:    "testdata/valid_config.json",
 			wantErr: false,
 		},
 		{
 			name:    "minimal config",
-			file:    "testdata/minimal_config.toml",
+			file:    "testdata/minimal_config.json",
 			wantErr: false,
 		},
 		{
 			name:        "invalid syntax",
-			file:        "testdata/invalid_syntax.toml",
+			file:        "testdata/invalid_syntax.json",
 			wantErr:     true,
 			errContains: "failed to load config",
 		},
 		{
 			name:        "nonexistent file",
-			file:        "testdata/does_not_exist.toml",
+			file:        "testdata/does_not_exist.json",
 			wantErr:     true,
 			errContains: "failed to load config",
 		},
@@ -74,7 +74,7 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLoadValidConfig(t *testing.T) {
-	cfg, err := Load("testdata/valid_config.toml")
+	cfg, err := Load("testdata/valid_config.json")
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestDefaultPath(t *testing.T) {
 
 		os.Setenv("XDG_CONFIG_HOME", "/custom/config")
 		path := DefaultPath()
-		expected := "/custom/config/durian/config.toml"
+		expected := "/custom/config/durian/config.pkl"
 		if path != expected {
 			t.Errorf("DefaultPath() = %q, want %q", path, expected)
 		}
@@ -149,7 +149,7 @@ func TestDefaultPath(t *testing.T) {
 		path := DefaultPath()
 
 		home, _ := os.UserHomeDir()
-		expected := filepath.Join(home, ".config", "durian", "config.toml")
+		expected := filepath.Join(home, ".config", "durian", "config.pkl")
 		if path != expected {
 			t.Errorf("DefaultPath() = %q, want %q", path, expected)
 		}
@@ -207,8 +207,8 @@ func TestExpandPathEnvVar(t *testing.T) {
 
 	os.Setenv("TEST_DURIAN_VAR", "/test/path")
 
-	got := ExpandPath("$TEST_DURIAN_VAR/config.toml")
-	want := "/test/path/config.toml"
+	got := ExpandPath("$TEST_DURIAN_VAR/config.pkl")
+	want := "/test/path/config.pkl"
 	if got != want {
 		t.Errorf("ExpandPath() = %q, want %q", got, want)
 	}
@@ -222,12 +222,12 @@ func TestExists(t *testing.T) {
 	}{
 		{
 			name: "existing file",
-			path: "testdata/valid_config.toml",
+			path: "testdata/valid_config.json",
 			want: true,
 		},
 		{
 			name: "nonexistent file",
-			path: "testdata/nonexistent.toml",
+			path: "testdata/nonexistent.json",
 			want: false,
 		},
 		{

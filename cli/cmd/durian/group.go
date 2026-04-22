@@ -15,12 +15,12 @@ import (
 var groupCmd = &cobra.Command{
 	Use:   "group",
 	Short: "Manage contact groups",
-	Long: `Manage contact groups defined in groups.toml.
+	Long: `Manage contact groups defined in groups.pkl.
 
 Groups map roles (investor, advisor, press) to email addresses or domain
 wildcards. Use group:NAME in search queries for automatic expansion.
 
-Edit ~/.config/durian/groups.toml directly to add or modify groups.`,
+Edit ~/.config/durian/groups.pkl directly to add or modify groups.`,
 }
 
 var groupListCmd = &cobra.Command{
@@ -48,7 +48,7 @@ func loadGroups() (map[string]config.GroupEntry, error) {
 		return nil, err
 	}
 	if groups == nil {
-		return nil, fmt.Errorf("groups.toml not found at %s", config.GroupsPath())
+		return nil, fmt.Errorf("groups.pkl not found at %s", config.GroupsPath())
 	}
 	return groups, nil
 }
@@ -66,7 +66,7 @@ func runGroupList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(groups) == 0 {
-		fmt.Println("No groups defined. Edit groups.toml to add groups.")
+		fmt.Println("No groups defined. Edit groups.pkl to add groups.")
 		return nil
 	}
 

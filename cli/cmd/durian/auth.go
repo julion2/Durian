@@ -39,7 +39,7 @@ For password accounts:
   Prompts for your password and stores it securely in Keychain.
 
 The account can be specified by email address, alias, or name.
-The account must be configured in your config.toml.`,
+The account must be configured in your config.pkl.`,
 	Example: `  durian auth login gmail       # Use alias
   durian auth login work         # Use alias
   durian auth login you@company.com  # Use full email`,
@@ -94,7 +94,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	// Find account by email, alias, or name
 	account, err := cfg.GetAccountByIdentifier(identifier)
 	if err != nil {
-		return fmt.Errorf("account not found: %s\nMake sure it's configured in your config.toml\nAvailable accounts: %s",
+		return fmt.Errorf("account not found: %s\nMake sure it's configured in your config.pkl\nAvailable accounts: %s",
 			identifier, cfg.ListAccountIdentifiers())
 	}
 
@@ -108,7 +108,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return runPasswordLogin(account)
 	}
 
-	return fmt.Errorf("no authentication method configured for %s\nAdd [accounts.oauth] or set auth = \"password\" in config.toml", account.Email)
+	return fmt.Errorf("no authentication method configured for %s\nAdd [accounts.oauth] or set auth = \"password\" in config.pkl", account.Email)
 }
 
 // runOAuthLogin handles OAuth authentication

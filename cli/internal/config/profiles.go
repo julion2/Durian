@@ -4,36 +4,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/BurntSushi/toml"
 )
 
-// ProfileConfig represents a single profile entry in profiles.toml.
+// ProfileConfig represents a single profile entry.
 type ProfileConfig struct {
-	Name     string         `toml:"name"`
-	Accounts []string       `toml:"accounts"`
-	Default  bool           `toml:"default"`
-	Color    string         `toml:"color"`
-	Folders  []FolderConfig `toml:"folders"`
+	Name     string         `pkl:"name" json:"name"`
+	Accounts []string       `pkl:"accounts" json:"accounts"`
+	Default  bool           `pkl:"default" json:"default"`
+	Color    string         `pkl:"color" json:"color"`
+	Folders  []FolderConfig `pkl:"folders" json:"folders"`
 }
 
 // FolderConfig represents a folder entry within a profile.
 type FolderConfig struct {
-	Name  string `toml:"name"`
-	Icon  string `toml:"icon"`
-	Query string `toml:"query"`
+	Name  string `pkl:"name" json:"name"`
+	Icon  string `pkl:"icon" json:"icon"`
+	Query string `pkl:"query" json:"query"`
 }
 
 type profilesFile struct {
-	Profile []ProfileConfig `toml:"profile"`
+	Profiles []ProfileConfig `pkl:"profiles" json:"profiles"`
 }
 
-// LoadProfiles loads and parses profiles.toml from the given path.
+// LoadProfiles loads and parses profiles.pkl from the given path.
 // If path is empty, uses the default config directory.
 // Returns nil (not error) if the file doesn't exist.
 func LoadProfiles(path string) ([]ProfileConfig, error) {
 	if path == "" {
-		path = filepath.Join(filepath.Dir(DefaultPath()), "profiles.toml")
+		path = filepath.Join(filepath.Dir(DefaultPath()), "profiles.pkl")
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -41,9 +39,9 @@ func LoadProfiles(path string) ([]ProfileConfig, error) {
 	}
 
 	var cfg profilesFile
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	if err := loadInto(path, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to load profiles: %w", err)
 	}
 
-	return cfg.Profile, nil
+	return cfg.Profiles, nil
 }

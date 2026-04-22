@@ -34,7 +34,7 @@ func runTagSyncPushAll(cmd *cobra.Command, args []string) error {
 	}
 
 	if cfg.Sync.TagSync.URL == "" || cfg.Sync.TagSync.APIKey == "" {
-		return fmt.Errorf("tag sync not configured — add [sync.tag_sync] url and api_key to config.toml")
+		return fmt.Errorf("tag sync not configured — add [sync.tag_sync] url and api_key to config.pkl")
 	}
 
 	// Open store

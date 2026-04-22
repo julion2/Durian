@@ -1,7 +1,6 @@
 import Foundation
 import SwiftUI
 import Combine
-import TOMLDecoder
 
 // MARK: - Notifications
 
@@ -16,89 +15,30 @@ class KeymapsManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     private init() {
-        loadKeymaps()
-        setupAutoSave()
+        Task { await loadKeymapsAsync() }
     }
-    
-    private func loadKeymaps() {
-        let tomlURL = getKeymapsURL()
-        let jsonURL = getLegacyKeymapsURL()
-        
-        // Migration: Check if JSON exists but TOML doesn't
-        if FileManager.default.fileExists(atPath: jsonURL.path) && !FileManager.default.fileExists(atPath: tomlURL.path) {
-            Log.debug("KEYMAPS", "Migrating from JSON to TOML...")
-            migrateFromJSON(jsonURL: jsonURL, tomlURL: tomlURL)
+
+    private func loadKeymapsAsync() async {
+        let pklURL = getKeymapsURL()
+
+        guard FileManager.default.fileExists(atPath: pklURL.path) else {
+            Log.warning("KEYMAPS", "keymaps.pkl not found, using defaults")
+            keymaps = KeymapConfig()
+            keymaps.keymaps = getDefaultKeymaps()
+            NotificationCenter.default.post(name: .keymapsDidChange, object: nil)
+            return
         }
-        
-        // Create keymaps file if it doesn't exist
-        if !FileManager.default.fileExists(atPath: tomlURL.path) {
-            createDefaultKeymaps()
-        }
-        
+
         do {
-            let tomlString = try String(contentsOf: tomlURL, encoding: .utf8)
-            keymaps = try TOMLDecoder().decode(KeymapConfig.self, from: tomlString)
-            Log.info("KEYMAPS", "Loaded from: \(tomlURL.path)")
-            
-            // Merge missing keymaps from defaults
-            mergeWithDefaults()
+            keymaps = try await PklEvaluator.eval(KeymapConfig.self, from: pklURL)
+            Log.info("KEYMAPS", "Loaded from: \(pklURL.path)")
         } catch {
             Log.error("KEYMAPS", "Failed to load: \(error)")
             keymaps = KeymapConfig()
+            keymaps.keymaps = getDefaultKeymaps()
         }
-        
-        // Notify observers (SequenceMatcher, etc.)
-        NotificationCenter.default.post(name: .keymapsDidChange, object: nil)
-    }
-    
-    private func migrateFromJSON(jsonURL: URL, tomlURL: URL) {
-        // For now, just create new TOML - old JSON structure was different
-        // Users can manually migrate if needed
-        Log.debug("KEYMAPS", "Old JSON config found, creating new TOML config")
-    }
-    
-    private func setupAutoSave() {
-        $keymaps
-            .dropFirst()
-            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.saveKeymaps()
-            }
-            .store(in: &cancellables)
-    }
-    
-    private func saveKeymaps() {
-        let configURL = getKeymapsURL()
-        
-        do {
-            let tomlString = generateTOML(from: keymaps)
-            try tomlString.write(to: configURL, atomically: true, encoding: .utf8)
-            Log.debug("KEYMAPS", "Saved to \(configURL.path)")
-        } catch {
-            Log.error("KEYMAPS", "Failed to save: \(error)")
-        }
-    }
-    
-    /// Merge missing keymaps from defaults into loaded config
-    /// This ensures new keymaps are available after app updates
-    private func mergeWithDefaults() {
-        let defaultKeymaps = getDefaultKeymaps()
-        let existingActions = Set(keymaps.keymaps.map { $0.context + ":" + $0.action + $0.key })
 
-        var addedCount = 0
-        for defaultEntry in defaultKeymaps {
-            let key = defaultEntry.context + ":" + defaultEntry.action + defaultEntry.key
-            if !existingActions.contains(key) {
-                keymaps.keymaps.append(defaultEntry)
-                addedCount += 1
-                Log.debug("KEYMAPS", "Added missing keymap: \(defaultEntry.context):\(defaultEntry.action) -> \(defaultEntry.key)")
-            }
-        }
-        
-        if addedCount > 0 {
-            Log.info("KEYMAPS", "Merged \(addedCount) missing keymaps from defaults")
-            saveKeymaps()
-        }
+        NotificationCenter.default.post(name: .keymapsDidChange, object: nil)
     }
     
     /// Returns the default keymaps array
@@ -169,245 +109,11 @@ class KeymapsManager: ObservableObject {
         ]
     }
 
-    private func generateTOML(from config: KeymapConfig) -> String {
-        var toml = "# durian Keymaps Configuration\n"
-        toml += "# All vim-style keybindings are configurable here\n"
-        toml += "# sequence = true: Multi-key sequence like 'gg', 'dd', 'gi'\n"
-        toml += "# supports_count = true: Accepts count prefix like '5j', '3dd'\n\n"
-        
-        // Global settings
-        toml += "[global_settings]\n"
-        toml += "keymaps_enabled = \(config.globalSettings.keymapsEnabled)\n"
-        toml += "show_keymap_hints = \(config.globalSettings.showKeymapHints)\n"
-        toml += "sequence_timeout = \(config.globalSettings.sequenceTimeout)\n\n"
-        
-        // Keymaps array
-        for entry in config.keymaps {
-            toml += "[[keymaps]]\n"
-            toml += "action = \"\(entry.action)\"\n"
-            toml += "key = \"\(entry.key)\"\n"
-            toml += "modifiers = [\(entry.modifiers.map { "\"\($0)\"" }.joined(separator: ", "))]\n"
-            toml += "description = \"\(entry.description)\"\n"
-            toml += "sequence = \(entry.sequence)\n"
-            toml += "supports_count = \(entry.supportsCount)\n"
-            if entry.context != "list" {
-                toml += "context = \"\(entry.context)\"\n"
-            }
-            toml += "\n"
-        }
-        
-        return toml
-    }
-    
     private func getKeymapsURL() -> URL {
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        return homeURL.appendingPathComponent(".config/durian/keymaps.toml")
+        return homeURL.appendingPathComponent(".config/durian/keymaps.pkl")
     }
-    
-    private func getLegacyKeymapsURL() -> URL {
-        let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        return homeURL.appendingPathComponent(".config/durian/keymaps.json")
-    }
-    
-    private func createDefaultKeymaps() {
-        var config = KeymapConfig()
-        config.globalSettings = KeymapGlobalSettings(
-            keymapsEnabled: true,
-            showKeymapHints: true,
-            sequenceTimeout: 1.0
-        )
-        config.keymaps = [
-            // ═══════════════════════════════════════════════════════════
-            // NAVIGATION - Single keys
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "next_email", key: "j", modifiers: [],
-                       description: "Next email (vim j)",
-                       sequence: false, supportsCount: true),
-            KeymapEntry(action: "prev_email", key: "k", modifiers: [],
-                       description: "Previous email (vim k)",
-                       sequence: false, supportsCount: true),
-            KeymapEntry(action: "next_email", key: "Down", modifiers: [],
-                       description: "Next email (arrow)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "prev_email", key: "Up", modifiers: [],
-                       description: "Previous email (arrow)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "last_email", key: "G", modifiers: [],
-                       description: "Last email (Shift+G)",
-                       sequence: false, supportsCount: false),
-            
-            // ═══════════════════════════════════════════════════════════
-            // NAVIGATION - Sequences
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "first_email", key: "gg", modifiers: [],
-                       description: "First email (vim gg)",
-                       sequence: true, supportsCount: false),
 
-            // ═══════════════════════════════════════════════════════════
-            // PAGE NAVIGATION
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "page_down", key: "d", modifiers: ["ctrl"],
-                       description: "Half-page down (Ctrl+d)",
-                       sequence: false, supportsCount: true),
-            KeymapEntry(action: "page_up", key: "u", modifiers: ["ctrl"],
-                       description: "Half-page up (Ctrl+u)",
-                       sequence: false, supportsCount: true),
-
-            // ═══════════════════════════════════════════════════════════
-            // EMAIL ACTIONS
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "archive", key: "a", modifiers: [],
-                       description: "Archive email (remove inbox)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "compose", key: "c", modifiers: [],
-                       description: "Compose new email",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "reply", key: "r", modifiers: [],
-                       description: "Reply to email",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "reply_all", key: "R", modifiers: [],
-                       description: "Reply to all (Shift+R)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "forward", key: "f", modifiers: [],
-                       description: "Forward email",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_read", key: "u", modifiers: [],
-                       description: "Toggle read/unread",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_star", key: "s", modifiers: [],
-                       description: "Toggle star",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "delete", key: "dd", modifiers: [],
-                       description: "Delete email (vim dd)",
-                       sequence: true, supportsCount: true),
-            
-            // ═══════════════════════════════════════════════════════════
-            // FOLDER NAVIGATION (go-commands)
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "go_inbox", key: "gi", modifiers: [],
-                       description: "Go to inbox",
-                       sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_sent", key: "gs", modifiers: [],
-                       description: "Go to sent",
-                       sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_drafts", key: "gd", modifiers: [],
-                       description: "Go to drafts",
-                       sequence: true, supportsCount: false),
-            KeymapEntry(action: "go_archive", key: "ga", modifiers: [],
-                       description: "Go to archive",
-                       sequence: true, supportsCount: false),
-            
-            // ═══════════════════════════════════════════════════════════
-            // SEARCH
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "search", key: "/", modifiers: [],
-                       description: "Search emails (vim /)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "search", key: "/", modifiers: ["cmd"],
-                       description: "Search emails (Cmd+/)",
-                       sequence: false, supportsCount: false),
-            
-            // ═══════════════════════════════════════════════════════════
-            // TAG PICKER
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "tag_picker", key: "t", modifiers: [],
-                       description: "Open tag picker",
-                       sequence: false, supportsCount: false),
-
-            // ═══════════════════════════════════════════════════════════
-            // VIEW CONTROL
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "close_detail", key: "q", modifiers: [],
-                       description: "Close/back (vim q)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
-                       description: "Close/back (Escape)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "reload_inbox", key: "r", modifiers: ["cmd"],
-                       description: "Reload inbox (Cmd+r)",
-                       sequence: false, supportsCount: false),
-            
-            // ═══════════════════════════════════════════════════════════
-            // VISUAL MODE
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "enter_visual_mode", key: "v", modifiers: [],
-                       description: "Enter line visual mode (range select)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "enter_toggle_mode", key: "V", modifiers: [],
-                       description: "Enter toggle visual mode (Shift+V)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "toggle_selection", key: " ", modifiers: [],
-                       description: "Toggle current email (only in toggle mode)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "exit_visual_mode", key: "Escape", modifiers: [],
-                       description: "Exit visual mode and clear selection",
-                       sequence: false, supportsCount: false),
-
-            // ═══════════════════════════════════════════════════════════
-            // SEARCH CONTEXT
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
-                       description: "Next search result (Ctrl+j)",
-                       sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
-                       description: "Previous search result (Ctrl+k)",
-                       sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
-                       description: "Next search result (Ctrl+n)",
-                       sequence: false, supportsCount: false, context: "search"),
-            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
-                       description: "Previous search result (Ctrl+p)",
-                       sequence: false, supportsCount: false, context: "search"),
-
-            // ═══════════════════════════════════════════════════════════
-            // TAG PICKER CONTEXT
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "select_next", key: "j", modifiers: ["ctrl"],
-                       description: "Next tag (Ctrl+j)",
-                       sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_prev", key: "k", modifiers: ["ctrl"],
-                       description: "Previous tag (Ctrl+k)",
-                       sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_next", key: "n", modifiers: ["ctrl"],
-                       description: "Next tag (Ctrl+n)",
-                       sequence: false, supportsCount: false, context: "tag_picker"),
-            KeymapEntry(action: "select_prev", key: "p", modifiers: ["ctrl"],
-                       description: "Previous tag (Ctrl+p)",
-                       sequence: false, supportsCount: false, context: "tag_picker"),
-
-            // ═══════════════════════════════════════════════════════════
-            // COMPOSE NORMAL CONTEXT
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "exit_insert", key: "jk", modifiers: [],
-                       description: "Exit insert mode (jk)",
-                       sequence: true, supportsCount: false, context: "compose_normal"),
-
-            // ═══════════════════════════════════════════════════════════
-            // THREAD CONTEXT
-            // ═══════════════════════════════════════════════════════════
-            KeymapEntry(action: "enter_thread", key: "l", modifiers: [],
-                       description: "Enter thread view (l)",
-                       sequence: false, supportsCount: false),
-            KeymapEntry(action: "next_message", key: "j", modifiers: [],
-                       description: "Next message in thread",
-                       sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "prev_message", key: "k", modifiers: [],
-                       description: "Previous message in thread",
-                       sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "close_detail", key: "h", modifiers: [],
-                       description: "Back to email list",
-                       sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "close_detail", key: "Escape", modifiers: [],
-                       description: "Back to email list",
-                       sequence: false, supportsCount: false, context: "thread"),
-            KeymapEntry(action: "reply", key: "r", modifiers: [],
-                       description: "Reply to email",
-                       sequence: false, supportsCount: false, context: "thread"),
-        ]
-
-        keymaps = config
-        saveKeymaps()
-    }
     
     // MARK: - Public API
     
@@ -450,8 +156,7 @@ class KeymapsManager: ObservableObject {
     // Public method to manually reload keymaps
     func reloadKeymaps() {
         Log.info("KEYMAPS", "Manual keymaps reload requested")
-        loadKeymaps()
-        Log.info("KEYMAPS", "Keymaps reloaded from file")
+        Task { await loadKeymapsAsync() }
     }
 }
 

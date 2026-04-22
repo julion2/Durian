@@ -30,7 +30,7 @@ class KeymapHandler: ObservableObject {
     var attachmentSelected = false
     var composeActive = false
     
-    // Legacy action handlers (for keymaps.toml defined shortcuts with modifiers)
+    // Legacy action handlers (for keymaps.pkl defined shortcuts with modifiers)
     private var legacyActionHandlers: [String: () async -> Void] = [:]
     
     // MARK: - Published (proxy from sequence engine)
@@ -71,7 +71,7 @@ class KeymapHandler: ObservableObject {
         Log.debug("KEYMAPS", "Simple handler registered for action: \(action.rawValue) in context: \(context.rawValue)")
     }
     
-    /// Register a legacy handler for keymaps.toml defined shortcuts (Cmd+r, etc.)
+    /// Register a legacy handler for keymaps.pkl defined shortcuts (Cmd+r, etc.)
     func registerLegacyHandler(for action: String, handler: @escaping () async -> Void) {
         legacyActionHandlers[action] = handler
         Log.debug("KEYMAPS", "Legacy handler registered for action: \(action)")
@@ -182,7 +182,7 @@ class KeymapHandler: ObservableObject {
         return sequenceEngine.handleKeyEvent(event)
     }
     
-    /// Handle keymaps.toml defined shortcuts with modifiers
+    /// Handle keymaps.pkl defined shortcuts with modifiers
     private func handleLegacyKeymap(_ event: NSEvent) -> Bool {
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
         let modifiers = getModifiers(from: event)
@@ -192,7 +192,7 @@ class KeymapHandler: ObservableObject {
             return false
         }
         
-        // Check keymaps.toml entries
+        // Check keymaps.pkl entries
         for keymapEntry in keymapsManager.keymaps.keymaps {
             // Legacy entries require modifiers
             guard !keymapEntry.modifiers.isEmpty else { continue } // Skip no-modifier entries

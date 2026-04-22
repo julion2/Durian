@@ -1,5 +1,18 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+genrule(
+    name = "copy_schemas",
+    srcs = ["//schema:pkl_schemas"],
+    outs = [
+        "schema/Config.pkl",
+        "schema/Groups.pkl",
+        "schema/Keymaps.pkl",
+        "schema/Profiles.pkl",
+        "schema/Rules.pkl",
+    ],
+    cmd = "for f in $(SRCS); do cp $$f $(@D)/schema/$$(basename $$f); done",
+)
+
 go_library(
     name = "config",
     srcs = [
@@ -7,14 +20,16 @@ go_library(
         "groups.go",
         "helpers.go",
         "keymaps.go",
+        "pkl.go",
         "profiles.go",
         "rules.go",
         "types.go",
         "validate.go",
     ],
+    embedsrcs = [":copy_schemas"],
     importpath = "github.com/durian-dev/durian/cli/internal/config",
     visibility = ["//cli:__subpackages__"],
-    deps = ["@com_github_burntsushi_toml//:toml"],
+    deps = ["@com_github_apple_pkl_go//pkl"],
 )
 
 go_test(

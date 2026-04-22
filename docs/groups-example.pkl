@@ -1,0 +1,47 @@
+// Durian Contact Groups
+// Copy to ~/.config/durian/groups.pkl
+//
+// Groups map roles to email addresses or domain wildcards (*@domain.com).
+// Single-address members are plain strings. Multi-email people use arrays:
+//
+//   members {
+//     "alice@work.com"                                        // single address
+//     new { "bob@work.com"; "bob@personal.com" }              // same person, two addresses
+//     "*@fund-xyz.com"                                        // domain wildcard
+//   }
+//
+// Query syntax:
+//   group:investor              — all communication with group (from + to)
+//   group:investor/from         — only mail FROM the group (incoming)
+//   group:investor/to           — only mail TO the group (outgoing/sent)
+
+groups {
+  ["investor"] {
+    description = "Cap Table members"
+    members {
+      new { "alice@sequoia.com"; "alice.smith@gmail.com" }
+      "bob@index.vc"
+      "*@fund-xyz.com"
+    }
+  }
+
+  ["advisor"] {
+    members {
+      new { "carol@example.org"; "carol.personal@icloud.com" }
+      "mentor@university.edu"
+    }
+  }
+
+  ["press"] {
+    members { "*@spiegel.de"; "*@handelsblatt.com"; "*@techcrunch.com" }
+  }
+
+  ["legal"] {
+    members { "*@kanzlei-mueller.de"; "notar@xy.de" }
+  }
+
+  ["vip"] {
+    description = "Always-surface contacts"
+    members { "cofounder@firma.de"; "lead@sequoia.com" }
+  }
+}
