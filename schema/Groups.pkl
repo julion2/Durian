@@ -1,11 +1,11 @@
 /// Durian contact groups schema.
-/// Usage: import "schema/Groups.pkl" as G
+/// Usage: import "modulepath:/Groups.pkl" as G
 module schema.Groups
-
-/// A member is either a single email string or a list of emails (same person, multiple addresses).
-typealias Member = String|Listing<String>
 
 class GroupEntry {
   description: String?
-  members: Listing<Member>
+  /// Members list. Each entry is either a single email string or
+  /// a list of strings (same person, multiple addresses).
+  /// pkl-go receives this as interface{} for flexible normalization in Go.
+  members: Listing<Any>
 }

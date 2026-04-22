@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,27 +8,27 @@ import (
 
 // KeymapConfig represents the full keymaps configuration.
 type KeymapConfig struct {
-	Keymaps        []KeymapEntry        `json:"keymaps"`
-	GlobalSettings KeymapGlobalSettings `json:"global_settings"`
+	Keymaps        []KeymapEntry        `pkl:"keymaps" json:"keymaps"`
+	GlobalSettings KeymapGlobalSettings `pkl:"global_settings" json:"global_settings"`
 }
 
 // KeymapEntry represents a single keymap binding.
 type KeymapEntry struct {
-	Action        string   `json:"action"`
-	Key           string   `json:"key"`
-	Modifiers     []string `json:"modifiers"`
-	Description   string   `json:"description"`
-	Enabled       bool     `json:"enabled"`
-	Sequence      bool     `json:"sequence"`
-	SupportsCount bool     `json:"supports_count"`
-	Context       string   `json:"context"`
+	Action        string   `pkl:"action" json:"action"`
+	Key           string   `pkl:"key" json:"key"`
+	Modifiers     []string `pkl:"modifiers" json:"modifiers"`
+	Description   string   `pkl:"description" json:"description"`
+	Enabled       bool     `pkl:"enabled" json:"enabled"`
+	Sequence      bool     `pkl:"sequence" json:"sequence"`
+	SupportsCount bool     `pkl:"supports_count" json:"supports_count"`
+	Context       string   `pkl:"context" json:"context"`
 }
 
 // KeymapGlobalSettings contains global keymap preferences.
 type KeymapGlobalSettings struct {
-	KeymapsEnabled  bool    `json:"keymaps_enabled"`
-	ShowKeymapHints bool    `json:"show_keymap_hints"`
-	SequenceTimeout float64 `json:"sequence_timeout"`
+	KeymapsEnabled  bool    `pkl:"keymaps_enabled" json:"keymaps_enabled"`
+	ShowKeymapHints bool    `pkl:"show_keymap_hints" json:"show_keymap_hints"`
+	SequenceTimeout float64 `pkl:"sequence_timeout" json:"sequence_timeout"`
 }
 
 // LoadKeymaps loads and parses keymaps.pkl from the given path.
@@ -44,14 +43,9 @@ func LoadKeymaps(path string) (*KeymapConfig, error) {
 		return nil, nil
 	}
 
-	data, err := evalConfigFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load keymaps: %w", err)
-	}
-
 	var cfg KeymapConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse keymaps: %w", err)
+	if err := loadInto(path, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to load keymaps: %w", err)
 	}
 
 	return &cfg, nil

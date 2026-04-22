@@ -41,7 +41,7 @@ func TestLoad(t *testing.T) {
 			name:        "invalid syntax",
 			file:        "testdata/invalid_syntax.json",
 			wantErr:     true,
-			errContains: "failed to parse config",
+			errContains: "failed to load config",
 		},
 		{
 			name:        "nonexistent file",

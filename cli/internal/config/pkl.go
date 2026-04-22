@@ -3,82 +3,47 @@ package config
 import (
 	"context"
 	"embed"
-	"fmt"
+	"encoding/json"
+	"io/fs"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"sync"
-	"time"
+
+	"github.com/apple/pkl-go/pkl"
 )
 
 //go:embed schema/*.pkl
 var schemaFS embed.FS
 
-// schemaDir holds the temp directory with extracted schemas (created once).
-var (
-	schemaDir     string
-	schemaDirOnce sync.Once
-)
-
-// getSchemaDir extracts embedded .pkl schemas to a temp dir (once per process).
-func getSchemaDir() string {
-	schemaDirOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "durian-schema-*")
-		if err != nil {
-			return
-		}
-
-		entries, err := schemaFS.ReadDir("schema")
-		if err != nil {
-			return
-		}
-
-		for _, e := range entries {
-			data, err := schemaFS.ReadFile("schema/" + e.Name())
-			if err != nil {
-				continue
-			}
-			_ = os.WriteFile(filepath.Join(dir, e.Name()), data, 0644)
-		}
-
-		schemaDir = dir
-	})
-	return schemaDir
-}
-
-// evalFunc is the function used to evaluate config files into JSON.
-// Defaults to pklEval but can be overridden in tests.
-var evalFunc = pklEval
-
-// pklEval evaluates a .pkl file and returns its JSON representation.
-// Requires the pkl CLI to be installed (brew install pkl).
-func pklEval(path string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	args := []string{"eval", "--format", "json"}
-	if sd := getSchemaDir(); sd != "" {
-		args = append(args, "--module-path", sd, "--allowed-modules", "file:,modulepath:")
-	}
-	args = append(args, path)
-
-	cmd := exec.CommandContext(ctx, "pkl", args...)
-	out, err := cmd.Output()
+// pklLoad evaluates a .pkl file directly into a Go struct via pkl-go.
+// Schemas are served from embedded FS via the modulepath: scheme.
+func pklLoad(path string, out any) error {
+	subFS, err := fs.Sub(schemaFS, "schema")
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("pkl eval failed: %s", string(exitErr.Stderr))
-		}
-		return nil, fmt.Errorf("pkl eval failed: %w", err)
+		return err
 	}
-	return out, nil
+
+	ctx := context.Background()
+	evaluator, err := pkl.NewEvaluator(ctx,
+		pkl.PreconfiguredOptions,
+		pkl.WithFs(subFS, "modulepath"),
+	)
+	if err != nil {
+		return err
+	}
+	defer evaluator.Close()
+
+	return evaluator.EvaluateModule(ctx, pkl.FileSource(path), out)
 }
 
-// evalConfigFile evaluates a config file into JSON.
-// For .json files (used in tests), reads directly. For .pkl files, uses pkl eval.
-func evalConfigFile(path string) ([]byte, error) {
+// loadInto evaluates a config file into the given struct.
+// .json files (tests): json.Unmarshal. .pkl files: pkl-go direct evaluation.
+func loadInto(path string, out any) error {
 	if strings.HasSuffix(path, ".json") {
-		return os.ReadFile(path)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(data, out)
 	}
-	return evalFunc(path)
+	return pklLoad(path, out)
 }

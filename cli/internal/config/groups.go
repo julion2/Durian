@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,13 +20,13 @@ type GroupEntry struct {
 //
 //	members = ["alice@x.com", ["bob@x.com", "bob@y.com"], "*@fund.com"]
 type groupEntryRaw struct {
-	Description string      `json:"description"`
-	Members     interface{} `json:"members"`
+	Description string      `pkl:"description" json:"description"`
+	Members     interface{} `pkl:"members" json:"members"`
 }
 
 // groupsFileRaw is the top-level structure of groups.pkl.
 type groupsFileRaw struct {
-	Groups map[string]groupEntryRaw `json:"groups"`
+	Groups map[string]groupEntryRaw `pkl:"groups" json:"groups"`
 }
 
 // LoadGroups loads contact groups from the given path.
@@ -42,14 +41,9 @@ func LoadGroups(path string) (map[string]GroupEntry, error) {
 		return nil, nil
 	}
 
-	data, err := evalConfigFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load groups: %w", err)
-	}
-
 	var raw groupsFileRaw
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("failed to parse groups: %w", err)
+	if err := loadInto(path, &raw); err != nil {
+		return nil, fmt.Errorf("failed to load groups: %w", err)
 	}
 
 	groups := make(map[string]GroupEntry, len(raw.Groups))

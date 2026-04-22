@@ -2,21 +2,19 @@
 //  PklEvaluator.swift
 //  Durian
 //
-//  Evaluates .pkl config files to JSON via the pkl CLI.
+//  Evaluates .pkl config files to JSON via the bundled pkl binary.
 //  Schemas are bundled as app resources by Bazel.
 //
 
 import Foundation
 
 enum PklEvaluator {
-    /// Schema directory inside the app bundle (set by Bazel resources).
+    /// Schema directory: looks for Config.pkl in bundle resources.
     private static let schemaDir: String? = {
         guard let resourcePath = Bundle.main.resourcePath else { return nil }
-        // Bazel places filegroup resources at the bundle root under their workspace-relative path.
-        // schema/*.pkl files end up at <app>/Contents/Resources/schema/
         for candidate in [
             (resourcePath as NSString).appendingPathComponent("schema"),
-            resourcePath,  // files may be placed flat in Resources/
+            resourcePath,
         ] {
             let test = (candidate as NSString).appendingPathComponent("Config.pkl")
             if FileManager.default.fileExists(atPath: test) {
@@ -24,6 +22,23 @@ enum PklEvaluator {
             }
         }
         return nil
+    }()
+
+    /// Pkl binary: bundled in .app, then /usr/local/bin/pkl-durian, then PATH.
+    private static let pklBinary: String = {
+        // 1. Bundled in .app/Contents/MacOS/pkl
+        if let execPath = Bundle.main.executablePath {
+            let bundled = ((execPath as NSString).deletingLastPathComponent as NSString).appendingPathComponent("pkl")
+            if FileManager.default.fileExists(atPath: bundled) {
+                return bundled
+            }
+        }
+        // 2. Installed alongside CLI
+        if FileManager.default.fileExists(atPath: "/usr/local/bin/pkl-durian") {
+            return "/usr/local/bin/pkl-durian"
+        }
+        // 3. User's own pkl (brew install pkl)
+        return "/opt/homebrew/bin/pkl"
     }()
 
     /// Evaluate a .pkl file and decode the JSON output into the given type.
@@ -35,7 +50,7 @@ enum PklEvaluator {
     /// Evaluate a .pkl file and return raw JSON data.
     static func evalJSON(_ url: URL) throws -> Data {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/pkl")
+        process.executableURL = URL(fileURLWithPath: pklBinary)
 
         var args = ["eval", "--format", "json"]
         if let sd = schemaDir {
