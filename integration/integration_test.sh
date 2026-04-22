@@ -8,8 +8,10 @@ set -euo pipefail
 
 SEEDER="$1"
 DURIAN="$2"
+TEST_CONFIG="$3"
 PORT=19723
 TMPDIR=$(mktemp -d /tmp/durian-inttest-XXXXXX)
+export HOME="${HOME:-$TMPDIR}"
 EMAIL_DB="$TMPDIR/email.db"
 CONTACTS_DB="$TMPDIR/contacts.db"
 FAILURES=0
@@ -64,8 +66,16 @@ assert_http_code() {
 echo "==> Seeding test databases"
 "$SEEDER" "$EMAIL_DB" "$CONTACTS_DB"
 
+# --- Validate config ---
+echo "==> Validating Pkl config"
+if "$DURIAN" validate config -c "$TEST_CONFIG"; then
+    pass "durian validate config"
+else
+    fail "durian validate config"
+fi
+
 echo "==> Starting durian serve on port $PORT"
-"$DURIAN" serve --port "$PORT" --db "$EMAIL_DB" --contacts-db "$CONTACTS_DB" &
+"$DURIAN" serve --port "$PORT" --db "$EMAIL_DB" --contacts-db "$CONTACTS_DB" -c "$TEST_CONFIG" &
 SERVER_PID=$!
 
 echo "==> Waiting for server..."

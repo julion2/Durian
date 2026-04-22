@@ -1,0 +1,36 @@
+import "modulepath:/Config.pkl" as C
+
+settings: C.SettingsConfig = new {
+  accent_color = ""
+}
+
+sync: C.SyncConfig = new {}
+
+contacts: C.ContactsConfig = new {}
+
+signatures: Mapping<String, String> = new {
+  ["personal"] = "Cheers,\nTest User"
+  ["work"] = "Best regards,\nTest User\nTest Company"
+}
+
+accounts: Listing<C.AccountConfig> = new {
+  new {
+    name = "Work"
+    email = "test@work.com"
+    alias = "work"
+    default = true
+    default_signature = "work"
+    smtp { host = "smtp.work.com"; port = 587; auth = "password" }
+    imap { host = "imap.work.com"; port = 993; auth = "password" }
+    auth { username = "test@work.com"; password_keychain = "work-account" }
+  }
+  new {
+    name = "Personal"
+    email = "test@personal.com"
+    alias = "personal"
+    default_signature = "personal"
+    smtp { host = "smtp.personal.com"; port = 465; auth = "oauth2" }
+    imap { host = "imap.personal.com"; port = 993; auth = "oauth2" }
+    oauth { provider = "google" }
+  }
+}

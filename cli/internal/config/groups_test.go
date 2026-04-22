@@ -5,7 +5,7 @@ import (
 )
 
 func TestLoadGroups(t *testing.T) {
-	groups, err := LoadGroups("testdata/valid_groups.json")
+	groups, err := LoadGroups("testdata/valid_groups.pkl")
 	if err != nil {
 		t.Fatalf("LoadGroups() error: %v", err)
 	}

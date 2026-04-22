@@ -5,10 +5,12 @@ sh_test(
     args = [
         "$(location //cli/cmd/testseeder)",
         "$(location //cli/cmd/durian)",
+        "$(location testdata/config.pkl)",
     ],
     data = [
         "//cli/cmd/testseeder",
         "//cli/cmd/durian",
+        "testdata/config.pkl",
     ],
     tags = ["integration"],
 )
