@@ -15,10 +15,10 @@ class KeymapsManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     private init() {
-        Task { await loadKeymapsAsync() }
+        loadKeymapsBlocking()
     }
 
-    private func loadKeymapsAsync() async {
+    private func loadKeymapsBlocking() {
         let pklURL = getKeymapsURL()
 
         guard FileManager.default.fileExists(atPath: pklURL.path) else {
@@ -30,7 +30,7 @@ class KeymapsManager: ObservableObject {
         }
 
         do {
-            keymaps = try await PklEvaluator.eval(KeymapConfig.self, from: pklURL)
+            keymaps = try PklEvaluator.evalSync(KeymapConfig.self, from: pklURL)
             Log.info("KEYMAPS", "Loaded from: \(pklURL.path)")
         } catch {
             Log.error("KEYMAPS", "Failed to load: \(error)")
@@ -156,7 +156,7 @@ class KeymapsManager: ObservableObject {
     // Public method to manually reload keymaps
     func reloadKeymaps() {
         Log.info("KEYMAPS", "Manual keymaps reload requested")
-        Task { await loadKeymapsAsync() }
+        loadKeymapsBlocking()
     }
 }
 

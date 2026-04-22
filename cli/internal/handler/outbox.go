@@ -357,7 +357,7 @@ func (w *OutboxWorker) saveToLocalStore(account *config.AccountConfig, msg *smtp
 
 // appendToSent saves a copy to the IMAP Sent folder (skip for providers that auto-save).
 func (w *OutboxWorker) appendToSent(account *config.AccountConfig, msg *smtp.Message) {
-	if account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft" {
+	if account.OAuth != nil && (account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft") {
 		slog.Debug("Skipping Sent append", "module", "OUTBOX", "provider", account.OAuth.Provider)
 		return
 	}

@@ -22,6 +22,7 @@ type KeymapEntry struct {
 	Sequence      bool     `pkl:"sequence" json:"sequence"`
 	SupportsCount bool     `pkl:"supports_count" json:"supports_count"`
 	Context       string   `pkl:"context" json:"context"`
+	Tags          string   `pkl:"tags" json:"tags"`
 }
 
 // KeymapGlobalSettings contains global keymap preferences.

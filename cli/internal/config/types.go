@@ -22,7 +22,7 @@ type SyncConfig struct {
 	GuiAutoSync       bool          `pkl:"gui_auto_sync" json:"gui_auto_sync"`
 	AutoFetchInterval int           `pkl:"auto_fetch_interval" json:"auto_fetch_interval"`
 	FullSyncInterval  int           `pkl:"full_sync_interval" json:"full_sync_interval"`
-	TagSync           TagSyncConfig `pkl:"tag_sync" json:"tag_sync"`
+	TagSync           *TagSyncConfig `pkl:"tag_sync" json:"tag_sync"`
 }
 
 // TagSyncConfig configures the optional remote tag sync server.
@@ -49,8 +49,8 @@ type AccountConfig struct {
 	Notifications    *bool       `pkl:"notifications" json:"notifications"` // Per-account notification override (nil = use global setting)
 	SMTP             SMTPConfig  `pkl:"smtp" json:"smtp"`
 	IMAP             IMAPConfig  `pkl:"imap" json:"imap"`
-	Auth             AuthConfig  `pkl:"auth" json:"auth"`
-	OAuth            OAuthConfig `pkl:"oauth" json:"oauth"`
+	Auth             *AuthConfig  `pkl:"auth" json:"auth"`
+	OAuth            *OAuthConfig `pkl:"oauth" json:"oauth"`
 }
 
 // GetAuthEmail returns the email used for OAuth token lookup.
