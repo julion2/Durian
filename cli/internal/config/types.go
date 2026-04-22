@@ -9,20 +9,20 @@ type Config struct {
 	Accounts   []AccountConfig   `pkl:"accounts" json:"accounts"`
 }
 
-// SettingsConfig holds settings that `durian validate` can check before
-// the Swift GUI loads the same config file. All other GUI-only fields
-// (theme, notifications_enabled, load_remote_images, …) are parsed by
-// Swift directly and silently ignored here.
+// SettingsConfig holds app settings from config.pkl [settings].
 type SettingsConfig struct {
-	AccentColor string `pkl:"accent_color" json:"accent_color"` // Hex color, e.g. "#3B82F6"
+	Theme                string `pkl:"theme" json:"theme"`
+	NotificationsEnabled bool   `pkl:"notifications_enabled" json:"notifications_enabled"`
+	LoadRemoteImages     bool   `pkl:"load_remote_images" json:"load_remote_images"`
+	AccentColor          string `pkl:"accent_color" json:"accent_color"`
 }
 
-// SyncConfig contains sync settings consumed by the Go CLI.
-// The GUI auto-sync interval fields (gui_auto_sync, auto_fetch_interval,
-// full_sync_interval) are read by Swift directly and silently ignored here.
+// SyncConfig contains sync settings from config.pkl [sync].
 type SyncConfig struct {
-	// TagSync configures the optional tag sync server for multi-machine setups
-	TagSync TagSyncConfig `pkl:"tag_sync" json:"tag_sync"`
+	GuiAutoSync       bool          `pkl:"gui_auto_sync" json:"gui_auto_sync"`
+	AutoFetchInterval int           `pkl:"auto_fetch_interval" json:"auto_fetch_interval"`
+	FullSyncInterval  int           `pkl:"full_sync_interval" json:"full_sync_interval"`
+	TagSync           TagSyncConfig `pkl:"tag_sync" json:"tag_sync"`
 }
 
 // TagSyncConfig configures the optional remote tag sync server.
@@ -75,10 +75,11 @@ type SMTPConfig struct {
 type IMAPConfig struct {
 	Host        string   `pkl:"host" json:"host"`
 	Port        int      `pkl:"port" json:"port"`
-	Auth        string   `pkl:"auth" json:"auth"`         // "password" or "oauth2"
-	MaxMessages int      `pkl:"max_messages" json:"max_messages"` // Default: 5000, 0 = unlimited
-	BatchSize   int      `pkl:"batch_size" json:"batch_size"`   // Default: 100 (see DefaultIMAPBatchSize)
-	Mailboxes   []string `pkl:"mailboxes" json:"mailboxes"`    // Optional: specific mailboxes to sync
+	SSL         bool     `pkl:"ssl" json:"ssl"`
+	Auth        string   `pkl:"auth" json:"auth"`
+	MaxMessages int      `pkl:"max_messages" json:"max_messages"`
+	BatchSize   int      `pkl:"batch_size" json:"batch_size"`
+	Mailboxes   []string `pkl:"mailboxes" json:"mailboxes"`
 }
 
 // AuthConfig contains password-based authentication settings
