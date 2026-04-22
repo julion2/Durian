@@ -33,8 +33,6 @@ struct ComposeWindow: View {
             if isSaving {
                 // Window is closing — show nothing to avoid "Draft Not Found" flash
                 Color.clear
-            } else if accounts.isEmpty {
-                noAccountsView
             } else if let draft = draftService.getDraft(id: draftId) {
                 composeView(draft: draft, accounts: accounts)
             } else {

@@ -119,7 +119,7 @@ class ConfigManager {
     }
 
     init() {
-        Task { await loadConfig() }
+        loadConfigBlocking()
     }
 
     /// Test-only initializer: inject config directly, skip file loading
@@ -127,7 +127,10 @@ class ConfigManager {
         self._config = config
     }
 
-    private func loadConfig() async {
+    /// Synchronous load via pkl CLI subprocess.
+    /// Uses PklEvaluator.evalSync (Process + waitUntilExit) to avoid
+    /// Swift Concurrency deadlocks from mixing Task.detached with semaphores.
+    private func loadConfigBlocking() {
         let configURL = getConfigURL()
 
         guard FileManager.default.fileExists(atPath: configURL.path) else {
@@ -136,12 +139,11 @@ class ConfigManager {
         }
 
         do {
-            config = try await PklEvaluator.eval(AppConfig.self, from: configURL)
+            config = try PklEvaluator.evalSync(AppConfig.self, from: configURL)
             Log.info("CONFIG", "Loaded config from \(configURL.path)")
         } catch {
             Log.error("CONFIG", "Failed to load config: \(error)")
         }
-
     }
 
     private func getConfigURL() -> URL {
@@ -170,7 +172,7 @@ class ConfigManager {
     /// Reload config from disk (call after editing config.pkl)
     func reloadConfig() {
         Log.info("CONFIG", "Reloading config...")
-        Task { await loadConfig() }
+        loadConfigBlocking()
     }
     
     func updateSettings(_ newSettings: AppSettings) {
