@@ -57,31 +57,6 @@ class DraftManager {
         }
     }
 
-    func loadDraft(id: UUID) -> EmailDraft? {
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: EmailDraft?
-
-        let url = baseURL.appendingPathComponent(id.uuidString)
-        URLSession.shared.dataTask(with: url) { [decoder] data, response, _ in
-            defer { semaphore.signal() }
-            guard let data,
-                  let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-
-            struct Wrapper: Decodable {
-                let draft_json: EmailDraft
-            }
-            if let wrapper = try? decoder.decode(Wrapper.self, from: data) {
-                var draft = wrapper.draft_json
-                draft.to = Self.filterValidAddresses(draft.to)
-                draft.cc = Self.filterValidAddresses(draft.cc)
-                draft.bcc = Self.filterValidAddresses(draft.bcc)
-                result = draft
-            }
-        }.resume()
-        semaphore.wait()
-        return result
-    }
-
     func deleteDraft(id: UUID) {
         var request = URLRequest(url: baseURL.appendingPathComponent(id.uuidString))
         request.httpMethod = "DELETE"
@@ -94,26 +69,6 @@ class DraftManager {
             }
             Log.debug("DRAFTING", "Draft deleted: \(id.uuidString)")
         }.resume()
-    }
-
-    func loadAllDrafts() -> [EmailDraft] {
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: [EmailDraft] = []
-
-        URLSession.shared.dataTask(with: baseURL) { [decoder] data, response, _ in
-            defer { semaphore.signal() }
-            guard let data,
-                  let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-
-            struct Entry: Decodable {
-                let draft_json: EmailDraft
-            }
-            if let entries = try? decoder.decode([Entry].self, from: data) {
-                result = entries.map(\.draft_json)
-            }
-        }.resume()
-        semaphore.wait()
-        return result
     }
 
     /// Filter out addresses that don't contain a valid email (must have @)

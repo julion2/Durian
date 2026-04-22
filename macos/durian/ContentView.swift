@@ -677,6 +677,10 @@ struct ContentView: View {
     // MARK: - Compose
     
     func openNewCompose() {
+        guard defaultFromAccount != nil else {
+            BannerManager.shared.showWarning(title: "No Account", message: "Configure an email account to use this action.")
+            return
+        }
         let draftId = DraftService.shared.createDraft(from: defaultFromAccount)
         openWindow(value: draftId)
     }

@@ -112,8 +112,12 @@ func TestLoadValidConfig(t *testing.T) {
 	if work.SMTP.Auth != "password" {
 		t.Errorf("Accounts[0].SMTP.Auth = %q, want %q", work.SMTP.Auth, "password")
 	}
-	if work.Auth.PasswordKeychain != "work-account" {
-		t.Errorf("Accounts[0].Auth.PasswordKeychain = %q, want %q", work.Auth.PasswordKeychain, "work-account")
+	if work.Auth == nil || work.Auth.PasswordKeychain != "work-account" {
+		keychain := ""
+		if work.Auth != nil {
+			keychain = work.Auth.PasswordKeychain
+		}
+		t.Errorf("Accounts[0].Auth.PasswordKeychain = %q, want %q", keychain, "work-account")
 	}
 
 	// Second account (Personal with OAuth)
@@ -121,8 +125,12 @@ func TestLoadValidConfig(t *testing.T) {
 	if personal.SMTP.Auth != "oauth2" {
 		t.Errorf("Accounts[1].SMTP.Auth = %q, want %q", personal.SMTP.Auth, "oauth2")
 	}
-	if personal.OAuth.Provider != "google" {
-		t.Errorf("Accounts[1].OAuth.Provider = %q, want %q", personal.OAuth.Provider, "google")
+	if personal.OAuth == nil || personal.OAuth.Provider != "google" {
+		provider := ""
+		if personal.OAuth != nil {
+			provider = personal.OAuth.Provider
+		}
+		t.Errorf("Accounts[1].OAuth.Provider = %q, want %q", provider, "google")
 	}
 }
 

@@ -75,7 +75,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertFalse(config.settings.loadRemoteImages)
         XCTAssertEqual(config.sync.mode, "bidirectional")
         XCTAssertTrue(config.sync.guiAutoSync)
-        XCTAssertEqual(config.sync.autoFetchInterval, 60.0)
+        XCTAssertEqual(config.sync.autoFetchInterval, 120.0)
         XCTAssertTrue(config.signatures.isEmpty)
     }
 

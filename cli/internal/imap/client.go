@@ -133,6 +133,9 @@ func (c *Client) Authenticate() error {
 
 // authenticateOAuth2 authenticates using XOAUTH2
 func (c *Client) authenticateOAuth2() error {
+	if c.account.OAuth == nil {
+		return fmt.Errorf("OAuth not configured for %s", c.account.Email)
+	}
 	// Get valid OAuth token (auto-refreshes if needed).
 	// For shared mailboxes, the token belongs to the delegating user (AuthEmail).
 	token, err := oauth.GetValidToken(
@@ -158,9 +161,9 @@ func (c *Client) authenticateOAuth2() error {
 
 // authenticatePassword authenticates using PLAIN/LOGIN
 func (c *Client) authenticatePassword() error {
-	username := c.account.Auth.Username
-	if username == "" {
-		username = c.account.Email
+	username := c.account.Email
+	if c.account.Auth != nil && c.account.Auth.Username != "" {
+		username = c.account.Auth.Username
 	}
 
 	// Get password from unified keychain service

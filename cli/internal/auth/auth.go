@@ -26,7 +26,7 @@ var (
 func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 	switch account.SMTP.Auth {
 	case "oauth2":
-		if account.OAuth.Provider == "" {
+		if account.OAuth == nil || account.OAuth.Provider == "" {
 			return nil, fmt.Errorf("OAuth provider not configured for %s", account.Email)
 		}
 
@@ -59,9 +59,9 @@ func GetSMTPAuth(account *config.AccountConfig) (smtp.Auth, error) {
 			return nil, fmt.Errorf("failed to get password from keychain: %w", err)
 		}
 
-		username := account.Auth.Username
-		if username == "" {
-			username = account.Email
+		username := account.Email
+		if account.Auth != nil && account.Auth.Username != "" {
+			username = account.Auth.Username
 		}
 
 		return &smtp.PasswordAuth{

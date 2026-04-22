@@ -65,17 +65,17 @@ func TestValidateConfig_OAuthGoogleRequiresClientID(t *testing.T) {
 	cfg := &Config{Accounts: []AccountConfig{{
 		Name: "Test", Email: "test@example.com",
 		SMTP:  SMTPConfig{Host: "smtp.gmail.com", Port: 587, Auth: "oauth2"},
-		OAuth: OAuthConfig{Provider: "google"},
+		OAuth: &OAuthConfig{Provider: "google"},
 	}}}
 	errs := ValidateConfig(cfg)
 	found := false
 	for _, e := range errs {
-		if strings.Contains(e.Message, "client_id") {
+		if strings.Contains(e.Field, "client_id") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected error for missing Google client_id")
+		t.Errorf("expected error for missing Google client_id, got errors: %v", errs)
 	}
 }
 

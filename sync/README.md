@@ -63,12 +63,15 @@ WantedBy=multi-user.target
 
 ## Client Setup
 
-Add to `~/.config/durian/config.toml` on each machine:
+Add to `~/.config/durian/config.pkl` on each machine:
 
-```toml
-[sync.tag_sync]
-url = "http://nas:8724"
-api_key = "your-secret"
+```pkl
+sync {
+  tag_sync {
+    url = "http://nas:8724"
+    api_key = "your-secret"
+  }
+}
 ```
 
 **Important:** Account names must be identical across machines (`name = "Work"` → `AccountIdentifier` = `"work"`). The sync server matches tags by `(message_id, account)`.
@@ -101,10 +104,13 @@ Both use a persisted timestamp (`~/.config/durian/tag_sync_at`) for incremental 
 
 Works great in a Tailnet — no TLS setup, no port forwarding:
 
-```toml
-[sync.tag_sync]
-url = "http://nas:8724"    # Tailscale hostname or IP
-api_key = "your-secret"
+```pkl
+sync {
+  tag_sync {
+    url = "http://nas:8724"    // Tailscale hostname or IP
+    api_key = "your-secret"
+  }
+}
 ```
 
 ## API

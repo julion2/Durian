@@ -58,7 +58,7 @@ func TestGetSMTPAuth_PasswordExplicitUsername(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "password"},
-		Auth:  config.AuthConfig{Username: "custom-user"},
+		Auth:  &config.AuthConfig{Username: "custom-user"},
 	}
 	auth, err := GetSMTPAuth(acct)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestGetSMTPAuth_PasswordFallbackUsername(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "password"},
-		Auth:  config.AuthConfig{}, // empty username
+		Auth:  &config.AuthConfig{}, // empty username
 	}
 	auth, err := GetSMTPAuth(acct)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestGetSMTPAuth_OAuth2Success(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "oauth2"},
-		OAuth: config.OAuthConfig{Provider: "google", ClientID: "cid", ClientSecret: "cs"},
+		OAuth: &config.OAuthConfig{Provider: "google", ClientID: "cid", ClientSecret: "cs"},
 	}
 	auth, err := GetSMTPAuth(acct)
 	if err != nil {
@@ -159,7 +159,7 @@ func TestGetSMTPAuth_OAuth2MissingProvider(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "oauth2"},
-		OAuth: config.OAuthConfig{}, // no provider
+		OAuth: &config.OAuthConfig{}, // no provider
 	}
 	_, err := GetSMTPAuth(acct)
 	if err == nil {
@@ -177,7 +177,7 @@ func TestGetSMTPAuth_OAuth2TokenNotFound(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "oauth2"},
-		OAuth: config.OAuthConfig{Provider: "google"},
+		OAuth: &config.OAuthConfig{Provider: "google"},
 	}
 	_, err := GetSMTPAuth(acct)
 	if err == nil {
@@ -195,7 +195,7 @@ func TestGetSMTPAuth_OAuth2TokenExpired(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "oauth2"},
-		OAuth: config.OAuthConfig{Provider: "microsoft"},
+		OAuth: &config.OAuthConfig{Provider: "microsoft"},
 	}
 	_, err := GetSMTPAuth(acct)
 	if err == nil {
@@ -213,7 +213,7 @@ func TestGetSMTPAuth_OAuth2OtherError(t *testing.T) {
 	acct := &config.AccountConfig{
 		Email: "user@example.com",
 		SMTP:  config.SMTPConfig{Auth: "oauth2"},
-		OAuth: config.OAuthConfig{Provider: "google"},
+		OAuth: &config.OAuthConfig{Provider: "google"},
 	}
 	_, err := GetSMTPAuth(acct)
 	if err == nil {
@@ -236,7 +236,7 @@ func TestGetSMTPAuth_OAuth2SharedMailbox(t *testing.T) {
 		Email:     "shared@example.com",
 		AuthEmail: "delegator@example.com",
 		SMTP:      config.SMTPConfig{Auth: "oauth2"},
-		OAuth:     config.OAuthConfig{Provider: "microsoft", ClientID: "cid", Tenant: "t"},
+		OAuth:     &config.OAuthConfig{Provider: "microsoft", ClientID: "cid", Tenant: "t"},
 	}
 	auth, err := GetSMTPAuth(acct)
 	if err != nil {

@@ -119,12 +119,12 @@ func ValidateConfig(cfg *Config) []ValidationError {
 
 		// OAuth
 		if acct.SMTP.Auth == "oauth2" || acct.IMAP.Auth == "oauth2" {
-			if acct.OAuth.Provider == "" {
+			if acct.OAuth == nil || acct.OAuth.Provider == "" {
 				add(prefix+".oauth.provider", "required when auth is oauth2")
 			} else if acct.OAuth.Provider != "google" && acct.OAuth.Provider != "microsoft" {
 				add(prefix+".oauth.provider", fmt.Sprintf("must be \"google\" or \"microsoft\", got %q", acct.OAuth.Provider))
 			}
-			if acct.OAuth.Provider == "google" {
+			if acct.OAuth != nil && acct.OAuth.Provider == "google" {
 				if acct.OAuth.ClientID == "" {
 					add(prefix+".oauth.client_id", "required for Google OAuth")
 				}
