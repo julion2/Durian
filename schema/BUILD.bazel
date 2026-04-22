@@ -1,0 +1,5 @@
+filegroup(
+    name = "pkl_schemas",
+    srcs = glob(["*.pkl"]),
+    visibility = ["//visibility:public"],
+)

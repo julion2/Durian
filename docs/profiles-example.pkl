@@ -1,0 +1,40 @@
+// Durian Profiles Configuration
+// Copy to ~/.config/durian/profiles.pkl
+// Adjust account names and folders to match your config.pkl.
+//
+// Profiles group accounts and define sidebar folders.
+// Switch profiles via Cmd+1, Cmd+2, etc.
+// accounts = new { "*" } matches all accounts.
+// Folder queries use the search syntax (tag:, from:, date:, path:, group:).
+//
+// Section headers: omit the query field to create a non-clickable header.
+import "modulepath:/Profiles.pkl" as P
+
+profiles {
+  // ── All Accounts ───────────────────────────────────────────
+  new {
+    name = "All"; accounts = new { "*" }; default = true
+    folders = P.standardFolders
+  }
+
+  // ── Work Profile (with section headers) ────────────────────
+  new {
+    name = "Work"; accounts = new { "work" }; color = "#EF4444"
+    folders {
+      new { name = "Inbox"; icon = "tray"; query = "tag:inbox AND NOT tag:sent AND NOT tag:draft" }
+      new { name = "Sent"; icon = "paperplane"; query = "tag:sent" }
+
+      // Section header — no query, renders as non-clickable label
+      new { name = "Triage" }
+      new { name = "To-Do"; icon = "checklist"; query = "tag:todo" }
+      new { name = "Waiting"; icon = "clock"; query = "tag:waiting" }
+
+      new { name = "Smart Views" }
+      new { name = "VIP Unread"; icon = "star"; query = "group:vip AND tag:unread" }
+      new { name = "Legal"; icon = "building.columns"; query = "tag:legal AND date:6m.." }
+
+      // System folders
+      for (f in P.systemFolders) { f }
+    }
+  }
+}

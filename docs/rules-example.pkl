@@ -1,0 +1,52 @@
+// Durian Filter Rules
+// Copy to ~/.config/durian/rules.pkl
+// Rules are evaluated sequentially: order matters for overlapping matches.
+// Validate with: durian validate rules
+
+rules {
+  // ── Mailing Lists & Newsletters ────────────────────────────
+  new { name = "Mailing lists"; match = "header:list-id:"; add_tags { "list" } }
+  new { name = "Newsletters (commercial)"; match = "header:list-unsubscribe: NOT header:list-id:"; add_tags { "newsletter"; "ephemeral" }; remove_tags { "inbox" } }
+
+  // ── GitHub (split by reason) ───────────────────────────────
+  new { name = "GitHub mentions"; match = "to:mention@noreply.github.com OR header:x-github-reason:mention"; add_tags { "gh"; "gh/mention" } }
+  new { name = "GitHub review requested"; match = "to:review_requested@noreply.github.com OR header:x-github-reason:review_requested"; add_tags { "gh"; "gh/review" } }
+  new { name = "GitHub assigned"; match = "to:assign@noreply.github.com OR header:x-github-reason:assign"; add_tags { "gh"; "gh/assigned" } }
+  new { name = "GitHub subscribed (noise)"; match = "to:subscribed@noreply.github.com OR header:x-github-reason:subscribed"; add_tags { "gh"; "gh/subscribed"; "ephemeral" }; remove_tags { "inbox" } }
+  new { name = "GitHub CI activity"; match = "to:ci_activity@noreply.github.com OR header:x-github-reason:ci_activity"; add_tags { "gh"; "gh/ci"; "ephemeral" }; remove_tags { "inbox" } }
+
+  // ── Automated / Bulk (must run AFTER list/gh rules) ────────
+  new {
+    name = "Bulk notifications"
+    match = "(header:precedence:bulk OR header:auto-submitted:auto-generated) NOT header:list-unsubscribe: NOT header:list-id: NOT header:x-github-reason:"
+    add_tags { "notification"; "ephemeral" }
+    remove_tags { "inbox" }
+  }
+  new {
+    name = "Shipping & tracking"
+    match = "(subject:Versand OR subject:Lieferung OR subject:tracking OR subject:Bestellung OR subject:shipment OR subject:delivered)"
+    add_tags { "notification"; "ephemeral" }
+    remove_tags { "inbox" }
+  }
+
+  // ── Addressing (customize per account!) ────────────────────
+  // new { name = "Direct to me (work)"; match = "to:you@company.com"; add_tags { "to-me" }; accounts { "work" } }
+
+  // ── Longterm Type Tags (10+ years retrieval) ───────────────
+  new {
+    name = "Contracts"
+    match = "(subject:Vertrag OR subject:contract OR subject:NDA OR subject:agreement) has:attachment:pdf"
+    add_tags { "contract" }
+  }
+}
+
+// ── Match Syntax Reference ───────────────────────────────────
+//   from:value            — case-insensitive contains on sender
+//   to:value              — case-insensitive contains on recipients
+//   subject:value         — case-insensitive contains on subject
+//   header:Name:value     — case-insensitive contains on any header
+//   has:attachment         — message has at least one attachment
+//   has:attachment:pdf     — attachment with content-type or extension
+//   group:name            — expands to (from:X OR to:X ...) via groups.pkl
+//   AND (implicit)        — adjacent terms are ANDed
+//   OR / NOT / ( )        — explicit operators

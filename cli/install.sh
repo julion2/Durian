@@ -19,6 +19,7 @@ BAZEL_BIN="$(bazel info bazel-bin)/cli/cmd/durian/durian_/durian"
 echo "Installing to $INSTALL_DIR/$BINARY (may ask for password)..."
 sudo cp "$BAZEL_BIN" "$INSTALL_DIR/$BINARY"
 
+
 # macOS-only: clear quarantine attribute and ad-hoc sign
 if [ "$(uname -s)" = "Darwin" ]; then
     sudo xattr -dr com.apple.provenance "$INSTALL_DIR/$BINARY" 2>/dev/null || true

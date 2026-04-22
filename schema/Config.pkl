@@ -1,0 +1,97 @@
+/// Durian main configuration schema.
+/// Usage: import "schema/Config.pkl" as C
+module schema.Config
+
+// ── Settings ───────────────────────────────────────────────
+
+class SettingsConfig {
+  theme: "light"|"dark"|"system" = "system"
+  notifications_enabled: Boolean = true
+  load_remote_images: Boolean = false
+  accent_color: String?
+}
+
+class SyncConfig {
+  gui_auto_sync: Boolean = true
+  auto_fetch_interval: Int(this > 0) = 120
+  full_sync_interval: Int(this > 0) = 7200
+  tag_sync: TagSyncConfig?
+}
+
+class TagSyncConfig {
+  url: String
+  api_key: String
+}
+
+class ContactsConfig {
+  enabled: Boolean = true
+  db_path: String?
+}
+
+// ── Account ────────────────────────────────────────────────
+
+class SMTPConfig {
+  host: String
+  port: Int(this == 465 || this == 587) = 587
+  ssl: Boolean = false
+  auth: "password"|"oauth2"
+  max_attachment_size: String = "25MB"
+}
+
+class IMAPConfig {
+  host: String
+  port: Int = 993
+  ssl: Boolean = false
+  auth: "password"|"oauth2"
+  max_messages: Int = 5000
+  batch_size: Int(this > 0) = 100
+  mailboxes: Listing<String>?
+}
+
+class AuthConfig {
+  username: String
+  password_keychain: String?
+}
+
+class OAuthConfig {
+  provider: "google"|"microsoft"
+  client_id: String?
+  client_secret: String?
+  tenant: String = "common"
+}
+
+class AccountConfig {
+  name: String
+  email: String
+  display_name: String?
+  auth_email: String?
+  alias: String
+  default: Boolean = false
+  default_signature: String?
+  notifications: Boolean?
+  smtp: SMTPConfig
+  imap: IMAPConfig
+  auth: AuthConfig?
+  oauth: OAuthConfig?
+}
+
+// ── Provider Templates ─────────────────────────────────────
+
+/// Microsoft 365 account (OAuth). Use: (C.microsoft365) { name = ...; email = ...; alias = ... }
+microsoft365: AccountConfig = new {
+  smtp { host = "smtp.office365.com"; port = 587; auth = "oauth2" }
+  imap { host = "outlook.office365.com"; port = 993; auth = "oauth2" }
+  oauth { provider = "microsoft" }
+}
+
+/// Microsoft 365 shared mailbox. Use: (C.microsoft365Shared) { name = ...; email = ...; auth_email = ...; alias = ... }
+microsoft365Shared: AccountConfig = (microsoft365) {
+  notifications = false
+}
+
+/// Gmail account (OAuth). Use: (C.gmail) { name = ...; email = ...; alias = ...; oauth { client_id = ...; client_secret = ... } }
+gmail: AccountConfig = new {
+  smtp { host = "smtp.gmail.com"; port = 587; auth = "oauth2" }
+  imap { host = "imap.gmail.com"; port = 993; auth = "oauth2" }
+  oauth { provider = "google" }
+}

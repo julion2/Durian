@@ -2,12 +2,50 @@ package config
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+//go:embed schema/*.pkl
+var schemaFS embed.FS
+
+// schemaDir holds the temp directory with extracted schemas (created once).
+var (
+	schemaDir     string
+	schemaDirOnce sync.Once
+)
+
+// getSchemaDir extracts embedded .pkl schemas to a temp dir (once per process).
+func getSchemaDir() string {
+	schemaDirOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "durian-schema-*")
+		if err != nil {
+			return
+		}
+
+		entries, err := schemaFS.ReadDir("schema")
+		if err != nil {
+			return
+		}
+
+		for _, e := range entries {
+			data, err := schemaFS.ReadFile("schema/" + e.Name())
+			if err != nil {
+				continue
+			}
+			_ = os.WriteFile(filepath.Join(dir, e.Name()), data, 0644)
+		}
+
+		schemaDir = dir
+	})
+	return schemaDir
+}
 
 // evalFunc is the function used to evaluate config files into JSON.
 // Defaults to pklEval but can be overridden in tests.
@@ -19,7 +57,13 @@ func pklEval(path string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pkl", "eval", "--format", "json", path)
+	args := []string{"eval", "--format", "json"}
+	if sd := getSchemaDir(); sd != "" {
+		args = append(args, "--module-path", sd, "--allowed-modules", "file:,modulepath:")
+	}
+	args = append(args, path)
+
+	cmd := exec.CommandContext(ctx, "pkl", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

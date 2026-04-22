@@ -1,0 +1,11 @@
+/// Durian contact groups schema.
+/// Usage: import "schema/Groups.pkl" as G
+module schema.Groups
+
+/// A member is either a single email string or a list of emails (same person, multiple addresses).
+typealias Member = String|Listing<String>
+
+class GroupEntry {
+  description: String?
+  members: Listing<Member>
+}

@@ -1,0 +1,86 @@
+// Durian Configuration
+// Copy to ~/.config/durian/config.pkl
+// Remove the example accounts below and add your own.
+import "modulepath:/Config.pkl" as C
+
+settings {
+  theme = "system"                    // "light", "dark", or "system"
+  notifications_enabled = true        // Global notification toggle
+  load_remote_images = false          // Block tracking pixels by default
+  // accent_color = "#3B82F6"         // Optional: app-wide accent color (hex)
+}
+
+// Optional: override the contacts database location.
+// contacts { db_path = "~/.config/durian/contacts.db" }
+
+sync {
+  gui_auto_sync = true                // GUI auto-syncs on launch and periodically
+  auto_fetch_interval = 120           // Quick sync interval in seconds (GUI)
+  full_sync_interval = 7200           // Full sync interval in seconds (GUI)
+
+  // Optional: sync tags across machines via a self-hosted sync server.
+  // tag_sync { url = "http://nas:8724"; api_key = "your-secret" }
+}
+
+signatures {
+  ["default"] = "Best regards"
+  ["work"] = """
+    <b>Your Name</b><br>
+    Position<br>
+    <b>Company Inc.</b><br>
+    <br>
+    Phone: +1 234 567 890<br>
+    Email: <a href="mailto:you@company.com">you@company.com</a><br>
+    Web: <a href="https://company.com">company.com</a>
+    """
+}
+
+accounts {
+  // ── Password auth (e.g. GMX, Hostinger, LRZ) ──────────────
+  new {
+    name = "Personal"
+    email = "you@example.com"
+    display_name = "Your Name"         // Used in From header
+    alias = "personal"                 // Short alias for CLI: durian sync personal
+    default_signature = "default"      // Signature key from signatures {}
+    smtp { host = "smtp.example.com"; port = 587; auth = "password" }
+    imap { host = "imap.example.com"; port = 993; auth = "password"; max_messages = 5000 }
+    auth { username = "you@example.com" }
+    // Then run: durian auth login personal
+  }
+
+  // ── Microsoft 365 OAuth ──────────────────────────────────
+  (C.microsoft365) {
+    name = "Work"
+    email = "you@company.com"
+    display_name = "Your Name"
+    alias = "work"
+    default = true                     // Default account for compose
+    default_signature = "work"
+    notifications = true               // Per-account notification override
+    // Then run: durian auth login work
+  }
+
+  // ── Microsoft 365 Shared Mailbox ─────────────────────────
+  // See docs/OAUTH_SETUP.md for shared mailbox OAuth setup.
+  (C.microsoft365Shared) {
+    name = "Support"
+    email = "support@company.com"
+    auth_email = "you@company.com"     // Delegating user (must have Full Access + Send As)
+    display_name = "Company Support"
+    default_signature = "work"
+    alias = "support"
+  }
+
+  // ── Google OAuth ─────────────────────────────────────────
+  (C.gmail) {
+    name = "Gmail"
+    email = "you@gmail.com"
+    alias = "gmail"
+    oauth {
+      client_id = "your-google-client-id"         // Required, see docs/OAUTH_SETUP.md
+      client_secret = "your-google-client-secret"  // Required, see docs/OAUTH_SETUP.md
+    }
+    // Then run: durian auth login gmail
+  }
+}
