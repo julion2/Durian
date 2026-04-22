@@ -1,0 +1,17 @@
+{
+  "settings": {},
+  "sync": {},
+  "contacts": {},
+  "signatures": {},
+  "accounts": [
+    {
+      "name": "Primary",
+      "email": "user@example.com",
+      "alias": "primary",
+      "smtp": {},
+      "imap": {},
+      "auth": {},
+      "oauth": {}
+    }
+  ]
+}

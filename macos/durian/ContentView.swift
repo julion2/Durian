@@ -544,7 +544,7 @@ struct ContentView: View {
             ContentUnavailableView {
                 Label("No Accounts", systemImage: "person.crop.circle.badge.exclamationmark")
             } description: {
-                Text("Add an account in\n~/.config/durian/config.toml\nthen run durian auth login <account>")
+                Text("Add an account in\n~/.config/durian/config.pkl\nthen run durian auth login <account>")
             }
         } else {
             ContentUnavailableView("Inbox Zero", systemImage: "tray",

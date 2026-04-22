@@ -55,87 +55,87 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		var err error
 		loadedCfg, err = config.Load(configPath)
 		if err != nil && (target == "" || target == "config") {
-			printError("config.toml", fmt.Sprintf("failed to parse: %v", err))
+			printError("config.pkl", fmt.Sprintf("failed to parse: %v", err))
 			hasErrors = true
 			loadedCfg = config.Default()
 		}
 	} else {
 		loadedCfg = config.Default()
 		if target == "" || target == "config" {
-			printSkipped("config.toml", "not found")
+			printSkipped("config.pkl", "not found")
 		}
 	}
 
-	// Validate config.toml
+	// Validate config.pkl
 	if target == "" || target == "config" {
 		if config.Exists(configPath) {
 			errs := config.ValidateConfig(loadedCfg)
-			if printResults("config.toml", errs, configSummary(loadedCfg)) {
+			if printResults("config.pkl", errs, configSummary(loadedCfg)) {
 				hasErrors = true
 			}
 		}
 	}
 
-	// Validate rules.toml
+	// Validate rules.pkl
 	if target == "" || target == "rules" {
-		rulesPath := filepath.Join(configDir, "rules.toml")
+		rulesPath := filepath.Join(configDir, "rules.pkl")
 		rules, err := config.LoadRules("")
 		if err != nil {
-			printError("rules.toml", fmt.Sprintf("failed to parse: %v", err))
+			printError("rules.pkl", fmt.Sprintf("failed to parse: %v", err))
 			hasErrors = true
 		} else if rules == nil {
-			printSkipped("rules.toml", "not found at "+rulesPath)
+			printSkipped("rules.pkl", "not found at "+rulesPath)
 		} else {
 			errs := config.ValidateRules(rules, loadedCfg, imap.ValidateRuleQuery)
-			if printResults("rules.toml", errs, fmt.Sprintf("%d rules", len(rules))) {
+			if printResults("rules.pkl", errs, fmt.Sprintf("%d rules", len(rules))) {
 				hasErrors = true
 			}
 		}
 	}
 
-	// Validate profiles.toml
+	// Validate profiles.pkl
 	if target == "" || target == "profiles" {
 		profiles, err := config.LoadProfiles("")
 		if err != nil {
-			printError("profiles.toml", fmt.Sprintf("failed to parse: %v", err))
+			printError("profiles.pkl", fmt.Sprintf("failed to parse: %v", err))
 			hasErrors = true
 		} else if profiles == nil {
-			printSkipped("profiles.toml", "not found (using defaults)")
+			printSkipped("profiles.pkl", "not found (using defaults)")
 		} else {
 			errs := config.ValidateProfiles(profiles, loadedCfg)
-			if printResults("profiles.toml", errs, fmt.Sprintf("%d profiles", len(profiles))) {
+			if printResults("profiles.pkl", errs, fmt.Sprintf("%d profiles", len(profiles))) {
 				hasErrors = true
 			}
 		}
 	}
 
-	// Validate keymaps.toml
+	// Validate keymaps.pkl
 	if target == "" || target == "keymaps" {
 		keymaps, err := config.LoadKeymaps("")
 		if err != nil {
-			printError("keymaps.toml", fmt.Sprintf("failed to parse: %v", err))
+			printError("keymaps.pkl", fmt.Sprintf("failed to parse: %v", err))
 			hasErrors = true
 		} else if keymaps == nil {
-			printSkipped("keymaps.toml", "not found (using defaults)")
+			printSkipped("keymaps.pkl", "not found (using defaults)")
 		} else {
 			errs := config.ValidateKeymaps(keymaps)
-			if printResults("keymaps.toml", errs, fmt.Sprintf("%d bindings", len(keymaps.Keymaps))) {
+			if printResults("keymaps.pkl", errs, fmt.Sprintf("%d bindings", len(keymaps.Keymaps))) {
 				hasErrors = true
 			}
 		}
 	}
 
-	// Validate groups.toml
+	// Validate groups.pkl
 	if target == "" || target == "groups" {
 		groups, err := config.LoadGroups("")
 		if err != nil {
-			printError("groups.toml", fmt.Sprintf("failed to parse: %v", err))
+			printError("groups.pkl", fmt.Sprintf("failed to parse: %v", err))
 			hasErrors = true
 		} else if groups == nil {
-			printSkipped("groups.toml", "not found (optional)")
+			printSkipped("groups.pkl", "not found (optional)")
 		} else {
 			errs := config.ValidateGroups(groups)
-			if printResults("groups.toml", errs, fmt.Sprintf("%d groups", len(groups))) {
+			if printResults("groups.pkl", errs, fmt.Sprintf("%d groups", len(groups))) {
 				hasErrors = true
 			}
 		}

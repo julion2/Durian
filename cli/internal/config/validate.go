@@ -8,7 +8,7 @@ import (
 
 // ValidationError represents a single validation issue.
 type ValidationError struct {
-	File     string // "config.toml", "rules.toml", etc.
+	File     string // "config.pkl", "rules.pkl", etc.
 	Field    string // e.g. "accounts[0].smtp.host"
 	Message  string
 	Severity string // "error" or "warning"
@@ -25,14 +25,14 @@ func (e ValidationError) String() string {
 // Injected from the imap package to avoid a circular dependency.
 type RuleQueryValidator func(query string) error
 
-// ValidateConfig validates config.toml and returns any issues found.
+// ValidateConfig validates config.pkl and returns any issues found.
 func ValidateConfig(cfg *Config) []ValidationError {
 	var errs []ValidationError
 	add := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "config.toml", Field: field, Message: msg, Severity: "error"})
+		errs = append(errs, ValidationError{File: "config.pkl", Field: field, Message: msg, Severity: "error"})
 	}
 	warn := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "config.toml", Field: field, Message: msg, Severity: "warning"})
+		errs = append(errs, ValidationError{File: "config.pkl", Field: field, Message: msg, Severity: "warning"})
 	}
 
 	// Settings validation
@@ -142,14 +142,14 @@ func ValidateConfig(cfg *Config) []ValidationError {
 	return errs
 }
 
-// ValidateRules validates rules.toml entries. Pass a RuleQueryValidator to check match syntax.
+// ValidateRules validates rules.pkl entries. Pass a RuleQueryValidator to check match syntax.
 func ValidateRules(rules []RuleConfig, cfg *Config, queryValidator RuleQueryValidator) []ValidationError {
 	var errs []ValidationError
 	add := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "rules.toml", Field: field, Message: msg, Severity: "error"})
+		errs = append(errs, ValidationError{File: "rules.pkl", Field: field, Message: msg, Severity: "error"})
 	}
 	warn := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "rules.toml", Field: field, Message: msg, Severity: "warning"})
+		errs = append(errs, ValidationError{File: "rules.pkl", Field: field, Message: msg, Severity: "warning"})
 	}
 
 	aliases := configAliasSet(cfg)
@@ -187,14 +187,14 @@ func ValidateRules(rules []RuleConfig, cfg *Config, queryValidator RuleQueryVali
 	return errs
 }
 
-// ValidateProfiles validates profiles.toml entries against the config.
+// ValidateProfiles validates profiles.pkl entries against the config.
 func ValidateProfiles(profiles []ProfileConfig, cfg *Config) []ValidationError {
 	var errs []ValidationError
 	add := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "profiles.toml", Field: field, Message: msg, Severity: "error"})
+		errs = append(errs, ValidationError{File: "profiles.pkl", Field: field, Message: msg, Severity: "error"})
 	}
 	warn := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "profiles.toml", Field: field, Message: msg, Severity: "warning"})
+		errs = append(errs, ValidationError{File: "profiles.pkl", Field: field, Message: msg, Severity: "warning"})
 	}
 
 	aliases := configAliasSet(cfg)
@@ -273,14 +273,14 @@ var (
 	}
 )
 
-// ValidateKeymaps validates keymaps.toml.
+// ValidateKeymaps validates keymaps.pkl.
 func ValidateKeymaps(keymaps *KeymapConfig) []ValidationError {
 	var errs []ValidationError
 	add := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "keymaps.toml", Field: field, Message: msg, Severity: "error"})
+		errs = append(errs, ValidationError{File: "keymaps.pkl", Field: field, Message: msg, Severity: "error"})
 	}
 	warn := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "keymaps.toml", Field: field, Message: msg, Severity: "warning"})
+		errs = append(errs, ValidationError{File: "keymaps.pkl", Field: field, Message: msg, Severity: "warning"})
 	}
 
 	if keymaps.GlobalSettings.SequenceTimeout <= 0 {

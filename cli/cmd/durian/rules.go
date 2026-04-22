@@ -21,7 +21,7 @@ var rulesCmd = &cobra.Command{
 var rulesApplyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Apply filter rules to all existing messages",
-	Long: `Apply filter rules from rules.toml to all messages in the database.
+	Long: `Apply filter rules from rules.pkl to all messages in the database.
 Uses stored headers from message_headers table for header-based matching.
 
 Run with --dry-run first to preview what would be changed.
@@ -45,7 +45,7 @@ func runRulesApply(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("load rules: %w", err)
 	}
 	if len(rules) == 0 {
-		fmt.Fprintln(os.Stderr, "No rules found in rules.toml")
+		fmt.Fprintln(os.Stderr, "No rules found in rules.pkl")
 		return nil
 	}
 	fmt.Fprintf(os.Stderr, "Loaded %d rules\n", len(rules))

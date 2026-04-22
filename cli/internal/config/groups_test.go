@@ -5,7 +5,7 @@ import (
 )
 
 func TestLoadGroups(t *testing.T) {
-	groups, err := LoadGroups("testdata/valid_groups.toml")
+	groups, err := LoadGroups("testdata/valid_groups.json")
 	if err != nil {
 		t.Fatalf("LoadGroups() error: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestLoadGroups(t *testing.T) {
 }
 
 func TestLoadGroups_NotFound(t *testing.T) {
-	groups, err := LoadGroups("testdata/nonexistent_groups.toml")
+	groups, err := LoadGroups("testdata/nonexistent_groups.json")
 	if err != nil {
 		t.Fatalf("LoadGroups() error: %v", err)
 	}

@@ -2,7 +2,7 @@
 //  SequenceMatcher.swift
 //  Durian
 //
-//  Pattern matching for key sequences - dynamically loaded from keymaps.toml
+//  Pattern matching for key sequences - dynamically loaded from keymaps.pkl
 //
 
 import Foundation

@@ -1,13 +1,12 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/BurntSushi/toml"
 )
 
 // GroupEntry defines a single contact group.
@@ -22,13 +21,13 @@ type GroupEntry struct {
 //
 //	members = ["alice@x.com", ["bob@x.com", "bob@y.com"], "*@fund.com"]
 type groupEntryRaw struct {
-	Description string      `toml:"description"`
-	Members     interface{} `toml:"members"`
+	Description string      `json:"description"`
+	Members     interface{} `json:"members"`
 }
 
-// groupsFileRaw is the top-level structure of groups.toml.
+// groupsFileRaw is the top-level structure of groups.pkl.
 type groupsFileRaw struct {
-	Groups map[string]groupEntryRaw `toml:"groups"`
+	Groups map[string]groupEntryRaw `json:"groups"`
 }
 
 // LoadGroups loads contact groups from the given path.
@@ -43,9 +42,14 @@ func LoadGroups(path string) (map[string]GroupEntry, error) {
 		return nil, nil
 	}
 
-	var raw groupsFileRaw
-	if _, err := toml.DecodeFile(path, &raw); err != nil {
+	data, err := evalConfigFile(path)
+	if err != nil {
 		return nil, fmt.Errorf("failed to load groups: %w", err)
+	}
+
+	var raw groupsFileRaw
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("failed to parse groups: %w", err)
 	}
 
 	groups := make(map[string]GroupEntry, len(raw.Groups))
@@ -100,9 +104,9 @@ func normalizeMembers(raw interface{}) ([][]string, error) {
 	return result, nil
 }
 
-// GroupsPath returns the default groups.toml path.
+// GroupsPath returns the default groups.pkl path.
 func GroupsPath() string {
-	return filepath.Join(filepath.Dir(DefaultPath()), "groups.toml")
+	return filepath.Join(filepath.Dir(DefaultPath()), "groups.pkl")
 }
 
 // groupRef matches group:name and group:name/modifier tokens in a query string.
@@ -179,14 +183,14 @@ func expandAddr(addr, modifier string) []string {
 	}
 }
 
-// ValidateGroups validates groups.toml entries.
+// ValidateGroups validates groups.pkl entries.
 func ValidateGroups(groups map[string]GroupEntry) []ValidationError {
 	var errs []ValidationError
 	add := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "groups.toml", Field: field, Message: msg, Severity: "error"})
+		errs = append(errs, ValidationError{File: "groups.pkl", Field: field, Message: msg, Severity: "error"})
 	}
 	warn := func(field, msg string) {
-		errs = append(errs, ValidationError{File: "groups.toml", Field: field, Message: msg, Severity: "warning"})
+		errs = append(errs, ValidationError{File: "groups.pkl", Field: field, Message: msg, Severity: "warning"})
 	}
 
 	for name, group := range groups {

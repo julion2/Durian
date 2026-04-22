@@ -55,7 +55,7 @@ struct ComposeWindow: View {
                 .foregroundStyle(.secondary)
             Text("No accounts configured")
                 .font(.title2)
-            Text("Add an account in config.toml to send emails")
+            Text("Add an account in config.pkl to send emails")
                 .foregroundStyle(.secondary)
             Button("Close") {
                 closeWindow()

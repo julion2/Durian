@@ -1,38 +1,25 @@
 import XCTest
 import SwiftUI
-import TOMLDecoder
 @testable import durian_lib
 
 final class ProfileTests: XCTestCase {
 
-    // MARK: - Test TOML
+    // MARK: - Test JSON (as pkl eval would produce)
 
-    private let profilesTOML = """
-    [[profile]]
-    name = "All"
-    accounts = ["*"]
-    default = true
-    color = "#3B82F6"
-
-    [[profile]]
-    name = "Personal"
-    accounts = ["personal"]
-    color = "#10B981"
-
-    [[profile]]
-    name = "Work"
-    accounts = ["work", "company"]
-    color = "#F59E0B"
-
-    [[profile.folders]]
-    name = "Inbox"
-    icon = "tray"
-    query = "tag:inbox"
-
-    [[profile.folders]]
-    name = "Priority"
-    icon = "star"
-    query = "tag:flagged AND tag:inbox"
+    private let profilesJSON = """
+    {
+      "profiles": [
+        { "name": "All", "accounts": ["*"], "default": true, "color": "#3B82F6" },
+        { "name": "Personal", "accounts": ["personal"], "color": "#10B981" },
+        {
+          "name": "Work", "accounts": ["work", "company"], "color": "#F59E0B",
+          "folders": [
+            { "name": "Inbox", "icon": "tray", "query": "tag:inbox" },
+            { "name": "Priority", "icon": "star", "query": "tag:flagged AND tag:inbox" }
+          ]
+        }
+      ]
+    }
     """
 
     // MARK: - Helpers
@@ -49,32 +36,34 @@ final class ProfileTests: XCTestCase {
         Profile(name: "Work", accounts: accounts, isDefault: false, color: "#F59E0B", folders: Self.testDefaultFolders)
     }
 
-    // MARK: - TOML Decoding
+    // MARK: - JSON Decoding
 
     func testDecodeProfiles() throws {
-        let config = try TOMLDecoder().decode(ProfilesConfig.self, from: profilesTOML)
+        let data = profilesJSON.data(using: .utf8)!
+        let config = try JSONDecoder().decode(ProfilesConfig.self, from: data)
 
-        XCTAssertEqual(config.profile.count, 3)
-        XCTAssertEqual(config.profile[0].name, "All")
-        XCTAssertEqual(config.profile[0].accounts, ["*"])
-        XCTAssertEqual(config.profile[0].default, true)
-        XCTAssertEqual(config.profile[1].name, "Personal")
-        XCTAssertEqual(config.profile[1].accounts, ["personal"])
-        XCTAssertEqual(config.profile[2].name, "Work")
-        XCTAssertEqual(config.profile[2].accounts, ["work", "company"])
+        XCTAssertEqual(config.profiles.count, 3)
+        XCTAssertEqual(config.profiles[0].name, "All")
+        XCTAssertEqual(config.profiles[0].accounts, ["*"])
+        XCTAssertEqual(config.profiles[0].default, true)
+        XCTAssertEqual(config.profiles[1].name, "Personal")
+        XCTAssertEqual(config.profiles[1].accounts, ["personal"])
+        XCTAssertEqual(config.profiles[2].name, "Work")
+        XCTAssertEqual(config.profiles[2].accounts, ["work", "company"])
     }
 
     func testProfileColors() throws {
-        let config = try TOMLDecoder().decode(ProfilesConfig.self, from: profilesTOML)
-        XCTAssertEqual(config.profile[0].color, "#3B82F6")
-        XCTAssertEqual(config.profile[1].color, "#10B981")
+        let data = profilesJSON.data(using: .utf8)!
+        let config = try JSONDecoder().decode(ProfilesConfig.self, from: data)
+        XCTAssertEqual(config.profiles[0].color, "#3B82F6")
+        XCTAssertEqual(config.profiles[1].color, "#10B981")
     }
 
     func testProfileFolders() throws {
-        let config = try TOMLDecoder().decode(ProfilesConfig.self, from: profilesTOML)
+        let data = profilesJSON.data(using: .utf8)!
+        let config = try JSONDecoder().decode(ProfilesConfig.self, from: data)
 
-        // Work profile has custom folders
-        let workFolders = config.profile[2].folders
+        let workFolders = config.profiles[2].folders
         XCTAssertNotNil(workFolders)
         XCTAssertEqual(workFolders?.count, 2)
         XCTAssertEqual(workFolders?[0].name, "Inbox")
@@ -173,7 +162,6 @@ final class ProfileTests: XCTestCase {
         let profile = Profile(name: "Work", accounts: ["work"], isDefault: false,
                               color: "#FF0000", folders: Self.testDefaultFolders)
         let manager = await ProfileManager(profiles: [profile], currentProfile: profile)
-        // Per-profile color takes precedence
         let color = await manager.resolvedAccentColor
         XCTAssertEqual(color, Color(hex: "#FF0000"))
     }
@@ -182,7 +170,6 @@ final class ProfileTests: XCTestCase {
         let profile = Profile(name: "Plain", accounts: ["work"], isDefault: false,
                               color: nil, folders: Self.testDefaultFolders)
         let manager = await ProfileManager(profiles: [profile], currentProfile: profile)
-        // Without a profile color and without an app accent, falls back to system
         let color = await manager.resolvedAccentColor
         XCTAssertEqual(color, Color.accentColor)
     }

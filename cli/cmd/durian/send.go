@@ -101,7 +101,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 	} else {
 		account, err = cfg.GetDefaultAccount()
 		if err != nil {
-			return fmt.Errorf("no default account configured\nUse --from to specify an account or set default=true in config.toml")
+			return fmt.Errorf("no default account configured\nUse --from to specify an account or set default=true in config.pkl")
 		}
 	}
 

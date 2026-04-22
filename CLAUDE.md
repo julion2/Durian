@@ -9,13 +9,13 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **Tests:** `bazel test //cli/...` (CLI) / `bazel test //macos/...` (GUI, requires Xcode 26) / `bazel test //...` (all)
 - **CI Tests (GUI):** `bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test //macos:ci_sync_manager_test //macos:ci_search_manager_test //macos:ci_outbox_manager_test` (uses `durian_core` target, no Views, works on Xcode 16+)
 - **Integration Tests:** `bazel test //integration:integration_test` (starts real server, validates API contract via curl+jq)
-- **Validate Config:** `durian validate` (checks config.toml, rules.toml, profiles.toml, keymaps.toml)
+- **Validate Config:** `durian validate` (checks config.pkl, rules.pkl, profiles.pkl, keymaps.pkl, groups.pkl)
 - **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
 - **Logs (CLI/Go):** `~/.config/durian/serve.log` (truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
 
 ## Project Structure
 
-- Config dir: `~/.config/durian/` (`config.toml`, `keymaps.toml`, `profiles.toml`, `rules.toml`; see `docs/config-example.toml`)
+- Config dir: `~/.config/durian/` (`config.pkl`, `keymaps.pkl`, `profiles.pkl`, `rules.pkl`, `groups.pkl`). Config uses [Apple Pkl](https://pkl-lang.org) — evaluated via `pkl eval --format json` at runtime. Requires `pkl` CLI (`brew install pkl`).
 - `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, SQLite store, HTTP API server
   - `cli/cmd/durian/` — CLI commands (sync, send, serve, search, tag, contacts, draft, auth)
   - `cli/internal/` — Internal packages (config, imap, smtp, handler, store, oauth, mail, encoding, contacts, draft, keychain, protocol)

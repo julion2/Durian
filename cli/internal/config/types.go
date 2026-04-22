@@ -2,11 +2,11 @@ package config
 
 // Config represents the complete Durian configuration
 type Config struct {
-	Settings   SettingsConfig    `toml:"settings"`
-	Sync       SyncConfig        `toml:"sync"`
-	Contacts   ContactsConfig    `toml:"contacts"`
-	Signatures map[string]string `toml:"signatures"`
-	Accounts   []AccountConfig   `toml:"accounts"`
+	Settings   SettingsConfig    `json:"settings"`
+	Sync       SyncConfig        `json:"sync"`
+	Contacts   ContactsConfig    `json:"contacts"`
+	Signatures map[string]string `json:"signatures"`
+	Accounts   []AccountConfig   `json:"accounts"`
 }
 
 // SettingsConfig holds settings that `durian validate` can check before
@@ -14,7 +14,7 @@ type Config struct {
 // (theme, notifications_enabled, load_remote_images, …) are parsed by
 // Swift directly and silently ignored here.
 type SettingsConfig struct {
-	AccentColor string `toml:"accent_color"` // Hex color, e.g. "#3B82F6"
+	AccentColor string `json:"accent_color"` // Hex color, e.g. "#3B82F6"
 }
 
 // SyncConfig contains sync settings consumed by the Go CLI.
@@ -22,35 +22,35 @@ type SettingsConfig struct {
 // full_sync_interval) are read by Swift directly and silently ignored here.
 type SyncConfig struct {
 	// TagSync configures the optional tag sync server for multi-machine setups
-	TagSync TagSyncConfig `toml:"tag_sync"`
+	TagSync TagSyncConfig `json:"tag_sync"`
 }
 
 // TagSyncConfig configures the optional remote tag sync server.
 type TagSyncConfig struct {
-	URL    string `toml:"url"`     // e.g. "http://nas:8724"
-	APIKey string `toml:"api_key"` // Shared secret
+	URL    string `json:"url"`     // e.g. "http://nas:8724"
+	APIKey string `json:"api_key"` // Shared secret
 }
 
 // ContactsConfig contains contacts database settings
 type ContactsConfig struct {
-	Enabled bool   `toml:"enabled"` // Enable contacts feature (default: true)
-	DBPath  string `toml:"db_path"` // Path to SQLite DB (default: ~/.config/durian/contacts.db)
+	Enabled bool   `json:"enabled"` // Enable contacts feature (default: true)
+	DBPath  string `json:"db_path"` // Path to SQLite DB (default: ~/.config/durian/contacts.db)
 }
 
 // AccountConfig represents a single email account
 type AccountConfig struct {
-	Name             string      `toml:"name"`
-	DisplayName      string      `toml:"display_name"` // Full name for From header (e.g., "Julian Schenker")
-	Email            string      `toml:"email"`
-	AuthEmail        string      `toml:"auth_email"` // Delegating user for shared mailbox OAuth (token owner)
-	Alias            string      `toml:"alias"`      // Short alias for CLI (e.g., "work", "personal")
-	Default          bool        `toml:"default"`
-	DefaultSignature string      `toml:"default_signature"`
-	Notifications    *bool       `toml:"notifications"` // Per-account notification override (nil = use global setting)
-	SMTP             SMTPConfig  `toml:"smtp"`
-	IMAP             IMAPConfig  `toml:"imap"`
-	Auth             AuthConfig  `toml:"auth"`
-	OAuth            OAuthConfig `toml:"oauth"`
+	Name             string      `json:"name"`
+	DisplayName      string      `json:"display_name"` // Full name for From header (e.g., "Julian Schenker")
+	Email            string      `json:"email"`
+	AuthEmail        string      `json:"auth_email"` // Delegating user for shared mailbox OAuth (token owner)
+	Alias            string      `json:"alias"`      // Short alias for CLI (e.g., "work", "personal")
+	Default          bool        `json:"default"`
+	DefaultSignature string      `json:"default_signature"`
+	Notifications    *bool       `json:"notifications"` // Per-account notification override (nil = use global setting)
+	SMTP             SMTPConfig  `json:"smtp"`
+	IMAP             IMAPConfig  `json:"imap"`
+	Auth             AuthConfig  `json:"auth"`
+	OAuth            OAuthConfig `json:"oauth"`
 }
 
 // GetAuthEmail returns the email used for OAuth token lookup.
@@ -64,33 +64,33 @@ func (a *AccountConfig) GetAuthEmail() string {
 
 // SMTPConfig contains SMTP server settings
 type SMTPConfig struct {
-	Host              string `toml:"host"`
-	Port              int    `toml:"port"`
-	SSL               bool   `toml:"ssl"`
-	Auth              string `toml:"auth"`                // "password" or "oauth2"
-	MaxAttachmentSize string `toml:"max_attachment_size"` // e.g. "25MB", default 25MB
+	Host              string `json:"host"`
+	Port              int    `json:"port"`
+	SSL               bool   `json:"ssl"`
+	Auth              string `json:"auth"`                // "password" or "oauth2"
+	MaxAttachmentSize string `json:"max_attachment_size"` // e.g. "25MB", default 25MB
 }
 
 // IMAPConfig contains IMAP server settings
 type IMAPConfig struct {
-	Host        string   `toml:"host"`
-	Port        int      `toml:"port"`
-	Auth        string   `toml:"auth"`         // "password" or "oauth2"
-	MaxMessages int      `toml:"max_messages"` // Default: 5000, 0 = unlimited
-	BatchSize   int      `toml:"batch_size"`   // Default: 100 (see DefaultIMAPBatchSize)
-	Mailboxes   []string `toml:"mailboxes"`    // Optional: specific mailboxes to sync
+	Host        string   `json:"host"`
+	Port        int      `json:"port"`
+	Auth        string   `json:"auth"`         // "password" or "oauth2"
+	MaxMessages int      `json:"max_messages"` // Default: 5000, 0 = unlimited
+	BatchSize   int      `json:"batch_size"`   // Default: 100 (see DefaultIMAPBatchSize)
+	Mailboxes   []string `json:"mailboxes"`    // Optional: specific mailboxes to sync
 }
 
 // AuthConfig contains password-based authentication settings
 type AuthConfig struct {
-	Username         string `toml:"username"`
-	PasswordKeychain string `toml:"password_keychain"`
+	Username         string `json:"username"`
+	PasswordKeychain string `json:"password_keychain"`
 }
 
 // OAuthConfig contains OAuth2 authentication settings
 type OAuthConfig struct {
-	Provider     string `toml:"provider"`      // "google", "microsoft"
-	ClientID     string `toml:"client_id"`     // Azure App Client ID or Google Client ID
-	ClientSecret string `toml:"client_secret"` // Required for Google, optional for Microsoft
-	Tenant       string `toml:"tenant"`        // Microsoft tenant (default: "common")
+	Provider     string `json:"provider"`      // "google", "microsoft"
+	ClientID     string `json:"client_id"`     // Azure App Client ID or Google Client ID
+	ClientSecret string `json:"client_secret"` // Required for Google, optional for Microsoft
+	Tenant       string `json:"tenant"`        // Microsoft tenant (default: "common")
 }

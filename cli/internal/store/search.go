@@ -462,7 +462,7 @@ func fieldToSQL(f *fieldExpr) (string, []interface{}, error) {
 		return "1=1", nil, nil
 
 	case "group":
-		return "", nil, fmt.Errorf("group:%s was not expanded — check groups.toml", f.value)
+		return "", nil, fmt.Errorf("group:%s was not expanded — check groups.pkl", f.value)
 
 	default:
 		return "", nil, fmt.Errorf("unknown query field: %q", f.field)

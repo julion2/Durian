@@ -1,0 +1,22 @@
+{
+  "groups": {
+    "investor": {
+      "description": "Cap Table members",
+      "members": [
+        "alice@sequoia.com",
+        ["bob@index.vc", "bob.personal@gmail.com"],
+        "*@fund-xyz.com"
+      ]
+    },
+    "press": {
+      "members": ["*@spiegel.de", "*@handelsblatt.com"]
+    },
+    "solo": {
+      "members": ["carol@example.org"]
+    },
+    "empty": {
+      "description": "No members yet",
+      "members": []
+    }
+  }
+}

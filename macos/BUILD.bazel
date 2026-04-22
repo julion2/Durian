@@ -24,7 +24,7 @@ swift_library(
             "durian/Assets.xcassets/AppIcon.appiconset/**",
         ],
     ),
-    deps = ["@toml_decoder//:TOMLDecoder"],
+    deps = [],
 )
 
 # Testable library (excludes @main to avoid duplicate symbol with test runner)
@@ -36,7 +36,7 @@ swift_library(
         ["durian/**/*.swift"],
         exclude = ["durian/DurianApp.swift"],
     ),
-    deps = ["@toml_decoder//:TOMLDecoder"],
+    deps = [],
 )
 
 # Core library for CI tests — models, managers, utilities only (no Views).
@@ -54,7 +54,7 @@ swift_library(
         "durian/Network/**/*.swift",
         "durian/Keymaps/**/*.swift",
     ]),
-    deps = ["@toml_decoder//:TOMLDecoder"],
+    deps = [],
 )
 
 swift_test(
@@ -63,7 +63,6 @@ swift_test(
     srcs = ["tests/ConfigTests.swift"],
     deps = [
         ":durian_testlib",
-        "@toml_decoder//:TOMLDecoder",
     ],
 )
 
@@ -73,7 +72,6 @@ swift_test(
     srcs = ["tests/ProfileTests.swift"],
     deps = [
         ":durian_testlib",
-        "@toml_decoder//:TOMLDecoder",
     ],
 )
 
@@ -99,7 +97,6 @@ swift_test(
     tags = ["ci"],
     deps = [
         ":durian_core",
-        "@toml_decoder//:TOMLDecoder",
     ],
 )
 
@@ -110,7 +107,6 @@ swift_test(
     tags = ["ci"],
     deps = [
         ":durian_core",
-        "@toml_decoder//:TOMLDecoder",
     ],
 )
 

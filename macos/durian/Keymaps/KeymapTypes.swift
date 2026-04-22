@@ -73,7 +73,7 @@ enum KeymapAction: String, CaseIterable {
     case scrollDown = "scroll_down"
     case scrollUp = "scroll_up"
 
-    // Note: supportsCount is now defined in keymaps.toml per-action
+    // Note: supportsCount is now defined in keymaps.pkl per-action
     // Use SequenceMatcher.shared.supportsCount(action) to check
 }
 
