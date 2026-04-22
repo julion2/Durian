@@ -268,7 +268,7 @@ macos_application(
         ":release": glob(["durian/AppIcon.icon/**"]),
         "//conditions:default": glob(["durian/AppIcon-Debug.icon/**"]),
     }),
-    resources = select({
+    resources = ["//schema:pkl_schemas"] + select({
         ":ci": glob(["durian/CompiledIcons/release/**"]),
         "//conditions:default": [],
     }),

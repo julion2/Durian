@@ -10,7 +10,7 @@
 // Section headers: omit the query field to create a non-clickable header.
 import "modulepath:/Profiles.pkl" as P
 
-profiles {
+profiles: Listing<P.ProfileConfig> = new {
   // ── All Accounts ───────────────────────────────────────────
   new {
     name = "All"; accounts = new { "*" }; default = true

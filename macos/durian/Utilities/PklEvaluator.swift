@@ -3,31 +3,27 @@
 //  Durian
 //
 //  Evaluates .pkl config files to JSON via the pkl CLI.
-//  Schemas are bundled in the app and extracted to a temp dir at runtime.
+//  Schemas are bundled as app resources by Bazel.
 //
 
 import Foundation
 
 enum PklEvaluator {
-    /// Temp directory with extracted schemas (created once per app launch).
+    /// Schema directory inside the app bundle (set by Bazel resources).
     private static let schemaDir: String? = {
-        // Schemas are bundled as resources by Bazel. For dev builds they may
-        // not be present — fall back gracefully so pkl eval still works.
         guard let resourcePath = Bundle.main.resourcePath else { return nil }
-
-        let bundledSchema = (resourcePath as NSString).appendingPathComponent("schema")
-        guard FileManager.default.fileExists(atPath: bundledSchema) else {
-            // Dev fallback: try the repo schema/ directory
-            let repoSchema = (resourcePath as NSString)
-                .deletingLastPathComponent  // .app/Contents/MacOS
-                .appending("/../../../schema")
-            if FileManager.default.fileExists(atPath: repoSchema) {
-                return repoSchema
+        // Bazel places filegroup resources at the bundle root under their workspace-relative path.
+        // schema/*.pkl files end up at <app>/Contents/Resources/schema/
+        for candidate in [
+            (resourcePath as NSString).appendingPathComponent("schema"),
+            resourcePath,  // files may be placed flat in Resources/
+        ] {
+            let test = (candidate as NSString).appendingPathComponent("Config.pkl")
+            if FileManager.default.fileExists(atPath: test) {
+                return candidate
             }
-            return nil
         }
-
-        return bundledSchema
+        return nil
     }()
 
     /// Evaluate a .pkl file and decode the JSON output into the given type.
