@@ -119,15 +119,15 @@ class ConfigManager {
     }
 
     init() {
-        loadConfig()
+        Task { await loadConfig() }
     }
 
     /// Test-only initializer: inject config directly, skip file loading
     init(config: AppConfig) {
         self._config = config
     }
-    
-    private func loadConfig() {
+
+    private func loadConfig() async {
         let configURL = getConfigURL()
 
         guard FileManager.default.fileExists(atPath: configURL.path) else {
@@ -136,7 +136,7 @@ class ConfigManager {
         }
 
         do {
-            config = try PklEvaluator.eval(AppConfig.self, from: configURL)
+            config = try await PklEvaluator.eval(AppConfig.self, from: configURL)
             Log.info("CONFIG", "Loaded config from \(configURL.path)")
         } catch {
             Log.error("CONFIG", "Failed to load config: \(error)")
@@ -169,8 +169,7 @@ class ConfigManager {
     /// Reload config from disk (call after editing config.pkl)
     func reloadConfig() {
         Log.info("CONFIG", "Reloading config...")
-        loadConfig()
-        Log.info("CONFIG", "Reload complete")
+        Task { await loadConfig() }
     }
     
     func updateSettings(_ newSettings: AppSettings) {

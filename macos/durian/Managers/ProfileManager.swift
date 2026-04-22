@@ -88,13 +88,20 @@ class ProfileManager: ObservableObject {
         self.profiles = profiles
         self.currentProfile = currentProfile ?? profiles.first
     }
-    
+
     func loadProfiles() {
+        Task { await loadProfilesAsync() }
+    }
+
+    private func loadProfilesAsync() async {
         let configURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/durian/profiles.pkl")
 
-        guard let config = try? PklEvaluator.eval(ProfilesConfig.self, from: configURL) else {
-            Log.debug("PROFILE", "Failed to load profiles.pkl, using default")
+        let config: ProfilesConfig
+        do {
+            config = try await PklEvaluator.eval(ProfilesConfig.self, from: configURL)
+        } catch {
+            Log.error("PROFILE", "Failed to load profiles.pkl")
             profiles = [Profile(
                 name: "All",
                 accounts: ["*"],

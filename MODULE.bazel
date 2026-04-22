@@ -4,6 +4,17 @@ bazel_dep(name = "apple_support", version = "1.24.2")
 bazel_dep(name = "googletest", version = "1.17.0")
 bazel_dep(name = "rules_swift", version = "3.5.0")
 bazel_dep(name = "rules_apple", version = "4.3.2")
+bazel_dep(name = "rules_swift_package_manager", version = "1.15.0")
+
+swift_deps = use_extension(
+    "@rules_swift_package_manager//:extensions.bzl",
+    "swift_deps",
+)
+swift_deps.from_package(
+    resolved = "//:Package.resolved",
+    swift = "//:Package.swift",
+)
+use_repo(swift_deps, "swift_package", "swiftpkg_pkl_swift")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//cli:go.mod")

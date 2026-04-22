@@ -24,7 +24,7 @@ swift_library(
             "durian/Assets.xcassets/AppIcon.appiconset/**",
         ],
     ),
-    deps = [],
+    deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
 # Testable library (excludes @main to avoid duplicate symbol with test runner)
@@ -36,7 +36,7 @@ swift_library(
         ["durian/**/*.swift"],
         exclude = ["durian/DurianApp.swift"],
     ),
-    deps = [],
+    deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
 # Core library for CI tests — models, managers, utilities only (no Views).
@@ -54,7 +54,7 @@ swift_library(
         "durian/Network/**/*.swift",
         "durian/Keymaps/**/*.swift",
     ]),
-    deps = [],
+    deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
 swift_test(
