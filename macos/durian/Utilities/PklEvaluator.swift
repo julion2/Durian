@@ -66,4 +66,53 @@ enum PklEvaluator {
             )
         }
     }
+
+    /// Synchronous eval via pkl CLI subprocess — safe to call from init()
+    /// without risking Swift Concurrency deadlocks.
+    static func evalSync<T: Decodable>(_ type: T.Type, from url: URL) throws -> T {
+        _ = _ensurePklPath
+
+        let pklBin = ProcessInfo.processInfo.environment["PKL_EXEC"]
+            ?? ["/opt/homebrew/bin/pkl", "/usr/local/bin/pkl"].first(where: {
+                FileManager.default.isExecutableFile(atPath: $0)
+            })
+            ?? "pkl"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: pklBin)
+
+        var args = ["eval", "--format", "json"]
+        if let sd = schemaDir {
+            args += ["--module-path", sd, "--allowed-modules", "file:,modulepath:"]
+        }
+        args.append(url.path)
+        process.arguments = args
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            let errMsg = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "unknown error"
+            throw PklEvalError.evaluationFailed(errMsg)
+        }
+
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        return try JSONDecoder().decode(type, from: data)
+    }
+}
+
+enum PklEvalError: LocalizedError {
+    case evaluationFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .evaluationFailed(let msg):
+            return "pkl eval failed: \(msg)"
+        }
+    }
 }

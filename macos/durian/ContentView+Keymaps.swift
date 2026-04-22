@@ -92,23 +92,23 @@ extension ContentView {
 
         // Reply: r
         keymapHandler.registerSimpleHandler(for: .reply) { [self] in
-            await MainActor.run {
-                replyToSelected()
-            }
+            guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
+            await accountManager.fetchEmailBody(id: emailId)
+            await MainActor.run { replyToSelected() }
         }
 
         // Reply All: R (Shift+r)
         keymapHandler.registerSimpleHandler(for: .replyAll) { [self] in
-            await MainActor.run {
-                replyAllToSelected()
-            }
+            guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
+            await accountManager.fetchEmailBody(id: emailId)
+            await MainActor.run { replyAllToSelected() }
         }
 
         // Forward: f
         keymapHandler.registerSimpleHandler(for: .forward) { [self] in
-            await MainActor.run {
-                forwardSelected()
-            }
+            guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
+            await accountManager.fetchEmailBody(id: emailId)
+            await MainActor.run { forwardSelected() }
         }
 
         // View control: q - close detail, search popup, or tag picker (NOT escape - that's for visual mode)
