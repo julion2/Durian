@@ -141,6 +141,7 @@ class ConfigManager {
         } catch {
             Log.error("CONFIG", "Failed to load config: \(error)")
         }
+
     }
 
     private func getConfigURL() -> URL {
