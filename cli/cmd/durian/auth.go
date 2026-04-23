@@ -99,7 +99,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine auth type: OAuth or Password
-	if account.OAuth.Provider != "" {
+	if account.OAuth != nil && account.OAuth.Provider != "" {
 		return runOAuthLogin(account)
 	}
 
@@ -273,7 +273,7 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 	}
 
 	// Delete based on account type
-	if account.OAuth.Provider != "" {
+	if account.OAuth != nil && account.OAuth.Provider != "" {
 		// Shared mailbox: token belongs to the delegating user
 		if account.AuthEmail != "" {
 			fmt.Printf("Shared mailbox %s uses token from %s\n", account.Email, account.AuthEmail)
@@ -327,7 +327,7 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 	}
 
 	// Only OAuth accounts can be refreshed
-	if account.OAuth.Provider == "" {
+	if account.OAuth == nil || account.OAuth.Provider == "" {
 		return fmt.Errorf("%s uses password authentication (no refresh needed)", account.Email)
 	}
 
@@ -375,7 +375,7 @@ func runAuthRefresh(cmd *cobra.Command, args []string) error {
 
 // getAccountStatusShort returns a machine-readable status for JSON output.
 func getAccountStatusShort(account *config.AccountConfig) string {
-	if account.OAuth.Provider != "" {
+	if account.OAuth != nil && account.OAuth.Provider != "" {
 		token, err := oauth.LoadToken(account.GetAuthEmail())
 		if err != nil {
 			return "not_authenticated"
@@ -396,7 +396,7 @@ func getAccountStatusShort(account *config.AccountConfig) string {
 
 func getAccountStatus(account *config.AccountConfig) string {
 	// Check OAuth accounts
-	if account.OAuth.Provider != "" {
+	if account.OAuth != nil && account.OAuth.Provider != "" {
 		token, err := oauth.LoadToken(account.GetAuthEmail())
 		if err != nil {
 			if errors.Is(err, oauth.ErrTokenNotFound) {
@@ -429,7 +429,7 @@ func getAccountStatus(account *config.AccountConfig) string {
 }
 
 func getAuthType(account *config.AccountConfig) string {
-	if account.OAuth.Provider != "" {
+	if account.OAuth != nil && account.OAuth.Provider != "" {
 		return account.OAuth.Provider
 	}
 	if account.SMTP.Auth == "password" || account.IMAP.Auth == "password" {

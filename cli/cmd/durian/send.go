@@ -244,7 +244,7 @@ func runSend(cmd *cobra.Command, args []string) error {
 
 	// Save a copy to the IMAP Sent folder
 	// Skip for providers that auto-save sent mail (Google, Microsoft)
-	if account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft" {
+	if account.OAuth != nil && (account.OAuth.Provider == "google" || account.OAuth.Provider == "microsoft") {
 		fmt.Fprintf(os.Stderr, "✓ %s saves sent mail automatically\n", account.OAuth.Provider)
 		return nil
 	}

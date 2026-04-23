@@ -97,7 +97,7 @@ func runTag(cmd *cobra.Command, args []string) error {
 
 	// Enable tag journal if tag sync is configured
 	cfg := GetConfig()
-	if cfg != nil && cfg.Sync.TagSync.URL != "" {
+	if cfg != nil && cfg.Sync.TagSync != nil && cfg.Sync.TagSync.URL != "" {
 		h.EnableTagJournal()
 	}
 
