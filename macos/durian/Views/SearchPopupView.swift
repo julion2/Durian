@@ -276,7 +276,15 @@ struct SearchResultRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                // Row 3: tag pills
+                // Row 3: body preview
+                if let preview = email.bodyPreview, !preview.isEmpty {
+                    Text(preview)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                // Row 4: tag pills
                 if !visibleTags.isEmpty {
                     HStack(spacing: 4) {
                         ForEach(visibleTags, id: \.self) { tag in
