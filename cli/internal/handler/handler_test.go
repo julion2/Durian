@@ -330,6 +330,67 @@ func TestStoreListTags(t *testing.T) {
 	}
 }
 
+func TestEnforceExclusiveTags(t *testing.T) {
+	tests := []struct {
+		name       string
+		add        []string
+		remove     []string
+		wantRemove map[string]bool
+	}{
+		{
+			name:       "archive removes trash and inbox",
+			add:        []string{"archive"},
+			remove:     nil,
+			wantRemove: map[string]bool{"trash": true, "inbox": true},
+		},
+		{
+			name:       "trash removes archive and inbox",
+			add:        []string{"trash"},
+			remove:     nil,
+			wantRemove: map[string]bool{"archive": true, "inbox": true},
+		},
+		{
+			name:       "inbox removes archive and trash",
+			add:        []string{"inbox"},
+			remove:     nil,
+			wantRemove: map[string]bool{"archive": true, "trash": true},
+		},
+		{
+			name:       "no duplicates if already removing",
+			add:        []string{"archive"},
+			remove:     []string{"inbox"},
+			wantRemove: map[string]bool{"inbox": true, "trash": true},
+		},
+		{
+			name:       "non-exclusive tags unchanged",
+			add:        []string{"flagged"},
+			remove:     []string{"unread"},
+			wantRemove: map[string]bool{"unread": true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, gotRemove := enforceExclusiveTags(tt.add, tt.remove)
+			gotSet := make(map[string]bool, len(gotRemove))
+			for _, r := range gotRemove {
+				if gotSet[r] {
+					t.Errorf("duplicate in remove: %q", r)
+				}
+				gotSet[r] = true
+			}
+			for want := range tt.wantRemove {
+				if !gotSet[want] {
+					t.Errorf("expected %q in remove, got %v", want, gotRemove)
+				}
+			}
+			if len(gotSet) != len(tt.wantRemove) {
+				t.Errorf("remove = %v, want keys %v", gotRemove, tt.wantRemove)
+			}
+		})
+	}
+}
+
 func TestSplitTagOps(t *testing.T) {
 	add, remove := splitTagOps([]string{"+read", "-unread", "+archived", "-inbox"})
 

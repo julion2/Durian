@@ -17,6 +17,7 @@ func (h *Handler) Tag(query string, tags string) protocol.Response {
 	}
 
 	add, remove := splitTagOps(tagList)
+	add, remove = enforceExclusiveTags(add, remove)
 
 	// Expand group references
 	expanded, err := h.expandGroups(query)
@@ -121,6 +122,34 @@ func (h *Handler) pushTagChanges(threadID string, add, remove []string) {
 	if err := h.tagSync.Push(changes); err != nil {
 		slog.Warn("Tag sync push failed", "module", "TAGSYNC", "err", err)
 	}
+}
+
+// enforceExclusiveTags ensures mutually exclusive tags don't coexist.
+// When one tag from an exclusive group is added, the others are removed.
+func enforceExclusiveTags(add, remove []string) ([]string, []string) {
+	exclusive := []string{"archive", "trash", "inbox"}
+
+	removeSet := make(map[string]bool, len(remove))
+	for _, r := range remove {
+		removeSet[r] = true
+	}
+
+	for _, a := range add {
+		for _, ex := range exclusive {
+			if a == ex {
+				// Remove all other tags in the group
+				for _, other := range exclusive {
+					if other != a && !removeSet[other] {
+						remove = append(remove, other)
+						removeSet[other] = true
+					}
+				}
+				break
+			}
+		}
+	}
+
+	return add, remove
 }
 
 // splitTagOps separates a tag operations list ("+tag", "-tag") into add and remove slices.
