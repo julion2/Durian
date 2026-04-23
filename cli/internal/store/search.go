@@ -83,19 +83,69 @@ func (d *DB) Search(query string, limit int) ([]SearchResult, error) {
 	}
 	rows.Close()
 
-	// Fetch tags for each thread now that the rows cursor is released.
+	// Fetch tags for all threads in one batch query instead of per-thread.
 	// Scope to queried accounts so cross-account threads only show
 	// tags from the current profile's accounts.
 	accounts := extractAccounts(query)
+	threadIDs := make([]string, len(results))
+	for i, r := range results {
+		threadIDs[i] = r.Thread
+	}
+	tagMap, err := d.getThreadTagsBatch(threadIDs, accounts...)
+	if err != nil {
+		return nil, fmt.Errorf("get thread tags: %w", err)
+	}
 	for i := range results {
-		tags, err := d.getThreadTags(results[i].Thread, accounts...)
-		if err != nil {
-			return nil, fmt.Errorf("get thread tags: %w", err)
-		}
-		results[i].Tags = tags
+		results[i].Tags = tagMap[results[i].Thread]
 	}
 
 	return results, nil
+}
+
+// getThreadTagsBatch returns distinct tags for multiple threads in a single query.
+// Returns map[threadID][]tags. When accounts are provided, only tags from those
+// accounts are included.
+func (d *DB) getThreadTagsBatch(threadIDs []string, accounts ...string) (map[string][]string, error) {
+	if len(threadIDs) == 0 {
+		return make(map[string][]string), nil
+	}
+
+	placeholders := make([]string, len(threadIDs))
+	params := make([]interface{}, 0, len(threadIDs)+len(accounts))
+	for i, id := range threadIDs {
+		placeholders[i] = "?"
+		params = append(params, id)
+	}
+
+	q := `SELECT DISTINCT m.thread_id, t.tag FROM tags t
+		JOIN messages m ON m.id = t.message_id
+		WHERE m.thread_id IN (` + strings.Join(placeholders, ",") + `)`
+
+	if len(accounts) > 0 {
+		acctPH := make([]string, len(accounts))
+		for i, a := range accounts {
+			acctPH[i] = "?"
+			params = append(params, a)
+		}
+		q += " AND m.account IN (" + strings.Join(acctPH, ",") + ")"
+	}
+	q += " ORDER BY m.thread_id, t.tag"
+
+	rows, err := d.db.Query(q, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]string)
+	for rows.Next() {
+		var threadID, tag string
+		if err := rows.Scan(&threadID, &tag); err != nil {
+			return nil, err
+		}
+		result[threadID] = append(result[threadID], tag)
+	}
+	return result, rows.Err()
 }
 
 // getThreadTags returns distinct tags for messages in a thread.
