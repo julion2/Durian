@@ -5,6 +5,7 @@ import (
 
 	"github.com/durian-dev/durian/cli/internal/mail"
 	"github.com/durian-dev/durian/cli/internal/protocol"
+	"github.com/durian-dev/durian/cli/internal/store"
 )
 
 // Search handles the "search" command.
@@ -42,8 +43,14 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 		return protocol.SuccessWithResults(mails)
 	}
 
-	// Enrich threads from store
-	threads := make(map[string]*mail.ThreadContent, len(results))
+	// Enrich threads from store — collect all messages first, then batch-fetch
+	// tags and attachments to avoid per-message N+1 queries.
+	type threadMsgs struct {
+		threadID string
+		msgs     []*store.Message
+	}
+	var enriched []threadMsgs
+	var allMsgIDs []int64
 	for i, r := range results {
 		if i >= enrichLimit {
 			break
@@ -52,7 +59,18 @@ func (h *Handler) Search(query string, limit int, enrichLimit int) protocol.Resp
 		if err != nil || len(msgs) == 0 {
 			continue
 		}
-		threads[r.Thread] = h.convertThread(r.Thread, msgs, true)
+		enriched = append(enriched, threadMsgs{r.Thread, msgs})
+		for _, m := range msgs {
+			allMsgIDs = append(allMsgIDs, m.ID)
+		}
+	}
+
+	tagMap, _ := h.store.GetMessageTagsBatch(allMsgIDs)
+	attMap, _ := h.store.GetAttachmentsByMessages(allMsgIDs)
+
+	threads := make(map[string]*mail.ThreadContent, len(enriched))
+	for _, e := range enriched {
+		threads[e.threadID] = h.convertThread(e.threadID, e.msgs, true, tagMap, attMap)
 	}
 
 	return protocol.SuccessWithResultsAndThreads(mails, threads)

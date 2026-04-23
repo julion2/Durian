@@ -406,7 +406,7 @@ func TestConvertThread_LightOmitsHTMLAndReplyHeaders(t *testing.T) {
 	msgs, _ := db.GetByThread(m.ThreadID)
 	h := New(db, nil)
 
-	thread := h.convertThread(m.ThreadID, msgs, true)
+	thread := h.convertThread(m.ThreadID, msgs, true, nil, nil)
 	if len(thread.Messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(thread.Messages))
 	}
@@ -447,7 +447,7 @@ func TestConvertThread_LightKeepsTagsAndAttachments(t *testing.T) {
 
 	msgs, _ := db.GetByThread(m.ThreadID)
 	h := New(db, nil)
-	thread := h.convertThread(m.ThreadID, msgs, true)
+	thread := h.convertThread(m.ThreadID, msgs, true, nil, nil)
 
 	if len(thread.Messages[0].Tags) == 0 {
 		t.Error("light mode should still populate tags")

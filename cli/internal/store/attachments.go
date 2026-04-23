@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // DeleteAttachmentsByMessageDBID removes all attachments for a message DB row.
@@ -41,6 +42,42 @@ func (d *DB) insertAttachmentTx(tx *sql.Tx, att *Attachment) error {
 	id, _ := result.LastInsertId()
 	att.ID = id
 	return nil
+}
+
+// GetAttachmentsByMessages returns attachments for multiple messages in a single query.
+// Returns map[messageDBID][]Attachment.
+func (d *DB) GetAttachmentsByMessages(ids []int64) (map[int64][]Attachment, error) {
+	if len(ids) == 0 {
+		return make(map[int64][]Attachment), nil
+	}
+
+	placeholders := make([]string, len(ids))
+	params := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		params[i] = id
+	}
+
+	q := "SELECT id, message_db_id, part_id, filename, content_type, size, disposition, content_id FROM attachments WHERE message_db_id IN (" +
+		strings.Join(placeholders, ",") + ") ORDER BY message_db_id, part_id"
+
+	rows, err := d.db.Query(q, params...)
+	if err != nil {
+		return nil, fmt.Errorf("query attachments batch: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]Attachment)
+	for rows.Next() {
+		var a Attachment
+		err := rows.Scan(&a.ID, &a.MessageDBID, &a.PartID, &a.Filename,
+			&a.ContentType, &a.Size, &a.Disposition, &a.ContentID)
+		if err != nil {
+			return nil, fmt.Errorf("scan attachment: %w", err)
+		}
+		result[a.MessageDBID] = append(result[a.MessageDBID], a)
+	}
+	return result, rows.Err()
 }
 
 // GetAttachmentsByMessage returns all attachments for a message by its DB ID.

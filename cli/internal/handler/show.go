@@ -43,7 +43,7 @@ func (h *Handler) ShowThread(threadID string) protocol.Response {
 		return protocol.Fail(protocol.ErrNotFound, errors.New("no messages found for thread"))
 	}
 
-	thread := h.convertThread(threadID, msgs, false)
+	thread := h.convertThread(threadID, msgs, false, nil, nil)
 	return protocol.SuccessWithThread(thread)
 }
 
@@ -68,7 +68,10 @@ func (h *Handler) ShowMessageBody(messageID string) protocol.Response {
 // newest-first. When light=true, HTML and reply headers (InReplyTo,
 // References) are omitted — used by search enrichment to keep response
 // size small; the full thread is loaded on demand via /threads/{id}.
-func (h *Handler) convertThread(threadID string, msgs []*store.Message, light bool) *internmail.ThreadContent {
+//
+// When tagMap/attMap are provided, tags and attachments are looked up from
+// the pre-fetched maps instead of querying per message (batch optimization).
+func (h *Handler) convertThread(threadID string, msgs []*store.Message, light bool, tagMap map[int64][]string, attMap map[int64][]store.Attachment) *internmail.ThreadContent {
 	messages := make([]internmail.MessageInfo, 0, len(msgs))
 	var subject string
 
@@ -93,21 +96,28 @@ func (h *Handler) convertThread(threadID string, msgs []*store.Message, light bo
 			subject = msg.Subject
 		}
 
-		// Fetch tags and attachments for each message
-		if tags, err := h.store.GetMessageTags(msg.ID); err == nil {
+		// Use pre-fetched maps when available, otherwise query per message
+		if tagMap != nil {
+			info.Tags = tagMap[msg.ID]
+		} else if tags, err := h.store.GetMessageTags(msg.ID); err == nil {
 			info.Tags = tags
 		}
-		if atts, err := h.store.GetAttachmentsByMessage(msg.ID); err == nil {
-			for _, a := range atts {
-				info.Attachments = append(info.Attachments, internmail.AttachmentInfo{
-					PartID:      a.PartID,
-					Filename:    a.Filename,
-					ContentType: a.ContentType,
-					Size:        a.Size,
-					Disposition: a.Disposition,
-					ContentID:   a.ContentID,
-				})
-			}
+
+		var atts []store.Attachment
+		if attMap != nil {
+			atts = attMap[msg.ID]
+		} else {
+			atts, _ = h.store.GetAttachmentsByMessage(msg.ID)
+		}
+		for _, a := range atts {
+			info.Attachments = append(info.Attachments, internmail.AttachmentInfo{
+				PartID:      a.PartID,
+				Filename:    a.Filename,
+				ContentType: a.ContentType,
+				Size:        a.Size,
+				Disposition: a.Disposition,
+				ContentID:   a.ContentID,
+			})
 		}
 
 		messages = append(messages, info)

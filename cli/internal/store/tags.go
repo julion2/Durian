@@ -83,6 +83,41 @@ func (d *DB) ModifyTagsByThread(threadID string, addTags, removeTags []string) e
 	return tx.Commit()
 }
 
+// GetMessageTagsBatch returns tags for multiple messages in a single query.
+// Returns map[messageDBID][]tags.
+func (d *DB) GetMessageTagsBatch(ids []int64) (map[int64][]string, error) {
+	if len(ids) == 0 {
+		return make(map[int64][]string), nil
+	}
+
+	placeholders := make([]string, len(ids))
+	params := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		params[i] = id
+	}
+
+	q := "SELECT message_id, tag FROM tags WHERE message_id IN (" +
+		strings.Join(placeholders, ",") + ") ORDER BY message_id, tag"
+
+	rows, err := d.db.Query(q, params...)
+	if err != nil {
+		return nil, fmt.Errorf("get tags batch: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]string)
+	for rows.Next() {
+		var msgID int64
+		var tag string
+		if err := rows.Scan(&msgID, &tag); err != nil {
+			return nil, fmt.Errorf("scan tag: %w", err)
+		}
+		result[msgID] = append(result[msgID], tag)
+	}
+	return result, rows.Err()
+}
+
 // GetMessageTags returns all tags for a message.
 func (d *DB) GetMessageTags(messageDBID int64) ([]string, error) {
 	rows, err := d.db.Query(
