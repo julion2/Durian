@@ -373,15 +373,15 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
             return nil
         }
 
-        // Email is in the current folder list — update in place
+        // Email is in the current folder list — update in place and return copy
         if let index = emails.firstIndex(where: { $0.id == id }) {
             applyThread(thread, to: &emails[index])
             Log.info("BACKEND", "Loaded thread \(id) with \(thread.messages.count) messages")
-            return nil
+            return emails[index]
         }
 
         // Email is NOT in the folder list (e.g. opened from search) —
-        // build a standalone MailMessage and return it without polluting backend.emails
+        // build a standalone MailMessage without polluting backend.emails
         guard let firstMsg = thread.messages.first else { return nil }
         let tagString = firstMsg.tags?.joined(separator: ",") ?? ""
         var mail = MailMessage(
