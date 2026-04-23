@@ -253,19 +253,28 @@ func ValidateProfiles(profiles []ProfileConfig, cfg *Config) []ValidationError {
 
 // Known valid keymap values.
 var (
-	validKeymapActions = map[string]bool{
-		"next_email": true, "prev_email": true, "first_email": true, "last_email": true,
-		"page_down": true, "page_up": true,
-		"archive": true, "compose": true, "reply": true, "reply_all": true, "forward": true,
-		"toggle_read": true, "toggle_star": true, "delete": true, "tag_op": true,
-		"go_inbox": true, "go_sent": true, "go_drafts": true, "go_archive": true,
-		"search": true, "close_detail": true, "reload_inbox": true, "tag_picker": true,
-		"enter_visual_mode": true, "enter_toggle_mode": true, "toggle_selection": true, "exit_visual_mode": true,
-		"select_next": true, "select_prev": true, "exit_insert": true,
-		"scroll_down": true, "scroll_up": true, "enter_thread": true,
-		"next_message": true, "prev_message": true,
-		"next_profile": true, "prev_profile": true,
-		"open_in_browser": true, "copy_link": true,
+	// validKeymapActions maps action names to their descriptions.
+	validKeymapActions = map[string]string{
+		"next_email": "Next email", "prev_email": "Previous email",
+		"first_email": "First email", "last_email": "Last email",
+		"page_down": "Half-page down", "page_up": "Half-page up",
+		"archive": "Archive email", "compose": "Compose new email",
+		"reply": "Reply", "reply_all": "Reply all", "forward": "Forward",
+		"toggle_read": "Toggle read/unread", "toggle_star": "Toggle star",
+		"delete": "Delete email", "tag_op": "Tag operation",
+		"go_inbox": "Go to inbox", "go_sent": "Go to sent",
+		"go_drafts": "Go to drafts", "go_archive": "Go to archive",
+		"search": "Search emails", "close_detail": "Close/back",
+		"reload_inbox": "Reload inbox", "tag_picker": "Open tag picker",
+		"enter_visual_mode": "Enter visual mode", "enter_toggle_mode": "Enter toggle visual mode",
+		"toggle_selection": "Toggle current email", "exit_visual_mode": "Exit visual mode",
+		"select_next": "Next item", "select_prev": "Previous item",
+		"exit_insert": "Exit insert mode",
+		"scroll_down": "Scroll down", "scroll_up": "Scroll up",
+		"enter_thread": "Enter thread view",
+		"next_message": "Next message", "prev_message": "Previous message",
+		"next_profile": "Next profile", "prev_profile": "Previous profile",
+		"open_in_browser": "Open in browser", "copy_link": "Copy link",
 	}
 	validKeymapModifiers = map[string]bool{"cmd": true, "ctrl": true, "shift": true}
 	validKeymapContexts  = map[string]bool{
@@ -293,7 +302,7 @@ func ValidateKeymaps(keymaps *KeymapConfig) []ValidationError {
 
 		if entry.Action == "" {
 			add(prefix+".action", "required")
-		} else if !validKeymapActions[entry.Action] {
+		} else if _, ok := validKeymapActions[entry.Action]; !ok {
 			warn(prefix+".action", fmt.Sprintf("unknown action %q", entry.Action))
 		}
 

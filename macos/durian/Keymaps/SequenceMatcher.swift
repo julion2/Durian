@@ -71,7 +71,7 @@ class SequenceMatcher {
                     return nil
                 }
                 let seqKey = entry.modifiers == ["ctrl"] ? "ctrl+\(entry.key.lowercased())" : entry.key
-                return SequenceDefinition(seqKey, action, entry.description)
+                return SequenceDefinition(seqKey, action)
             }
 
         // Group entries by context and build per-context lookups
@@ -174,11 +174,6 @@ class SequenceMatcher {
         contextTagOps[context]?[sequence]
     }
 
-    /// Get description for a sequence
-    func description(for sequence: String) -> String? {
-        sequences.first { $0.sequence == sequence }?.description
-    }
-    
     /// Get all sequences for an action
     func sequences(for action: KeymapAction) -> [String] {
         sequences.filter { $0.action == action }.map { $0.sequence }

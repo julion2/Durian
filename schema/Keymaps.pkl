@@ -12,7 +12,6 @@ class KeymapEntry {
   action: String
   key: String
   modifiers: Listing<"cmd"|"ctrl"|"shift"|"alt"> = new {}
-  description: String
   enabled: Boolean = true
   sequence: Boolean = false
   supports_count: Boolean = false

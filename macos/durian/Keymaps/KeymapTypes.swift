@@ -156,11 +156,9 @@ enum SequenceMatchResult: Equatable {
 struct SequenceDefinition {
     let sequence: String      // e.g., "gg", "dd", "j"
     let action: KeymapAction
-    let description: String
-    
-    init(_ sequence: String, _ action: KeymapAction, _ description: String = "") {
+
+    init(_ sequence: String, _ action: KeymapAction) {
         self.sequence = sequence
         self.action = action
-        self.description = description
     }
 }

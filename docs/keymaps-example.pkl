@@ -16,65 +16,65 @@ global_settings {
 
 keymaps {
   // ── Navigation ─────────────────────────────────────────────
-  new { action = "next_email";  key = "j";  description = "Next email";     supports_count = true }
-  new { action = "prev_email";  key = "k";  description = "Previous email"; supports_count = true }
-  new { action = "first_email"; key = "gg"; description = "First email";    sequence = true }
-  new { action = "last_email";  key = "G";  description = "Last email" }
-  new { action = "page_down";   key = "d";  description = "Half-page down"; modifiers { "ctrl" }; supports_count = true }
-  new { action = "page_up";     key = "u";  description = "Half-page up";   modifiers { "ctrl" }; supports_count = true }
+  new { action = "next_email";  key = "j";  supports_count = true }
+  new { action = "prev_email";  key = "k";  supports_count = true }
+  new { action = "first_email"; key = "gg"; sequence = true }
+  new { action = "last_email";  key = "G" }
+  new { action = "page_down";   key = "d";  modifiers { "ctrl" }; supports_count = true }
+  new { action = "page_up";     key = "u";  modifiers { "ctrl" }; supports_count = true }
 
   // ── Actions ────────────────────────────────────────────────
-  new { action = "archive";      key = "a";  description = "Archive email" }
-  new { action = "delete";       key = "dd"; description = "Delete email"; sequence = true }
-  new { action = "toggle_read";  key = "u";  description = "Toggle read/unread" }
-  new { action = "toggle_star";  key = "s";  description = "Toggle pin/star" }
-  new { action = "tag_picker";   key = "t";  description = "Open tag picker" }
+  new { action = "archive";      key = "a" }
+  new { action = "delete";       key = "dd"; sequence = true }
+  new { action = "toggle_read";  key = "u" }
+  new { action = "toggle_star";  key = "s" }
+  new { action = "tag_picker";   key = "t" }
 
   // ── Tag Operations (configurable tag shortcuts) ────────────
   // tag_op applies +/- tag operations defined in the "tags" field.
-  new { action = "tag_op"; key = "T"; tags = "+todo -inbox";    description = "Mark as todo" }
-  new { action = "tag_op"; key = "W"; tags = "+waiting -inbox"; description = "Mark as waiting" }
+  new { action = "tag_op"; key = "T"; tags = "+todo -inbox" }
+  new { action = "tag_op"; key = "W"; tags = "+waiting -inbox" }
 
   // ── Compose ────────────────────────────────────────────────
-  new { action = "compose";   key = "c"; description = "Compose new email" }
-  new { action = "reply";     key = "r"; description = "Reply" }
-  new { action = "reply_all"; key = "R"; description = "Reply all" }
-  new { action = "forward";   key = "f"; description = "Forward" }
+  new { action = "compose";   key = "c" }
+  new { action = "reply";     key = "r" }
+  new { action = "reply_all"; key = "R" }
+  new { action = "forward";   key = "f" }
 
   // ── Folder Navigation ──────────────────────────────────────
-  new { action = "go_inbox";   key = "gi"; sequence = true; description = "Go to inbox" }
-  new { action = "go_sent";    key = "gs"; sequence = true; description = "Go to sent" }
-  new { action = "go_drafts";  key = "gd"; sequence = true; description = "Go to drafts" }
-  new { action = "go_archive"; key = "ga"; sequence = true; description = "Go to archive" }
+  new { action = "go_inbox";   key = "gi"; sequence = true }
+  new { action = "go_sent";    key = "gs"; sequence = true }
+  new { action = "go_drafts";  key = "gd"; sequence = true }
+  new { action = "go_archive"; key = "ga"; sequence = true }
 
   // ── Search & UI ────────────────────────────────────────────
-  new { action = "search";       key = "/";      description = "Search emails" }
-  new { action = "close_detail"; key = "q";      description = "Close/back" }
-  new { action = "reload_inbox"; key = "r";      description = "Reload inbox"; modifiers { "cmd" } }
+  new { action = "search";       key = "/" }
+  new { action = "close_detail"; key = "q" }
+  new { action = "reload_inbox"; key = "r"; modifiers { "cmd" } }
 
   // ── Selection (Visual Mode) ────────────────────────────────
-  new { action = "enter_visual_mode"; key = "v";      description = "Enter visual mode" }
-  new { action = "enter_toggle_mode"; key = "V";      description = "Enter toggle visual mode" }
-  new { action = "toggle_selection";  key = " ";      description = "Toggle current email" }
-  new { action = "exit_visual_mode";  key = "Escape"; description = "Exit visual mode" }
+  new { action = "enter_visual_mode"; key = "v" }
+  new { action = "enter_toggle_mode"; key = "V" }
+  new { action = "toggle_selection";  key = " " }
+  new { action = "exit_visual_mode";  key = "Escape" }
 
   // ── Search Popup (context = "search") ──────────────────────
-  new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "search"; description = "Next result" }
-  new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "search"; description = "Previous result" }
+  new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "search" }
+  new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "search" }
 
   // ── Tag Picker (context = "tag_picker") ────────────────────
-  new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "tag_picker"; description = "Next tag" }
-  new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "tag_picker"; description = "Previous tag" }
+  new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "tag_picker" }
+  new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "tag_picker" }
 
   // ── Compose Vim Mode (context = "compose_normal") ──────────
-  new { action = "exit_insert"; key = "jk"; sequence = true; context = "compose_normal"; description = "Exit insert mode" }
+  new { action = "exit_insert"; key = "jk"; sequence = true; context = "compose_normal" }
 
   // ── Thread View (context = "thread") ───────────────────────
-  new { action = "enter_thread"; key = "l"; description = "Enter thread view" }
-  new { action = "scroll_down";  key = "j"; context = "thread"; supports_count = true; description = "Scroll down" }
-  new { action = "scroll_up";    key = "k"; context = "thread"; supports_count = true; description = "Scroll up" }
-  new { action = "next_message"; key = "n"; context = "thread"; supports_count = true; description = "Next message" }
-  new { action = "prev_message"; key = "N"; context = "thread"; supports_count = true; description = "Previous message" }
-  new { action = "close_detail"; key = "h"; context = "thread"; description = "Back to email list" }
-  new { action = "reply";        key = "r"; context = "thread"; description = "Reply to email" }
+  new { action = "enter_thread"; key = "l" }
+  new { action = "scroll_down";  key = "j"; context = "thread"; supports_count = true }
+  new { action = "scroll_up";    key = "k"; context = "thread"; supports_count = true }
+  new { action = "next_message"; key = "n"; context = "thread"; supports_count = true }
+  new { action = "prev_message"; key = "N"; context = "thread"; supports_count = true }
+  new { action = "close_detail"; key = "h"; context = "thread" }
+  new { action = "reply";        key = "r"; context = "thread" }
 }

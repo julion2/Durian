@@ -17,7 +17,6 @@ type KeymapEntry struct {
 	Action        string   `pkl:"action" json:"action"`
 	Key           string   `pkl:"key" json:"key"`
 	Modifiers     []string `pkl:"modifiers" json:"modifiers"`
-	Description   string   `pkl:"description" json:"description"`
 	Enabled       bool     `pkl:"enabled" json:"enabled"`
 	Sequence      bool     `pkl:"sequence" json:"sequence"`
 	SupportsCount bool     `pkl:"supports_count" json:"supports_count"`
