@@ -288,10 +288,11 @@ extension ContentView {
             }
         }
 
-        // Escape - Exit visual mode (clears selection, keeps cursor)
+        // Escape in list context — dispatched by KeySequenceEngine.
+        // Popup contexts (.search, .tagPicker) are handled separately via .closePopup;
+        // thread context via .closeDetail. This handler covers the remaining list states.
         keymapHandler.registerSimpleHandler(for: .exitVisualMode) { [self] in
             await MainActor.run {
-                // Always clean up visual mode state (engine may have already exited)
                 if visualModeAnchor != nil || keymapHandler.engine.visualModeType != .none {
                     keymapHandler.engine.exitVisualMode()
                     if let cursor = cursorEmailId {
@@ -299,10 +300,6 @@ extension ContentView {
                     }
                     visualModeAnchor = nil
                     Log.debug("VISUAL", "Exited visual mode")
-                } else if showTagPicker {
-                    showTagPicker = false
-                } else if showSearchPopup {
-                    showSearchPopup = false
                 } else if isSearchMode {
                     exitSearchMode()
                 } else {
