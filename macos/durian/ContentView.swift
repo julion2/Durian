@@ -387,17 +387,8 @@ struct ContentView: View {
             registerKeymapHandlers()
         }
         .onChange(of: selectedTagID) { _, tagId in
-            if let tagId = tagId {
-                isSearchMode = false
-                searchResults = []
-                lastSearchQuery = ""
-                isThreadFocused = false
-                keymapHandler.engine.setContext(.list)
-                cursorEmailId = nil
-                markedEmails = []
-                Task {
-                    await accountManager.selectTag(tagId)
-                }
+            if tagId != nil {
+                exitSearchMode()
             }
         }
         .onChange(of: accountManager.emailListGeneration) { _, _ in
@@ -436,9 +427,7 @@ struct ContentView: View {
         .onKeyPress { press in
             // Escape to exit search mode (sequence engine doesn't dispatch Escape to handlers)
             if press.key == .escape && isSearchMode && !showSearchPopup && !showTagPicker {
-                isSearchMode = false
-                searchResults = []
-                lastSearchQuery = ""
+                exitSearchMode()
                 return .handled
             }
             // Ctrl+d for page down
@@ -572,6 +561,24 @@ struct ContentView: View {
 
     private var displayEmails: [MailMessage] {
         isSearchMode ? searchResults : accountManager.mailMessages
+    }
+
+    /// Exit search mode and restore the current folder view.
+    /// Mirrors the full cleanup in `onChange(of: selectedTagID)`.
+    func exitSearchMode() {
+        isSearchMode = false
+        searchResults = []
+        lastSearchQuery = ""
+        isThreadFocused = false
+        keymapHandler.engine.setContext(.list)
+        cursorEmailId = nil
+        markedEmails = []
+        // Re-fetch to flush any search emails that leaked into backend.emails
+        if let tagId = selectedTagID {
+            Task {
+                await accountManager.selectTag(tagId)
+            }
+        }
     }
 
     // MARK: - Helper Methods

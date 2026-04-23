@@ -298,9 +298,7 @@ extension ContentView {
                 } else if showSearchPopup {
                     showSearchPopup = false
                 } else if isSearchMode {
-                    isSearchMode = false
-                    searchResults = []
-                    lastSearchQuery = ""
+                    exitSearchMode()
                 } else {
                     detailMode = .empty
                 }
@@ -417,9 +415,7 @@ extension ContentView {
                     // Tag picker ESC should NOT exit search mode (user may
                     // be tagging a search result and wants to return to results).
                     if ctx == .search && isSearchMode {
-                        isSearchMode = false
-                        searchResults = []
-                        lastSearchQuery = ""
+                        exitSearchMode()
                     }
                 }
             }
