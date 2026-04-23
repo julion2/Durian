@@ -478,16 +478,17 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         components.path = "/search"
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "limit", value: String(limit))
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "enrich", value: "30")
         ]
 
         guard let endpoint = components.string else { return [] }
 
         let response: DurianResponse? = await request(endpoint: endpoint)
-        
+
         guard let results = response?.results else { return [] }
-        
-        return results.map { mail in
+
+        var emails = results.map { mail in
             MailMessage(
                 threadId: mail.thread_id,
                 subject: mail.subject,
@@ -498,6 +499,16 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
                 tags: mail.tags
             )
         }
+
+        if let enrichedThreads = response?.threads, !enrichedThreads.isEmpty {
+            for (index, email) in emails.enumerated() {
+                if let thread = enrichedThreads[email.id] {
+                    applyThread(thread, to: &emails[index], isEnrichment: true)
+                }
+            }
+        }
+
+        return emails
     }
 
     private func tag(query: String, tags: String) async throws {
