@@ -33,7 +33,7 @@ class SettingsManager: ObservableObject {
     
     // MARK: - Sync Settings (read from [sync] section)
     
-    /// Sync settings are read-only from [sync] TOML section
+    /// Sync settings are read-only from config.pkl [sync] section
     var syncSettings: SyncSettings {
         ConfigManager.shared.getSyncSettings()
     }
@@ -72,7 +72,7 @@ class SettingsManager: ObservableObject {
     }
 }
 
-/// App settings from [settings] TOML section
+/// App settings from config.pkl [settings] section
 /// Note: Sync-related settings are in SyncSettings (from [sync] section)
 struct AppSettings: Codable {
     var notificationsEnabled: Bool = true
