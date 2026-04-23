@@ -612,13 +612,19 @@ struct ContentView: View {
         }
     }
 
-    /// Apply a standalone loaded email (from search) into searchResults.
+    /// Apply a standalone loaded email into the active email list.
     func applyStandaloneEmail(_ email: MailMessage) {
-        guard isSearchMode,
-              let index = searchResults.firstIndex(where: { $0.id == email.id }) else { return }
-        let originalDate = searchResults[index].date
-        searchResults[index] = email
-        searchResults[index].date = originalDate
+        if isSearchMode {
+            if let index = searchResults.firstIndex(where: { $0.id == email.id }) {
+                let originalDate = searchResults[index].date
+                searchResults[index] = email
+                searchResults[index].date = originalDate
+            }
+        } else {
+            if let index = accountManager.mailMessages.firstIndex(where: { $0.id == email.id }) {
+                accountManager.mailMessages[index] = email
+            }
+        }
     }
     
     // MARK: - Toolbar Helpers

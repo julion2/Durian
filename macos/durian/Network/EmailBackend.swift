@@ -397,99 +397,21 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         return mail
     }
     
-    private func search(_ query: String, limit: Int = 200) async {
-        searchGeneration += 1
-        let myGeneration = searchGeneration
-
-        isLoadingEmails = true
-        loadingProgress = "Searching..."
-
+    /// Shared search pipeline: build URL, request, parse results, apply enrichment.
+    /// Returns nil on request failure, empty array on no results.
+    private func performSearch(query: String, limit: Int, enrich: Int = 30) async -> [MailMessage]? {
         var components = URLComponents()
         components.path = "/search"
         components.queryItems = [
             URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "enrich", value: "30")
+            URLQueryItem(name: "enrich", value: String(enrich))
         ]
 
-        guard let endpoint = components.string else {
-            loadingProgress = "Search failed: Could not create URL"
-            isLoadingEmails = false
-            return
-        }
+        guard let endpoint = components.string else { return nil }
 
         let response: DurianResponse? = await request(endpoint: endpoint)
-
-        // Cancelled by a newer selectFolder() call — bail out
-        guard !Task.isCancelled else {
-            Log.debug("BACKEND", "Search cancelled (gen \(myGeneration))")
-            return
-        }
-
-        // A newer search has started — discard this stale result silently
-        guard myGeneration == searchGeneration else {
-            Log.debug("BACKEND", "Stale search result discarded (gen \(myGeneration) vs \(searchGeneration))")
-            return
-        }
-
-        guard let response else {
-            isLoadingEmails = false
-            loadingProgress = "Search failed"
-            BannerManager.shared.showWarning(title: "Search Failed", message: "Could not complete the search.")
-            return
-        }
-
-        let results = response.results ?? []
-
-        shouldCancelPrefetch = false
-        let enrichedThreads = response.threads
-        emails = results.map { mail in
-            MailMessage(
-                threadId: mail.thread_id,
-                subject: mail.subject,
-                from: mail.from,
-                to: mail.to,
-                date: mail.date,
-                timestamp: mail.timestamp,
-                tags: mail.tags
-            )
-        }
-
-        // Apply enriched thread data from search response
-        if let enrichedThreads, !enrichedThreads.isEmpty {
-            for (index, email) in emails.enumerated() {
-                if let thread = enrichedThreads[email.id] {
-                    applyThread(thread, to: &emails[index], isEnrichment: true)
-                }
-            }
-            Log.debug("BACKEND", "Enriched \(enrichedThreads.count) threads from search")
-        }
-
-        restoreCachedThreads()
-        Log.debug("BACKEND", "Search returned \(emails.count) emails")
-        isLoadingEmails = false
-        loadingProgress = ""
-
-        Task {
-            try? await Task.sleep(for: .milliseconds(100))
-            startPrefetch(count: 5)
-        }
-    }
-    
-    func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
-        var components = URLComponents()
-        components.path = "/search"
-        components.queryItems = [
-            URLQueryItem(name: "query", value: query),
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "enrich", value: "30")
-        ]
-
-        guard let endpoint = components.string else { return [] }
-
-        let response: DurianResponse? = await request(endpoint: endpoint)
-
-        guard let results = response?.results else { return [] }
+        guard let results = response?.results else { return nil }
 
         var emails = results.map { mail in
             MailMessage(
@@ -512,6 +434,52 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         }
 
         return emails
+    }
+
+    private func search(_ query: String, limit: Int = 200) async {
+        searchGeneration += 1
+        let myGeneration = searchGeneration
+
+        isLoadingEmails = true
+        loadingProgress = "Searching..."
+
+        let result = await performSearch(query: query, limit: limit)
+
+        // Cancelled by a newer selectFolder() call — bail out
+        guard !Task.isCancelled else {
+            Log.debug("BACKEND", "Search cancelled (gen \(myGeneration))")
+            return
+        }
+
+        // A newer search has started — discard this stale result silently
+        guard myGeneration == searchGeneration else {
+            Log.debug("BACKEND", "Stale search result discarded (gen \(myGeneration) vs \(searchGeneration))")
+            return
+        }
+
+        guard let result else {
+            isLoadingEmails = false
+            loadingProgress = "Search failed"
+            BannerManager.shared.showWarning(title: "Search Failed", message: "Could not complete the search.")
+            return
+        }
+
+        shouldCancelPrefetch = false
+        emails = result
+
+        restoreCachedThreads()
+        Log.debug("BACKEND", "Search returned \(emails.count) emails")
+        isLoadingEmails = false
+        loadingProgress = ""
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            startPrefetch(count: 5)
+        }
+    }
+
+    func searchAll(query: String, limit: Int = 10) async -> [MailMessage] {
+        await performSearch(query: query, limit: limit) ?? []
     }
 
     private func tag(query: String, tags: String) async throws {
