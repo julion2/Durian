@@ -311,6 +311,64 @@ func TestSearch_DateRelativeKeywords(t *testing.T) {
 	}
 }
 
+func TestSearch_DateOpenRanges(t *testing.T) {
+	db := newTestDB(t)
+	now := time.Now()
+
+	today := time.Date(now.Year(), now.Month(), now.Day(), 10, 0, 0, 0, now.Location())
+	threeDaysAgo := today.AddDate(0, 0, -3)
+	twoWeeksAgo := today.AddDate(0, 0, -14)
+
+	db.InsertMessage(&Message{
+		MessageID: "today@x", Subject: "Today msg", FromAddr: "a@x",
+		Date: today.Unix(), CreatedAt: today.Unix(), FetchedBody: true,
+	})
+	db.InsertMessage(&Message{
+		MessageID: "3d@x", Subject: "3 days ago msg", FromAddr: "a@x",
+		Date: threeDaysAgo.Unix(), CreatedAt: threeDaysAgo.Unix(), FetchedBody: true,
+	})
+	db.InsertMessage(&Message{
+		MessageID: "2w@x", Subject: "2 weeks ago msg", FromAddr: "a@x",
+		Date: twoWeeksAgo.Unix(), CreatedAt: twoWeeksAgo.Unix(), FetchedBody: true,
+	})
+
+	// date:..7d — older than 7 days, should match only 2w@x
+	results, err := db.Search("date:..7d", 10)
+	if err != nil {
+		t.Fatalf("date:..7d: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("date:..7d got %d results, want 1", len(results))
+	}
+
+	// date:..3d — older than 3 days; 3d@x is at 10am but boundary is midnight, so not matched
+	results, err = db.Search("date:..3d", 10)
+	if err != nil {
+		t.Fatalf("date:..3d: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("date:..3d got %d results, want 1", len(results))
+	}
+
+	// date:7d.. — since 7 days ago, should match today@x and 3d@x
+	results, err = db.Search("date:7d..", 10)
+	if err != nil {
+		t.Fatalf("date:7d..: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("date:7d.. got %d results, want 2", len(results))
+	}
+
+	// date:week.. — same as 7d.., should match today@x and 3d@x
+	results, err = db.Search("date:week..", 10)
+	if err != nil {
+		t.Fatalf("date:week..: %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("date:week.. got %d results, want 2", len(results))
+	}
+}
+
 func TestResolveRelativeDate_Unknown(t *testing.T) {
 	_, _, err := resolveRelativeDate("invalid")
 	if err == nil {

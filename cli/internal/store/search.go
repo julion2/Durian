@@ -495,7 +495,7 @@ func parseDateRange(value string) (string, []interface{}, error) {
 
 	// Open start: date:..X (older than X)
 	if parts[0] == "" {
-		to, err := resolveDateBound(parts[1], false)
+		to, err := resolveDateBound(parts[1], true)
 		if err != nil {
 			return "", nil, fmt.Errorf("parse date to: %w", err)
 		}
