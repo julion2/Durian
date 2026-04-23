@@ -12,7 +12,7 @@ import (
 
 // isGmail returns true if the account is a Gmail/Google Workspace account.
 func (s *Syncer) isGmail() bool {
-	return s.account.OAuth.Provider == "google"
+	return s.account.OAuth != nil && s.account.OAuth.Provider == "google"
 }
 
 // isGmailAllMail returns true if this is Gmail and the mailbox is All Mail.

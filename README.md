@@ -91,7 +91,7 @@ durian sync work                # sync an account
 durian search "tag:inbox" -l 10 # search
 durian search "date:today"      # relative date search
 durian validate                 # check all config files for errors
-durian validate rules           # check just rules.toml
+durian validate rules           # check just rules.pkl
 ```
 
 ## Config
@@ -100,16 +100,18 @@ All configuration lives in `~/.config/durian/` (or `$XDG_CONFIG_HOME/durian/`):
 
 | File | Purpose |
 |------|---------|
-| `config.toml` | Accounts, signatures, settings |
-| `profiles.toml` | Sidebar profiles (account groups, folders) |
-| `keymaps.toml` | Vim-style keyboard shortcuts |
-| `rules.toml` | Filter rules (static tags + exec hooks for external commands) |
+| `config.pkl` | Accounts, signatures, settings |
+| `profiles.pkl` | Sidebar profiles (account groups, folders) |
+| `keymaps.pkl` | Vim-style keyboard shortcuts |
+| `rules.pkl` | Filter rules (static tags + exec hooks for external commands) |
+| `groups.pkl` | Contact groups for search shortcuts |
 
 Examples:
-- [config-example.toml](docs/config-example.toml) — Accounts, signatures, settings
-- [profiles-example.toml](docs/profiles-example.toml) — Sidebar profiles and folders
-- [keymaps-example.toml](docs/keymaps-example.toml) — Keyboard shortcuts
-- [rules-example.toml](docs/rules-example.toml) — Filter rules
+- [config-example.pkl](docs/config-example.pkl) — Accounts, signatures, settings
+- [profiles-example.pkl](docs/profiles-example.pkl) — Sidebar profiles and folders
+- [keymaps-example.pkl](docs/keymaps-example.pkl) — Keyboard shortcuts
+- [rules-example.pkl](docs/rules-example.pkl) — Filter rules
+- [groups-example.pkl](docs/groups-example.pkl) — Contact groups
 
 ## Logs
 

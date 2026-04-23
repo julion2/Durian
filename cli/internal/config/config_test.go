@@ -29,23 +29,23 @@ func TestLoad(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			file:    "testdata/valid_config.json",
+			file:    "testdata/valid_config.pkl",
 			wantErr: false,
 		},
 		{
 			name:    "minimal config",
-			file:    "testdata/minimal_config.json",
+			file:    "testdata/minimal_config.pkl",
 			wantErr: false,
 		},
 		{
 			name:        "invalid syntax",
-			file:        "testdata/invalid_syntax.json",
+			file:        "testdata/invalid_syntax.pkl",
 			wantErr:     true,
 			errContains: "failed to load config",
 		},
 		{
 			name:        "nonexistent file",
-			file:        "testdata/does_not_exist.json",
+			file:        "testdata/does_not_exist.pkl",
 			wantErr:     true,
 			errContains: "failed to load config",
 		},
@@ -74,7 +74,7 @@ func TestLoad(t *testing.T) {
 }
 
 func TestLoadValidConfig(t *testing.T) {
-	cfg, err := Load("testdata/valid_config.json")
+	cfg, err := Load("testdata/valid_config.pkl")
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -112,8 +112,12 @@ func TestLoadValidConfig(t *testing.T) {
 	if work.SMTP.Auth != "password" {
 		t.Errorf("Accounts[0].SMTP.Auth = %q, want %q", work.SMTP.Auth, "password")
 	}
-	if work.Auth.PasswordKeychain != "work-account" {
-		t.Errorf("Accounts[0].Auth.PasswordKeychain = %q, want %q", work.Auth.PasswordKeychain, "work-account")
+	if work.Auth == nil || work.Auth.PasswordKeychain != "work-account" {
+		keychain := ""
+		if work.Auth != nil {
+			keychain = work.Auth.PasswordKeychain
+		}
+		t.Errorf("Accounts[0].Auth.PasswordKeychain = %q, want %q", keychain, "work-account")
 	}
 
 	// Second account (Personal with OAuth)
@@ -121,8 +125,12 @@ func TestLoadValidConfig(t *testing.T) {
 	if personal.SMTP.Auth != "oauth2" {
 		t.Errorf("Accounts[1].SMTP.Auth = %q, want %q", personal.SMTP.Auth, "oauth2")
 	}
-	if personal.OAuth.Provider != "google" {
-		t.Errorf("Accounts[1].OAuth.Provider = %q, want %q", personal.OAuth.Provider, "google")
+	if personal.OAuth == nil || personal.OAuth.Provider != "google" {
+		provider := ""
+		if personal.OAuth != nil {
+			provider = personal.OAuth.Provider
+		}
+		t.Errorf("Accounts[1].OAuth.Provider = %q, want %q", provider, "google")
 	}
 }
 
@@ -222,12 +230,12 @@ func TestExists(t *testing.T) {
 	}{
 		{
 			name: "existing file",
-			path: "testdata/valid_config.json",
+			path: "testdata/valid_config.pkl",
 			want: true,
 		},
 		{
 			name: "nonexistent file",
-			path: "testdata/nonexistent.json",
+			path: "testdata/nonexistent.pkl",
 			want: false,
 		},
 		{

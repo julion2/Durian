@@ -1,0 +1,19 @@
+import "modulepath:/Config.pkl" as C
+
+settings: C.SettingsConfig = new {}
+
+sync: C.SyncConfig = new {}
+
+contacts: C.ContactsConfig = new {}
+
+signatures: Mapping<String, String> = new {}
+
+accounts: Listing<C.AccountConfig> = new {
+  new {
+    name = "Primary"
+    email = "user@example.com"
+    alias = "primary"
+    smtp { host = "smtp.example.com"; port = 587; auth = "password" }
+    imap { host = "imap.example.com"; port = 993; auth = "password" }
+  }
+}

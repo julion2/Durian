@@ -261,7 +261,6 @@ struct ContentView: View {
                     }
                     .help("New Message (Cmd+N)")
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(ConfigManager.shared.getAccounts().isEmpty)
                     
                     Button(action: { replyToSelected() }) {
                         Image(systemName: "arrowshape.turn.up.left")
@@ -678,7 +677,10 @@ struct ContentView: View {
     // MARK: - Compose
     
     func openNewCompose() {
-        guard !ConfigManager.shared.getAccounts().isEmpty else { return }
+        guard defaultFromAccount != nil else {
+            BannerManager.shared.showWarning(title: "No Account", message: "Configure an email account to use this action.")
+            return
+        }
         let draftId = DraftService.shared.createDraft(from: defaultFromAccount)
         openWindow(value: draftId)
     }
@@ -702,7 +704,13 @@ struct ContentView: View {
     func replyToSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = defaultFromAccount else { return }
+              let fromAccount = defaultFromAccount else {
+            Log.warning("COMPOSE", "replyToSelected guard failed — selected=\(selectedEmail != nil), bodyState=\(String(describing: selectedEmail?.bodyState)), fromAccount=\(defaultFromAccount ?? "nil")")
+            if defaultFromAccount == nil {
+                BannerManager.shared.showWarning(title: "No Account", message: "Configure an email account to use this action.")
+            }
+            return
+        }
 
         Task {
             let original = await fetchOriginalReplyBody(for: email, fromAccount: fromAccount)
@@ -715,7 +723,13 @@ struct ContentView: View {
     func replyAllToSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = defaultFromAccount else { return }
+              let fromAccount = defaultFromAccount else {
+            Log.warning("COMPOSE", "replyAllToSelected guard failed — selected=\(selectedEmail != nil), bodyState=\(String(describing: selectedEmail?.bodyState)), fromAccount=\(defaultFromAccount ?? "nil")")
+            if defaultFromAccount == nil {
+                BannerManager.shared.showWarning(title: "No Account", message: "Configure an email account to use this action.")
+            }
+            return
+        }
 
         Task {
             let original = await fetchOriginalReplyBody(for: email, fromAccount: fromAccount)
@@ -736,7 +750,13 @@ struct ContentView: View {
     func forwardSelected() {
         guard let email = selectedEmail,
               case .loaded = email.bodyState,
-              let fromAccount = defaultFromAccount else { return }
+              let fromAccount = defaultFromAccount else {
+            Log.warning("COMPOSE", "forwardSelected guard failed — selected=\(selectedEmail != nil), bodyState=\(String(describing: selectedEmail?.bodyState)), fromAccount=\(defaultFromAccount ?? "nil")")
+            if defaultFromAccount == nil {
+                BannerManager.shared.showWarning(title: "No Account", message: "Configure an email account to use this action.")
+            }
+            return
+        }
 
         Task {
             var forwardDraft = EmailDraft.createForward(from: email, fromAccount: fromAccount)

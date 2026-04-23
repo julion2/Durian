@@ -15,10 +15,10 @@ type GroupEntry struct {
 	Members     [][]string
 }
 
-// groupEntryRaw is the intermediate TOML representation that accepts both
+// groupEntryRaw is the intermediate Pkl representation that accepts both
 // plain strings and arrays for members:
 //
-//	members = ["alice@x.com", ["bob@x.com", "bob@y.com"], "*@fund.com"]
+//	members = new Listing { "alice@x.com"; new Listing { "bob@x.com"; "bob@y.com" }; "*@fund.com" }
 type groupEntryRaw struct {
 	Description string      `pkl:"description" json:"description"`
 	Members     interface{} `pkl:"members" json:"members"`
@@ -61,7 +61,7 @@ func LoadGroups(path string) (map[string]GroupEntry, error) {
 	return groups, nil
 }
 
-// normalizeMembers converts the flexible TOML members format into [][]string.
+// normalizeMembers converts the flexible Pkl members format into [][]string.
 // Accepts: plain strings (single address), arrays of strings (multi-email person),
 // or a mix of both.
 func normalizeMembers(raw interface{}) ([][]string, error) {

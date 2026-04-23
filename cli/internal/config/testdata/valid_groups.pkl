@@ -1,0 +1,22 @@
+import "modulepath:/Groups.pkl" as G
+
+groups: Mapping<String, G.GroupEntry> = new {
+  ["investor"] = new {
+    description = "Cap Table members"
+    members {
+      "alice@sequoia.com"
+      new Listing { "bob@index.vc"; "bob.personal@gmail.com" }
+      "*@fund-xyz.com"
+    }
+  }
+  ["press"] = new {
+    members { "*@spiegel.de"; "*@handelsblatt.com" }
+  }
+  ["solo"] = new {
+    members { "carol@example.org" }
+  }
+  ["empty"] = new {
+    description = "No members yet"
+    members {}
+  }
+}

@@ -38,6 +38,7 @@ go_test(
     srcs = [
         "config_test.go",
         "groups_test.go",
+        "validate_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":config"],
