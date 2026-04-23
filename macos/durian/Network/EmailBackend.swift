@@ -349,11 +349,11 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
 
     // MARK: - Email Operations (Refactored to use HTTP)
 
-    func fetchEmailBody(id: String) async {
+    @discardableResult func fetchEmailBody(id: String) async -> MailMessage? {
         await fetchEmailBodyInternal(id: id, isPrefetch: false)
     }
 
-    private func fetchEmailBodyInternal(id: String, isPrefetch: Bool) async {
+    private func fetchEmailBodyInternal(id: String, isPrefetch: Bool) async -> MailMessage? {
         if let index = emails.firstIndex(where: { $0.id == id }) {
             emails[index].bodyState = .loading
         }
@@ -370,28 +370,31 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
                     Log.error("BACKEND", "Body fetch failed for \(id)")
                 }
             }
-            return
+            return nil
         }
 
-        // If thread isn't in the current list (e.g. opened from search), add it
-        if emails.firstIndex(where: { $0.id == id }) == nil {
-            guard let firstMsg = thread.messages.first else { return }
-            let tagString = firstMsg.tags?.joined(separator: ",") ?? ""
-            let mail = MailMessage(
-                threadId: id,
-                subject: thread.subject,
-                from: firstMsg.from,
-                date: firstMsg.date,
-                timestamp: firstMsg.timestamp,
-                tags: tagString
-            )
-            emails.append(mail)
-        }
-
+        // Email is in the current folder list — update in place
         if let index = emails.firstIndex(where: { $0.id == id }) {
             applyThread(thread, to: &emails[index])
             Log.info("BACKEND", "Loaded thread \(id) with \(thread.messages.count) messages")
+            return nil
         }
+
+        // Email is NOT in the folder list (e.g. opened from search) —
+        // build a standalone MailMessage and return it without polluting backend.emails
+        guard let firstMsg = thread.messages.first else { return nil }
+        let tagString = firstMsg.tags?.joined(separator: ",") ?? ""
+        var mail = MailMessage(
+            threadId: id,
+            subject: thread.subject,
+            from: firstMsg.from,
+            date: firstMsg.date,
+            timestamp: firstMsg.timestamp,
+            tags: tagString
+        )
+        applyThread(thread, to: &mail)
+        Log.info("BACKEND", "Loaded thread \(id) with \(thread.messages.count) messages (standalone)")
+        return mail
     }
     
     private func search(_ query: String, limit: Int = 200) async {
@@ -878,7 +881,7 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
             for email in emailsToFetch {
                 if shouldCancelPrefetch || Task.isCancelled { break }
                 group.addTask {
-                    await self.fetchEmailBodyInternal(id: email.id, isPrefetch: true)
+                    _ = await self.fetchEmailBodyInternal(id: email.id, isPrefetch: true)
                 }
             }
         }

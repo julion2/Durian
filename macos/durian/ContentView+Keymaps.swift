@@ -93,21 +93,27 @@ extension ContentView {
         // Reply: r
         keymapHandler.registerSimpleHandler(for: .reply) { [self] in
             guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
-            await accountManager.fetchEmailBody(id: emailId)
+            if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                await MainActor.run { applyStandaloneEmail(loaded) }
+            }
             await MainActor.run { replyToSelected() }
         }
 
         // Reply All: R (Shift+r)
         keymapHandler.registerSimpleHandler(for: .replyAll) { [self] in
             guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
-            await accountManager.fetchEmailBody(id: emailId)
+            if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                await MainActor.run { applyStandaloneEmail(loaded) }
+            }
             await MainActor.run { replyAllToSelected() }
         }
 
         // Forward: f
         keymapHandler.registerSimpleHandler(for: .forward) { [self] in
             guard let emailId = await MainActor.run(body: { markedEmails.first }) else { return }
-            await accountManager.fetchEmailBody(id: emailId)
+            if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                await MainActor.run { applyStandaloneEmail(loaded) }
+            }
             await MainActor.run { forwardSelected() }
         }
 

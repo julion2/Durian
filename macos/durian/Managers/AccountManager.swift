@@ -140,10 +140,11 @@ class AccountManager: ObservableObject {
     
     // MARK: - Email Operations
     
-    func fetchEmailBody(id: String) async {
-        guard let backend = emailBackend else { return }
-        await backend.fetchEmailBody(id: id)
+    @discardableResult func fetchEmailBody(id: String) async -> MailMessage? {
+        guard let backend = emailBackend else { return nil }
+        let standalone = await backend.fetchEmailBody(id: id)
         syncFromBackend()
+        return standalone
     }
     
     func markAsRead(id: String) async {

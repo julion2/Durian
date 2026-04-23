@@ -45,7 +45,7 @@ protocol MailBackendProtocol: ObservableObject {
     func selectFolder(_ name: String) async
 
     // MARK: - Email Operations
-    func fetchEmailBody(id: String) async
+    @discardableResult func fetchEmailBody(id: String) async -> MailMessage?
     func markAsRead(id: String) async throws
     func markAsUnread(id: String) async throws
     func deleteMessage(id: String) async throws

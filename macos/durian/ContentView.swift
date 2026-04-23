@@ -341,7 +341,9 @@ struct ContentView: View {
                         onForward: forwardSelected,
                         onLoadBody: {
                             Task {
-                                await accountManager.fetchEmailBody(id: email.id)
+                                if let loaded = await accountManager.fetchEmailBody(id: email.id) {
+                                    applyStandaloneEmail(loaded)
+                                }
                             }
                         },
                         onEditDraft: email.isDraft ? editSelectedDraft : nil,
@@ -411,18 +413,8 @@ struct ContentView: View {
         .onChange(of: showTagPicker) { _, isShowing in
             keymapHandler.engine.setContext(isShowing ? .tagPicker : .list)
         }
-        .onChange(of: accountManager.mailMessages) { _, newMessages in
-            // Sync updated emails (e.g. body loaded) into search results
-            // Preserve original date (search returns relative dates, thread fetch returns RFC dates)
-            guard isSearchMode else { return }
-            for i in searchResults.indices {
-                if let updated = newMessages.first(where: { $0.id == searchResults[i].id }) {
-                    let originalDate = searchResults[i].date
-                    searchResults[i] = updated
-                    searchResults[i].date = originalDate
-                }
-            }
-        }
+        // Body state for search results is applied directly via applyStandaloneEmail()
+        // — no need to sync from accountManager.mailMessages.
         // Intercept Escape/Ctrl+d/u before the sidebar List captures them
         .onKeyPress { press in
             // Escape to exit search mode (sequence engine doesn't dispatch Escape to handlers)
@@ -475,7 +467,11 @@ struct ContentView: View {
                 guard email.id == cursorEmailId else { return }
                 switch email.bodyState {
                 case .notLoaded, .failed:
-                    Task { await accountManager.fetchEmailBody(id: email.id) }
+                    Task {
+                        if let loaded = await accountManager.fetchEmailBody(id: email.id) {
+                            applyStandaloneEmail(loaded)
+                        }
+                    }
                 case .loading, .loaded:
                     break
                 }
@@ -498,14 +494,18 @@ struct ContentView: View {
             onReply: { emailId in
                 handleEmailSelection(emailId)
                 Task {
-                    await accountManager.fetchEmailBody(id: emailId)
+                    if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                        applyStandaloneEmail(loaded)
+                    }
                     await MainActor.run { replyToSelected() }
                 }
             },
             onForward: { emailId in
                 handleEmailSelection(emailId)
                 Task {
-                    await accountManager.fetchEmailBody(id: emailId)
+                    if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                        applyStandaloneEmail(loaded)
+                    }
                     await MainActor.run { forwardSelected() }
                 }
             },
@@ -595,7 +595,9 @@ struct ContentView: View {
             if let email = displayEmails.first(where: { $0.id == emailId }) {
                 switch email.bodyState {
                 case .notLoaded, .failed:
-                    await accountManager.fetchEmailBody(id: emailId)
+                    if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                        applyStandaloneEmail(loaded)
+                    }
                 case .loading, .loaded:
                     break
                 }
@@ -603,9 +605,20 @@ struct ContentView: View {
                     await accountManager.markAsRead(id: emailId)
                 }
             } else {
-                await accountManager.fetchEmailBody(id: emailId)
+                if let loaded = await accountManager.fetchEmailBody(id: emailId) {
+                    applyStandaloneEmail(loaded)
+                }
             }
         }
+    }
+
+    /// Apply a standalone loaded email (from search) into searchResults.
+    func applyStandaloneEmail(_ email: MailMessage) {
+        guard isSearchMode,
+              let index = searchResults.firstIndex(where: { $0.id == email.id }) else { return }
+        let originalDate = searchResults[index].date
+        searchResults[index] = email
+        searchResults[index].date = originalDate
     }
     
     // MARK: - Toolbar Helpers
