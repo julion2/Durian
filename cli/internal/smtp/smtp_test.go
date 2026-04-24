@@ -110,8 +110,9 @@ func TestMessageBuildHTML(t *testing.T) {
 		t.Error("HTML message should not have text/plain Content-Type")
 	}
 
-	// Check body present
-	if !strings.Contains(content, "Hello!") || !strings.Contains(content, "Test content here.") {
+	// Check body present (strip QP soft breaks for substring matching)
+	decoded := strings.ReplaceAll(content, "=\r\n", "")
+	if !strings.Contains(decoded, "Hello!") || !strings.Contains(decoded, "Test content here.") {
 		t.Error("HTML body content not found in message")
 	}
 }
@@ -385,6 +386,33 @@ func TestBuild_MessageIDPreset(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "Message-ID: <preset@example.com>") {
 		t.Error("preset Message-ID not in headers")
+	}
+}
+
+func TestNormalizeParagraphs(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"bare p", "<p>text</p>", `<p style="margin:0">text</p>`},
+		{"p with style", `<p style="color:red">text</p>`, `<p style="margin:0; color:red">text</p>`},
+		{"p with class and style (WebKit editor)", `<p class="isSelectedEnd" style="caret-color: rgb(0, 0, 0);">text</p>`,
+			`<p class="isSelectedEnd" style="margin:0; caret-color: rgb(0, 0, 0);">text</p>`},
+		{"p with class only", `<p class="MsoNormal">text</p>`, `<p style="margin:0" class="MsoNormal">text</p>`},
+		{"p with existing margin", `<p style="margin:10px">text</p>`, `<p style="margin:10px">text</p>`},
+		{"uppercase P", `<P>text</P>`, `<P style="margin:0">text</P>`},
+		{"multiple p tags", `<p>one</p><p class="x">two</p><p style="color:blue">three</p>`,
+			`<p style="margin:0">one</p><p style="margin:0" class="x">two</p><p style="margin:0; color:blue">three</p>`},
+		{"no p tags", "<div>text</div>", "<div>text</div>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeParagraphs(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeParagraphs(%q)\ngot:  %q\nwant: %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 

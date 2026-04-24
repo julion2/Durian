@@ -168,9 +168,17 @@ class EmailSendingManager: ObservableObject {
         var finalBody = draft.body
         var finalIsHTML = draft.isHTML
 
+        // Clean contentEditable artifacts from user-typed content only
+        // (not from signature or quoted content where styles are intentional)
+        let cleanRichHTML: String? = if let raw = draft.htmlBody, !raw.isEmpty {
+            Self.cleanEditorArtifacts(raw)
+        } else {
+            nil
+        }
+
         if let htmlSig = draft.htmlSignature, !htmlSig.isEmpty {
             let userHTML: String
-            if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+            if let richHTML = cleanRichHTML {
                 userHTML = richHTML
             } else {
                 userHTML = draft.body
@@ -182,15 +190,17 @@ class EmailSendingManager: ObservableObject {
             finalBody = "<div>\(userHTML)</div><br>\(htmlSig)"
 
             if let quoted = draft.quotedContent, !quoted.isEmpty {
-                let quotedHTML = draft.quotedIsHTML ? quoted : Self.plainTextToHTML(quoted)
+                let cleanQuoted = draft.quotedIsHTML ? Self.stripStyleTags(quoted) : quoted
+                let quotedHTML = draft.quotedIsHTML ? cleanQuoted : Self.plainTextToHTML(cleanQuoted)
                 finalBody += "<br><br>\(quotedHTML)"
             }
 
             finalIsHTML = true
         } else if let quoted = draft.quotedContent, !quoted.isEmpty {
             if draft.quotedIsHTML {
+                let cleanQuoted = Self.stripStyleTags(quoted)
                 let userHTML: String
-                if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+                if let richHTML = cleanRichHTML {
                     userHTML = richHTML
                 } else {
                     userHTML = draft.body
@@ -199,10 +209,10 @@ class EmailSendingManager: ObservableObject {
                         .replacingOccurrences(of: ">", with: "&gt;")
                         .replacingOccurrences(of: "\n", with: "<br>")
                 }
-                finalBody = "<div>\(userHTML)</div><br><br>\(quoted)"
+                finalBody = "<div>\(userHTML)</div><br><br>\(cleanQuoted)"
                 finalIsHTML = true
             } else {
-                if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+                if let richHTML = cleanRichHTML {
                     let quotedHTML = Self.plainTextToHTML(quoted)
                     finalBody = "<div>\(richHTML)</div><br><br>\(quotedHTML)"
                     finalIsHTML = true
@@ -210,7 +220,7 @@ class EmailSendingManager: ObservableObject {
                     finalBody = draft.body + "\n\n" + quoted
                 }
             }
-        } else if let richHTML = draft.htmlBody, !richHTML.isEmpty {
+        } else if let richHTML = cleanRichHTML {
             finalBody = "<div>\(richHTML)</div>"
             finalIsHTML = true
         }
@@ -318,6 +328,36 @@ class EmailSendingManager: ObservableObject {
         }
 
         return trimmed
+    }
+
+    /// Remove WebKit contentEditable artifacts that bloat the HTML and
+    /// can break rendering (e.g. caret-color, hardcoded black color in dark mode).
+    nonisolated static func cleanEditorArtifacts(_ html: String) -> String {
+        var result = html
+        // Strip class="isSelectedEnd" and similar WebKit-internal classes
+        result = result.replacingOccurrences(
+            of: #" class="isSelectedEnd""#, with: "", options: .caseInsensitive)
+        // Strip caret-color (cursor color — meaningless in sent email)
+        result = result.replacingOccurrences(
+            of: #"caret-color: rgb\([^)]+\);?\s*"#, with: "", options: .regularExpression)
+        // Strip hardcoded color: rgb(0,0,0) that breaks dark mode for recipients.
+        // Only remove the exact black value — preserve intentional color choices.
+        result = result.replacingOccurrences(
+            of: #"color: rgb\(0,\s*0,\s*0\);?\s*"#, with: "", options: .regularExpression)
+        // Clean up empty style attributes left behind
+        result = result.replacingOccurrences(
+            of: #" style=\"\s*\""#, with: "", options: .regularExpression)
+        return result
+    }
+
+    /// Strip <style>...</style> blocks from HTML to prevent CSS leakage
+    /// from quoted content into the user's own message and signature.
+    nonisolated static func stripStyleTags(_ html: String) -> String {
+        html.replacingOccurrences(
+            of: "<style[^>]*>[\\s\\S]*?</style>",
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
     }
 
     /// Convert plain text to basic HTML (for combining plain text quoted content with HTML signature)

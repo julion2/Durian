@@ -172,6 +172,21 @@ swift_test(
 )
 
 swift_test(
+    name = "sending_manager_test",
+    size = "small",
+    srcs = ["tests/EmailSendingManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_sending_manager_test",
+    size = "small",
+    srcs = ["tests/EmailSendingManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
     name = "contacts_manager_test",
     size = "small",
     srcs = ["tests/ContactsManagerTests.swift"],

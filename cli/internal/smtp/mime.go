@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -107,7 +108,7 @@ func (m *Message) Build() ([]byte, error) {
 
 	body := m.Body
 	if m.IsHTML {
-		body = `<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:14px">` + normalizeParagraphs(body) + `</div>`
+		body = `<div style="font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.47">` + normalizeParagraphs(body) + `</div>`
 	}
 
 	if len(m.Attachments) == 0 {
@@ -231,16 +232,28 @@ func toQuotedPrintable(s string) string {
 	return buf.String()
 }
 
-// normalizeParagraphs adds margin:0 to <p> tags so recipient email clients
+// pTagRe matches opening <p> tags with any attributes (class, style, etc.)
+var pTagRe = regexp.MustCompile(`(?i)<p(\s[^>]*)?>`)
+
+// normalizeParagraphs adds margin:0 to all <p> tags so recipient email clients
 // don't add extra spacing. Matches the compose editor's margin-reset style.
+// Uses regex to handle <p> with any combination of attributes (class, style, etc.)
 func normalizeParagraphs(html string) string {
-	// <p> → <p style="margin:0">
-	result := strings.ReplaceAll(html, "<p>", `<p style="margin:0">`)
-	// <p style="..."> → inject margin:0 at start of existing style
-	result = strings.ReplaceAll(result, `<p style="`, `<p style="margin:0; `)
-	// Clean up double margin:0 from the two replacements above
-	result = strings.ReplaceAll(result, "margin:0; margin:0", "margin:0")
-	return result
+	return pTagRe.ReplaceAllStringFunc(html, func(tag string) string {
+		if strings.Contains(tag, "margin") {
+			return tag // already has margin set
+		}
+		if idx := strings.Index(strings.ToLower(tag), "style=\""); idx != -1 {
+			// Inject margin:0 at start of existing style attribute
+			return tag[:idx+7] + "margin:0; " + tag[idx+7:]
+		}
+		// No style attribute — add one (handle <p> and <P>)
+		lower := strings.ToLower(tag)
+		if i := strings.Index(lower, "<p"); i != -1 {
+			return tag[:i+2] + ` style="margin:0"` + tag[i+2:]
+		}
+		return tag
+	})
 }
 
 // formatAddressList quotes display names that contain commas for safe use in headers.
