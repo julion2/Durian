@@ -393,6 +393,11 @@ struct ContentView: View {
                 exitSearchMode()
             }
         }
+        .onChange(of: accountManager.selectedFolder) { _, newFolder in
+            if selectedTagID != newFolder {
+                selectedTagID = newFolder
+            }
+        }
         .onChange(of: accountManager.emailListGeneration) { _, _ in
             // Auto-select first email when list data arrives and cursor is empty
             if cursorEmailId == nil, let firstId = accountManager.mailMessages.first?.id {
