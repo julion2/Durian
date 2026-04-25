@@ -54,6 +54,10 @@ enum KeymapAction: String, CaseIterable {
     case goSent = "go_sent"
     case goDrafts = "go_drafts"
     case goArchive = "go_archive"
+    case goFolder = "go_folder"
+    case nextFolder = "next_folder"
+    case prevFolder = "prev_folder"
+    case folderPicker = "folder_picker"
 
     // Visual Mode
     case enterVisualMode = "enter_visual_mode"           // v - line mode (range selection)

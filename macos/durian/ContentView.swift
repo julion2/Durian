@@ -42,10 +42,12 @@ struct ContentView: View {
     @State var detailMode: DetailViewMode = .empty
     @State var showSearchPopup: Bool = false
     @State var showTagPicker: Bool = false
+    @State var showFolderPicker: Bool = false
     @State var allTags: [String] = []
     @State var visualModeAnchor: String? = nil    // Anchor for visual mode range selection
     @State var isSearchMode = false
     @State private var bodyFetchTask: Task<Void, Never>?
+    @State private var folderSwitchTask: Task<Void, Never>?
     @State var searchResults: [MailMessage] = []
     @State var lastSearchQuery = ""
     @State var focusedMessageIndex: Int = 0
@@ -61,6 +63,10 @@ struct ContentView: View {
 
             if showTagPicker {
                 tagPickerOverlay
+            }
+
+            if showFolderPicker {
+                folderPickerOverlay
             }
 
             // Banner Overlay (bottom-right toast)
@@ -189,6 +195,35 @@ struct ContentView: View {
                             await accountManager.syncAndRefresh()
                             allTags = await accountManager.fetchAllTags()
                         }
+                    }
+                )
+                .padding(.top, 80)
+
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    // MARK: - Folder Picker Overlay
+
+    @ViewBuilder
+    private var folderPickerOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.15)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    showFolderPicker = false
+                }
+
+            VStack {
+                FolderPickerView(
+                    isPresented: $showFolderPicker,
+                    folders: accountManager.mailFolders,
+                    unreadCounts: accountManager.folderUnreadCounts,
+                    currentFolder: accountManager.selectedFolder,
+                    onSelect: { folderName in
+                        selectedTagID = folderName
                     }
                 )
                 .padding(.top, 80)
@@ -418,6 +453,10 @@ struct ContentView: View {
         .onChange(of: showTagPicker) { _, isShowing in
             keymapHandler.engine.setContext(isShowing ? .tagPicker : .list)
         }
+        .onChange(of: showFolderPicker) { _, isShowing in
+            keymapHandler.engine.setContext(isShowing ? .tagPicker : .list)
+        }
+
         // Body state for search results is applied directly via applyStandaloneEmail()
         // — no need to sync from accountManager.mailMessages.
         // Intercept Escape/Ctrl+d/u before the sidebar List captures them
@@ -578,9 +617,12 @@ struct ContentView: View {
         keymapHandler.engine.setContext(.list)
         cursorEmailId = nil
         markedEmails = []
-        // Re-fetch to flush any search emails that leaked into backend.emails
+        // Re-fetch — debounced to avoid flooding backend during rapid J/K folder switching
         if let tagId = selectedTagID {
-            Task {
+            folderSwitchTask?.cancel()
+            folderSwitchTask = Task {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
                 await accountManager.selectTag(tagId)
             }
         }
