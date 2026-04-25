@@ -187,7 +187,7 @@ class EmailSendingManager: ObservableObject {
                     .replacingOccurrences(of: ">", with: "&gt;")
                     .replacingOccurrences(of: "\n", with: "<br>")
             }
-            finalBody = "<div>\(userHTML)</div><br>\(htmlSig)"
+            finalBody = "<div>\(userHTML)</div><br><div>-- <br></div>\(htmlSig)"
 
             if let quoted = draft.quotedContent, !quoted.isEmpty {
                 let cleanQuoted = draft.quotedIsHTML ? Self.stripStyleTags(quoted) : quoted
