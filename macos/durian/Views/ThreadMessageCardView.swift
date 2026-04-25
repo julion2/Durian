@@ -30,6 +30,8 @@ struct ThreadMessageCardView: View {
     @State private var selectedAttachmentId: Int? = nil
     @State private var spaceMonitor: AnyObject? = nil
     @State private var resolvedHTML: String? = nil
+    @State private var showSignature: Bool = false
+    @State private var signatureHeight: CGFloat = 0
 
     /// Non-inline attachments for this message
     private var displayAttachments: [AttachmentInfo] {
@@ -67,6 +69,30 @@ struct ThreadMessageCardView: View {
                     .font(.system(size: 14))
                     .foregroundColor(Color.Detail.textPrimary)
                     .textSelection(.enabled)
+            }
+
+            // Hidden signature (collapsed by default, expand via "..." button)
+            if let sig = message.hidden_signature, !sig.isEmpty {
+                if showSignature {
+                    NonScrollingWebView(
+                        html: sig,
+                        theme: SettingsManager.shared.settings.theme,
+                        loadRemoteImages: SettingsManager.shared.settings.loadRemoteImages,
+                        emailId: "\(message.id)-sig",
+                        contentHeight: $signatureHeight
+                    )
+                    .frame(height: max(signatureHeight, 20))
+                }
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showSignature.toggle()
+                    }
+                } label: {
+                    Text(showSignature ? "Hide signature" : "•••")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.Detail.textTertiary)
+                }
+                .buttonStyle(.plain)
             }
 
             // Action footer only on last (newest) card

@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "quote.go",
         "sanitize.go",
+        "signature.go",
     ],
     importpath = "github.com/durian-dev/durian/cli/internal/sanitize",
     visibility = ["//cli:__subpackages__"],
@@ -18,6 +19,7 @@ go_test(
         "fixture_test.go",
         "quote_test.go",
         "sanitize_test.go",
+        "signature_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":sanitize"],
