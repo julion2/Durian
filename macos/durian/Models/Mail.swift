@@ -35,6 +35,7 @@ struct ThreadMessage: Decodable, Identifiable, Equatable {
     let references: String?
     let body: String
     let html: String?
+    let hidden_signature: String?
     let attachments: [AttachmentInfo]?
     let tags: [String]?
 }

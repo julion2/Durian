@@ -110,11 +110,21 @@ class AccountManager: ObservableObject {
         }
         await backend.connect()
         syncFromBackend()
-        await refreshFolderCounts()
+        await selectTag(resolvedFolder())
     }
     
     // MARK: - Folder/Tag Selection
-    
+
+    /// Returns `selectedFolder` if it exists in the current profile,
+    /// otherwise the first non-section folder, falling back to "inbox".
+    private func resolvedFolder() -> String {
+        let profile = ProfileManager.shared.currentProfile
+        let folders = profile?.folders ?? ProfileManager.defaultFolders
+        let exists = folders.contains { !$0.isSection && $0.name.lowercased() == selectedFolder }
+        if exists { return selectedFolder }
+        return folders.first { !$0.isSection }?.name.lowercased() ?? "inbox"
+    }
+
     func selectTag(_ tag: String) async {
         guard let backend = emailBackend else { return }
         selectedFolder = tag
@@ -134,8 +144,7 @@ class AccountManager: ObservableObject {
         ProfileManager.shared.currentProfile = profile
         Log.info("BACKEND", "Switched to profile '\(profile.name)'")
         
-        // Reload current folder with new profile filter
-        await selectTag(selectedFolder)
+        await selectTag(resolvedFolder())
     }
     
     // MARK: - Email Operations

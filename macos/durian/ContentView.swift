@@ -389,8 +389,13 @@ struct ContentView: View {
             registerKeymapHandlers()
         }
         .onChange(of: selectedTagID) { _, tagId in
-            if tagId != nil {
+            if tagId != nil && tagId != accountManager.selectedFolder {
                 exitSearchMode()
+            }
+        }
+        .onChange(of: accountManager.selectedFolder) { _, newFolder in
+            if selectedTagID != newFolder {
+                selectedTagID = newFolder
             }
         }
         .onChange(of: accountManager.emailListGeneration) { _, _ in

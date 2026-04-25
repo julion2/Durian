@@ -11,6 +11,7 @@ import AppKit
 
 struct WindowCloseGuard: NSViewRepresentable {
     @Binding var allowClose: Bool
+    @Binding var window: NSWindow?
     let onCloseAttempt: () -> Void
 
     // MARK: - Coordinator
@@ -47,6 +48,7 @@ struct WindowCloseGuard: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
+            self.window = window
             context.coordinator.originalDelegate = window.delegate
             context.coordinator.allowClose = self.allowClose
             context.coordinator.onCloseAttempt = self.onCloseAttempt

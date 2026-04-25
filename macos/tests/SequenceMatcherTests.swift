@@ -12,22 +12,22 @@ final class SequenceMatcherTests: XCTestCase {
 
         let entries: [KeymapEntry] = [
             // List context
-            .init(action: "next_email", key: "j", modifiers: [], description: "",
+            .init(action: "next_email", key: "j", modifiers: [],
                   sequence: false, supportsCount: true, context: "list"),
-            .init(action: "prev_email", key: "k", modifiers: [], description: "",
+            .init(action: "prev_email", key: "k", modifiers: [],
                   sequence: false, supportsCount: true, context: "list"),
-            .init(action: "first_email", key: "gg", modifiers: [], description: "",
+            .init(action: "first_email", key: "gg", modifiers: [],
                   sequence: true, supportsCount: false, context: "list"),
-            .init(action: "go_inbox", key: "gi", modifiers: [], description: "",
+            .init(action: "go_inbox", key: "gi", modifiers: [],
                   sequence: true, supportsCount: false, context: "list"),
-            .init(action: "delete", key: "dd", modifiers: [], description: "",
+            .init(action: "delete", key: "dd", modifiers: [],
                   sequence: true, supportsCount: true, context: "list"),
-            .init(action: "page_down", key: "d", modifiers: ["ctrl"], description: "",
+            .init(action: "page_down", key: "d", modifiers: ["ctrl"],
                   sequence: false, supportsCount: true, context: "list"),
-            .init(action: "compose", key: "c", modifiers: [], description: "",
+            .init(action: "compose", key: "c", modifiers: [],
                   sequence: false, supportsCount: false, context: "list"),
             // Thread context (to verify context isolation)
-            .init(action: "reply", key: "r", modifiers: [], description: "",
+            .init(action: "reply", key: "r", modifiers: [],
                   sequence: false, supportsCount: false, context: "thread"),
         ]
 

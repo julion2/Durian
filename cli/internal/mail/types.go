@@ -33,7 +33,7 @@ type MailContent struct {
 	InReplyTo   string   `json:"in_reply_to,omitempty"`
 	References  string   `json:"references,omitempty"`
 	Body        string   `json:"body"`
-	HTML        string   `json:"html,omitempty"`
+	HTML        string           `json:"html,omitempty"`
 	Attachments []AttachmentInfo `json:"attachments,omitempty"`
 }
 
@@ -62,7 +62,8 @@ type MessageInfo struct {
 	InReplyTo   string   `json:"in_reply_to,omitempty"`
 	References  string   `json:"references,omitempty"`
 	Body        string   `json:"body"`
-	HTML        string   `json:"html,omitempty"`
-	Attachments []AttachmentInfo `json:"attachments,omitempty"`
-	Tags        []string         `json:"tags,omitempty"`
+	HTML             string           `json:"html,omitempty"`
+	HiddenSignature  string           `json:"hidden_signature,omitempty"`
+	Attachments      []AttachmentInfo `json:"attachments,omitempty"`
+	Tags             []string         `json:"tags,omitempty"`
 }

@@ -8,6 +8,7 @@ import (
 	"net/mail"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	internmail "github.com/durian-dev/durian/cli/internal/mail"
@@ -128,6 +129,54 @@ func (h *Handler) convertThread(threadID string, msgs []*store.Message, light bo
 		return messages[i].Timestamp > messages[j].Timestamp
 	})
 
+	// Signature dedup: per sender, keep signature only in the oldest message.
+	// Uses common-suffix comparison — the identical trailing content across
+	// multiple messages from the same sender is the signature. No markers needed.
+	if !light {
+		type sigEntry struct {
+			idx       int
+			timestamp int64
+		}
+		senderGroups := make(map[string][]sigEntry)
+		for i, info := range messages {
+			email := extractSenderEmail(info.From)
+			senderGroups[email] = append(senderGroups[email], sigEntry{idx: i, timestamp: info.Timestamp})
+		}
+		for _, group := range senderGroups {
+			if len(group) < 2 {
+				continue
+			}
+			// Find common suffix across all messages from this sender
+			suffix := messages[group[0].idx].HTML
+			for _, entry := range group[1:] {
+				suffix = sanitize.CommonSuffix(suffix, messages[entry.idx].HTML)
+			}
+			// Only treat as signature if substantial (filters out trivial
+			// common endings like </div> or closing tags)
+			if len(suffix) < 100 {
+				continue
+			}
+			// Find oldest message (smallest timestamp)
+			oldest := 0
+			for j := range group {
+				if group[j].timestamp < group[oldest].timestamp {
+					oldest = j
+				}
+			}
+			// Strip common suffix from non-oldest messages, keep as hidden_signature
+			for j, entry := range group {
+				if j == oldest {
+					continue
+				}
+				html := messages[entry.idx].HTML
+				if strings.HasSuffix(html, suffix) {
+					messages[entry.idx].HTML = strings.TrimRight(html[:len(html)-len(suffix)], " \t\n\r")
+					messages[entry.idx].HiddenSignature = suffix
+				}
+			}
+		}
+	}
+
 	return &internmail.ThreadContent{
 		ThreadID: threadID,
 		Subject:  subject,
@@ -176,4 +225,16 @@ func (h *Handler) DownloadAttachment(messageID string, partID int, w http.Respon
 
 	return h.fetcher.FetchAttachment(ctx, msg.Account, msg.Mailbox,
 		msg.UID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
+}
+
+// extractSenderEmail returns the lowercase email address from a
+// "Name <email>" or plain "email" string.
+func extractSenderEmail(from string) string {
+	lower := strings.ToLower(strings.TrimSpace(from))
+	if idx := strings.LastIndex(lower, "<"); idx != -1 {
+		if end := strings.LastIndex(lower, ">"); end > idx {
+			return lower[idx+1 : end]
+		}
+	}
+	return lower
 }
