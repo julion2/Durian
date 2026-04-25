@@ -25,6 +25,7 @@ struct ComposeWindow: View {
     @State private var allowClose: Bool = false
     @State private var showInvalidEmailWarning: Bool = false
     @State private var invalidEmails: [String] = []
+    @State private var composeNSWindow: NSWindow?
 
     var body: some View {
         Group {
@@ -205,12 +206,24 @@ struct ComposeWindow: View {
             .animation(.easeInOut(duration: 0.3), value: sendingManager.isSending)
         }
         } // ZStack
-        .background(WindowCloseGuard(allowClose: $allowClose, onCloseAttempt: { handleDismiss() }))
+        .background(WindowCloseGuard(allowClose: $allowClose, window: $composeNSWindow, onCloseAttempt: { handleDismiss() }))
         .onAppear { KeymapHandler.shared.composeActive = true }
         .onDisappear { KeymapHandler.shared.composeActive = false }
     }
     
     // MARK: - Actions
+
+    /// Activate the next visible Durian window so the app doesn't appear
+    /// to hide when the compose window is removed via orderOut.
+    private func activateMainWindow() {
+        if let mainWindow = NSApp.windows.first(where: {
+            $0.isVisible && $0.canBecomeKey && !($0 is NSPanel)
+        }) {
+            mainWindow.makeKeyAndOrderFront(nil)
+        }
+        // Always activate the app to prevent it from going behind other apps
+        NSApp.activate()
+    }
 
     private func closeWindow() {
         allowClose = true
@@ -219,8 +232,8 @@ struct ComposeWindow: View {
 
     private func handleDismiss() {
         // Hide the compose window instantly, save draft in background
-        let composeWindow = NSApp.keyWindow
-        composeWindow?.orderOut(nil)
+        composeNSWindow?.orderOut(nil)
+        activateMainWindow()
         isSaving = true
 
         Task {
@@ -233,7 +246,7 @@ struct ComposeWindow: View {
                 await MainActor.run {
                     // Save failed — bring window back so user can act
                     isSaving = false
-                    composeWindow?.makeKeyAndOrderFront(nil)
+                    composeNSWindow?.makeKeyAndOrderFront(nil)
                     saveErrorMessage = error.localizedDescription
                     showSaveError = true
                 }
@@ -259,9 +272,9 @@ struct ComposeWindow: View {
         let reopenDraft = openWindow
         let capturedDraftId = draftId
 
-        // Hide the compose window instantly (it's key window right now)
-        let composeWindow = NSApp.keyWindow
-        composeWindow?.orderOut(nil)
+        // Hide the compose window instantly
+        composeNSWindow?.orderOut(nil)
+        activateMainWindow()
 
         // Close via SwiftUI for proper cleanup
         isSaving = true
