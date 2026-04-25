@@ -234,6 +234,45 @@ extension ContentView {
             await MainActor.run { selectedTagID = "archive" }
         }
 
+        // g1-g9 - Go to folder by position (sections skipped)
+        keymapHandler.registerSimpleHandler(for: .goFolder) { [self] in
+            let seq = keymapHandler.engine.lastMatchedSequence
+            guard let digit = seq.last, let index = digit.wholeNumberValue, index >= 1 else { return }
+            await MainActor.run {
+                let folders = accountManager.mailFolders.filter { !$0.isSection }
+                guard index <= folders.count else { return }
+                selectedTagID = folders[index - 1].name
+            }
+        }
+
+        // J/K - Next/Prev folder (sections skipped, wraps around)
+        keymapHandler.registerSimpleHandler(for: .nextFolder) { [self] in
+            await MainActor.run {
+                let folders = accountManager.mailFolders.filter { !$0.isSection }
+                guard !folders.isEmpty else { return }
+                let currentIndex = folders.firstIndex { $0.name == accountManager.selectedFolder } ?? -1
+                let nextIndex = (currentIndex + 1) % folders.count
+                selectedTagID = folders[nextIndex].name
+            }
+        }
+
+        // gf - Folder Picker
+        keymapHandler.registerSimpleHandler(for: .folderPicker) { [self] in
+            await MainActor.run {
+                showFolderPicker = true
+            }
+        }
+
+        keymapHandler.registerSimpleHandler(for: .prevFolder) { [self] in
+            await MainActor.run {
+                let folders = accountManager.mailFolders.filter { !$0.isSection }
+                guard !folders.isEmpty else { return }
+                let currentIndex = folders.firstIndex { $0.name == accountManager.selectedFolder } ?? 0
+                let prevIndex = (currentIndex - 1 + folders.count) % folders.count
+                selectedTagID = folders[prevIndex].name
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════
         // VISUAL MODE HANDLERS
         // ═══════════════════════════════════════════════════════════
@@ -413,6 +452,7 @@ extension ContentView {
                 await MainActor.run {
                     showSearchPopup = false
                     showTagPicker = false
+                    showFolderPicker = false
                     // ESC in search popup should exit search mode entirely —
                     // the user pressed ESC (cancel), not Enter (confirm).
                     // Tag picker ESC should NOT exit search mode (user may
