@@ -389,7 +389,7 @@ struct ContentView: View {
             registerKeymapHandlers()
         }
         .onChange(of: selectedTagID) { _, tagId in
-            if tagId != nil {
+            if tagId != nil && tagId != accountManager.selectedFolder {
                 exitSearchMode()
             }
         }
