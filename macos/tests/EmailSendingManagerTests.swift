@@ -136,6 +136,35 @@ final class EmailSendingManagerTests: XCTestCase {
         XCTAssertEqual(result, "<p>text</p>", "All artifacts removed, empty style cleaned up")
     }
 
+    func testCleansPasteInheritedAppleFont() {
+        let html = #"<p style="margin: 0; font-family: -apple-system, sans-serif">text</p>"#
+        let result = EmailSendingManager.cleanEditorArtifacts(html)
+        XCTAssertFalse(result.contains("font-family"), "Paste-inherited -apple-system should be stripped")
+        XCTAssertTrue(result.contains("margin: 0"), "Other styles must survive")
+    }
+
+    func testCleansPasteInheritedAppleFontOnly() {
+        let html = #"<ul style="font-family: -apple-system, sans-serif"><li>item</li></ul>"#
+        let result = EmailSendingManager.cleanEditorArtifacts(html)
+        XCTAssertFalse(result.contains("font-family"))
+        // Style attribute should be cleaned up entirely since it's now empty
+        XCTAssertFalse(result.contains("style="))
+    }
+
+    func testPreservesNonAppleFont() {
+        let html = #"<p style="font-family: Georgia, serif">text</p>"#
+        let result = EmailSendingManager.cleanEditorArtifacts(html)
+        XCTAssertTrue(result.contains("font-family: Georgia, serif"), "Non-Apple fonts must survive")
+    }
+
+    func testCleansPasteAppleFontBetweenOtherStyles() {
+        let html = #"<p style="margin: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; color: red">text</p>"#
+        let result = EmailSendingManager.cleanEditorArtifacts(html)
+        XCTAssertFalse(result.contains("font-family"))
+        XCTAssertTrue(result.contains("margin: 0"))
+        XCTAssertTrue(result.contains("color: red"))
+    }
+
     func testRealWorldGoogleStyleBlock() {
         // Actual CSS from Google notification emails in the DB
         let html = """

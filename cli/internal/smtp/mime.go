@@ -108,7 +108,7 @@ func (m *Message) Build() ([]byte, error) {
 
 	body := m.Body
 	if m.IsHTML {
-		body = `<div style="font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.47">` + normalizeParagraphs(body) + `</div>`
+		body = `<div style="font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.47">` + normalizeListStyles(normalizeParagraphs(body)) + `</div>`
 	}
 
 	if len(m.Attachments) == 0 {
@@ -235,6 +235,9 @@ func toQuotedPrintable(s string) string {
 // pTagRe matches opening <p> tags with any attributes (class, style, etc.)
 var pTagRe = regexp.MustCompile(`(?i)<p(\s[^>]*)?>`)
 
+// listTagRe matches opening <ul> and <ol> tags with any attributes.
+var listTagRe = regexp.MustCompile(`(?i)<(ul|ol)(\s[^>]*)?>`)
+
 // normalizeParagraphs adds margin:0 to all <p> tags so recipient email clients
 // don't add extra spacing. Matches the compose editor's margin-reset style.
 // Uses regex to handle <p> with any combination of attributes (class, style, etc.)
@@ -251,6 +254,31 @@ func normalizeParagraphs(html string) string {
 		lower := strings.ToLower(tag)
 		if i := strings.Index(lower, "<p"); i != -1 {
 			return tag[:i+2] + ` style="margin:0"` + tag[i+2:]
+		}
+		return tag
+	})
+}
+
+// normalizeListStyles adds consistent padding/margin to all <ul>/<ol> tags
+// so recipient email clients render lists like the compose editor.
+// Matches the editor's CSS: ul, ol { padding-left: 1.5em; margin: 0.3em 0; }
+func normalizeListStyles(html string) string {
+	return listTagRe.ReplaceAllStringFunc(html, func(tag string) string {
+		if strings.Contains(tag, "padding-left") || strings.Contains(tag, "margin") {
+			return tag // already has list styles set
+		}
+		listStyle := "padding-left:1.5em;margin:0.3em 0"
+		if idx := strings.Index(strings.ToLower(tag), "style=\""); idx != -1 {
+			// Inject at start of existing style attribute
+			return tag[:idx+7] + listStyle + "; " + tag[idx+7:]
+		}
+		// No style attribute — add one after the tag name
+		lower := strings.ToLower(tag)
+		for _, prefix := range []string{"<ul", "<ol"} {
+			if i := strings.Index(lower, prefix); i != -1 {
+				insertAt := i + len(prefix)
+				return tag[:insertAt] + ` style="` + listStyle + `"` + tag[insertAt:]
+			}
 		}
 		return tag
 	})

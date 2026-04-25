@@ -416,6 +416,33 @@ func TestNormalizeParagraphs(t *testing.T) {
 	}
 }
 
+func TestNormalizeListStyles(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"bare ul", "<ul><li>a</li></ul>", `<ul style="padding-left:1.5em;margin:0.3em 0"><li>a</li></ul>`},
+		{"bare ol", "<ol><li>a</li></ol>", `<ol style="padding-left:1.5em;margin:0.3em 0"><li>a</li></ol>`},
+		{"ul with style", `<ul style="color:red"><li>a</li></ul>`, `<ul style="padding-left:1.5em;margin:0.3em 0; color:red"><li>a</li></ul>`},
+		{"ul with existing margin", `<ul style="margin:10px"><li>a</li></ul>`, `<ul style="margin:10px"><li>a</li></ul>`},
+		{"ul with existing padding-left", `<ul style="padding-left:2em"><li>a</li></ul>`, `<ul style="padding-left:2em"><li>a</li></ul>`},
+		{"ul with class", `<ul class="list"><li>a</li></ul>`, `<ul style="padding-left:1.5em;margin:0.3em 0" class="list"><li>a</li></ul>`},
+		{"uppercase UL", `<UL><li>a</li></UL>`, `<UL style="padding-left:1.5em;margin:0.3em 0"><li>a</li></UL>`},
+		{"nested lists", `<ul><li>a<ol><li>b</li></ol></li></ul>`,
+			`<ul style="padding-left:1.5em;margin:0.3em 0"><li>a<ol style="padding-left:1.5em;margin:0.3em 0"><li>b</li></ol></li></ul>`},
+		{"no lists", "<p>text</p>", "<p>text</p>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeListStyles(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeListStyles(%q)\ngot:  %q\nwant: %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func extractHeader(content, name string) string {
 	for _, line := range strings.Split(content, "\r\n") {
 		if strings.HasPrefix(line, name+": ") {

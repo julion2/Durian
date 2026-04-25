@@ -344,6 +344,14 @@ class EmailSendingManager: ObservableObject {
         // Only remove the exact black value — preserve intentional color choices.
         result = result.replacingOccurrences(
             of: #"color: rgb\(0,\s*0,\s*0\);?\s*"#, with: "", options: .regularExpression)
+        // Strip paste-inherited -apple-system font-family (Apple-only value that
+        // overrides the cross-platform font stack on the wrapper div)
+        // Pass 1: preceded by semicolon (middle/end of style)
+        result = result.replacingOccurrences(
+            of: #";\s*font-family:\s*[^;"]*-apple-system[^;"]*"#, with: "", options: .regularExpression)
+        // Pass 2: at start of style (with optional trailing semicolon)
+        result = result.replacingOccurrences(
+            of: #"font-family:\s*[^;"]*-apple-system[^;"]*;?\s*"#, with: "", options: .regularExpression)
         // Clean up empty style attributes left behind
         result = result.replacingOccurrences(
             of: #" style=\"\s*\""#, with: "", options: .regularExpression)
@@ -367,6 +375,6 @@ class EmailSendingManager: ObservableObject {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\n", with: "<br>")
-        return "<div style=\"font-family: -apple-system, monospace; font-size: 13px; color: #666; white-space: pre-wrap;\">\(escaped)</div>"
+        return "<div style=\"font-family: system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; font-size: 13px; color: #666; white-space: pre-wrap;\">\(escaped)</div>"
     }
 }
