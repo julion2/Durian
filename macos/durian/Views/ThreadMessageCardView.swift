@@ -457,6 +457,12 @@ struct ThreadMessageCardView: View {
     }
 
     private func fetchAttachmentData(_ attachment: AttachmentInfo) async -> Data? {
+        // Check cache first
+        if let cached = AttachmentCacheManager.shared.get(messageId: message.id, partId: attachment.partId) {
+            Log.debug("ATTACHMENT", "Cache hit for \(attachment.filename)")
+            return cached
+        }
+
         guard let backend = AccountManager.shared.emailBackend else {
             downloadStates[attachment.partId] = .failed(error: "Not connected")
             scheduleErrorClear(attachment.partId)
@@ -466,6 +472,11 @@ struct ThreadMessageCardView: View {
             let (data, _) = try await backend.downloadAttachment(
                 messageId: message.id,
                 partId: attachment.partId
+            )
+            // Cache for future access
+            AttachmentCacheManager.shared.put(
+                messageId: message.id, partId: attachment.partId,
+                filename: attachment.filename, data: data
             )
             return data
         } catch {

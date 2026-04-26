@@ -52,6 +52,11 @@ class SettingsManager: ObservableObject {
     var fullSyncInterval: TimeInterval {
         syncSettings.fullSyncInterval
     }
+
+    /// Attachment cache settings
+    var attachmentCacheSettings: AttachmentCacheSettings {
+        syncSettings.attachmentCache
+    }
     
     // MARK: - Public API
     

@@ -16,6 +16,12 @@ class SyncConfig {
   auto_fetch_interval: Int(this > 0) = 120
   full_sync_interval: Int(this > 0) = 7200
   tag_sync: TagSyncConfig?
+  attachment_cache: AttachmentCacheConfig?
+}
+
+class AttachmentCacheConfig {
+  max_size_mb: Int(this > 0) = 100
+  ttl_days: Int(this > 0) = 7
 }
 
 class TagSyncConfig {

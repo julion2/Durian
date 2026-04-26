@@ -48,23 +48,48 @@ struct SyncSettings: Codable {
     var guiAutoSync: Bool = true
     var autoFetchInterval: TimeInterval = 120.0
     var fullSyncInterval: TimeInterval = 7200
-    
+    var attachmentCache: AttachmentCacheSettings = AttachmentCacheSettings()
+
     enum CodingKeys: String, CodingKey {
         case mode
         case guiAutoSync = "gui_auto_sync"
         case autoFetchInterval = "auto_fetch_interval"
         case fullSyncInterval = "full_sync_interval"
+        case attachmentCache = "attachment_cache"
     }
-    
+
     init() {}
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "bidirectional"
         guiAutoSync = try container.decodeIfPresent(Bool.self, forKey: .guiAutoSync) ?? true
         autoFetchInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .autoFetchInterval) ?? 120.0
         fullSyncInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .fullSyncInterval) ?? 7200
+        attachmentCache = try container.decodeIfPresent(AttachmentCacheSettings.self, forKey: .attachmentCache) ?? AttachmentCacheSettings()
     }
+}
+
+/// Attachment cache settings from [sync.attachment_cache] section
+struct AttachmentCacheSettings: Codable {
+    var maxSizeMB: Int = 100
+    var ttlDays: Int = 7
+
+    enum CodingKeys: String, CodingKey {
+        case maxSizeMB = "max_size_mb"
+        case ttlDays = "ttl_days"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        maxSizeMB = try container.decodeIfPresent(Int.self, forKey: .maxSizeMB) ?? 100
+        ttlDays = try container.decodeIfPresent(Int.self, forKey: .ttlDays) ?? 7
+    }
+
+    var maxSizeBytes: Int64 { Int64(maxSizeMB) * 1_048_576 }
+    var ttl: TimeInterval { TimeInterval(ttlDays) * 86_400 }
 }
 
 struct AppConfig: Codable {
