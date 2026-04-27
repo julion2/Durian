@@ -61,7 +61,7 @@ func (c *Config) GetAccountByName(name string) (*AccountConfig, error) {
 	}
 
 	for i := range c.Accounts {
-		if c.Accounts[i].Name == name {
+		if strings.EqualFold(c.Accounts[i].Name, name) {
 			return &c.Accounts[i], nil
 		}
 	}

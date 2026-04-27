@@ -106,6 +106,12 @@ struct EmailDetailView: View {
         case .loaded:
             // Use thread messages from CLI if available
             if let messages = email.threadMessages, !messages.isEmpty {
+                Color.clear.frame(height: 0)
+                    .onAppear {
+                        if let backend = AccountManager.shared.emailBackend {
+                            AttachmentCacheManager.shared.prefetch(messages: messages, backend: backend)
+                        }
+                    }
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     Color.clear.frame(height: 0)
                         .id("msg-\(index)")

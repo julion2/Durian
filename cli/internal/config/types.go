@@ -19,10 +19,17 @@ type SettingsConfig struct {
 
 // SyncConfig contains sync settings from config.pkl [sync].
 type SyncConfig struct {
-	GuiAutoSync       bool          `pkl:"gui_auto_sync" json:"gui_auto_sync"`
-	AutoFetchInterval int           `pkl:"auto_fetch_interval" json:"auto_fetch_interval"`
-	FullSyncInterval  int           `pkl:"full_sync_interval" json:"full_sync_interval"`
-	TagSync           *TagSyncConfig `pkl:"tag_sync" json:"tag_sync"`
+	GuiAutoSync       bool                   `pkl:"gui_auto_sync" json:"gui_auto_sync"`
+	AutoFetchInterval int                    `pkl:"auto_fetch_interval" json:"auto_fetch_interval"`
+	FullSyncInterval  int                    `pkl:"full_sync_interval" json:"full_sync_interval"`
+	TagSync           *TagSyncConfig         `pkl:"tag_sync" json:"tag_sync"`
+	AttachmentCache   *AttachmentCacheConfig `pkl:"attachment_cache" json:"attachment_cache"`
+}
+
+// AttachmentCacheConfig configures the GUI attachment cache.
+type AttachmentCacheConfig struct {
+	MaxSizeMB int `pkl:"max_size_mb" json:"max_size_mb"` // Max cache size in MB (default: 100)
+	TTLDays   int `pkl:"ttl_days" json:"ttl_days"`       // Days to keep cached attachments (default: 7)
 }
 
 // TagSyncConfig configures the optional remote tag sync server.

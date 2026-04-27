@@ -20,6 +20,9 @@ sync {
 
   // Optional: sync tags across machines via a self-hosted sync server.
   // tag_sync { url = "http://nas:8724"; api_key = "your-secret" }
+
+  // Optional: attachment cache settings (GUI prefetches on thread open).
+  // attachment_cache { max_size_mb = 100; ttl_days = 7 }
 }
 
 signatures {
