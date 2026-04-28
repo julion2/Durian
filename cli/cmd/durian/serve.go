@@ -93,7 +93,7 @@ func runServe(cmd *cobra.Command, args []string) {
 	eventHub := handler.NewEventHub()
 
 	r := mux.NewRouter()
-	addr := fmt.Sprintf(":%d", servePort)
+	addr := fmt.Sprintf("127.0.0.1:%d", servePort)
 	allowedHost := fmt.Sprintf("localhost:%d", servePort)
 	allowedHostIP := fmt.Sprintf("127.0.0.1:%d", servePort)
 	r.Use(func(next http.Handler) http.Handler {
