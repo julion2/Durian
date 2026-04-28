@@ -50,6 +50,7 @@ type OutboxAttachment struct {
 
 // EnqueueOutboxHandler handles POST /api/v1/outbox/send.
 func (h *Handler) EnqueueOutboxHandler(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20) // 50 MB (attachments)
 	var draft OutboxDraft
 	if err := json.NewDecoder(r.Body).Decode(&draft); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)

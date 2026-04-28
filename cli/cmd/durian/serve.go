@@ -193,8 +193,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	server := &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:           addr,
+		Handler:        r,
+		ReadTimeout:    30 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
 	// Graceful shutdown

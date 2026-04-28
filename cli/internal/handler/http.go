@@ -178,6 +178,7 @@ func (h *Handler) TagThreadHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	threadID := vars["thread_id"]
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
 	var tagRequest struct {
 		Tags string `json:"tags"`
 	}
