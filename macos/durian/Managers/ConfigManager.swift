@@ -172,8 +172,7 @@ class ConfigManager {
     }
 
     private func getConfigURL() -> URL {
-        let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        return homeURL.appendingPathComponent(".config/durian/config.pkl")
+        FileManager.default.durianConfigURL().appendingPathComponent("config.pkl")
     }
     
     // MARK: - Public API

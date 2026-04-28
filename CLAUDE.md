@@ -15,7 +15,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 
 ## Project Structure
 
-- Config dir: `~/.config/durian/` (`config.pkl`, `keymaps.pkl`, `profiles.pkl`, `rules.pkl`, `groups.pkl`; see `docs/*-example.pkl`). Config uses [Apple Pkl](https://pkl-lang.org) — evaluated via `pkl eval --format json` at runtime. Schemas are embedded in the binary (`schema/*.pkl`) and provided via `--module-path`. Requires `pkl` CLI (`brew install pkl`).
+- Config dir: `~/.config/durian/` (or `$XDG_CONFIG_HOME/durian/`) — files: `config.pkl`, `keymaps.pkl`, `profiles.pkl`, `rules.pkl`, `groups.pkl` (see `docs/*-example.pkl`). Config uses [Apple Pkl](https://pkl-lang.org) — evaluated via `pkl eval --format json` at runtime. Schemas are embedded in the binary (`schema/*.pkl`) and provided via `--module-path`. Requires `pkl` CLI (`brew install pkl`).
 - `cli/` — Go 1.24 (Cobra), IMAP sync, SMTP send, SQLite store, HTTP API server
   - `cli/cmd/durian/` — CLI commands (sync, send, serve, search, tag, contacts, draft, auth)
   - `cli/internal/` — Internal packages (config, imap, smtp, handler, store, oauth, mail, encoding, contacts, draft, keychain, protocol)
