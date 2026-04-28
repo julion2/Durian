@@ -301,7 +301,7 @@ func TestDecodeHeader(t *testing.T) {
 	}
 }
 
-func TestStripHTMLTags(t *testing.T) {
+func TestHTMLToText(t *testing.T) {
 	tests := []struct {
 		name     string
 		html     string
@@ -323,14 +323,14 @@ func TestStripHTMLTags(t *testing.T) {
 			expected: "Hello World",
 		},
 		{
-			name:     "Self-closing tags",
+			name:     "Self-closing br",
 			html:     "Hello<br/>World",
-			expected: "HelloWorld",
+			expected: "Hello\nWorld",
 		},
 		{
 			name:     "Multiple paragraphs",
 			html:     "<p>Hello</p><p>World</p>",
-			expected: "HelloWorld",
+			expected: "Hello\n\nWorld",
 		},
 		{
 			name:     "Empty string",
@@ -338,22 +338,27 @@ func TestStripHTMLTags(t *testing.T) {
 			expected: "",
 		},
 		{
-			name:     "Tags with attributes",
+			name:     "Link with href",
 			html:     `<a href="http://example.com">Link</a>`,
-			expected: "Link",
+			expected: "Link (http://example.com)",
 		},
 		{
-			name:     "Script and style should be removed",
+			name:     "Script and style removed",
 			html:     "<div>Hello<script>alert('x')</script>World</div>",
-			expected: "Helloalert('x')World",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "Style tag removed",
+			html:     "<style>.foo{color:red}</style><p>Text</p>",
+			expected: "Text",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := stripHTMLTags(tt.html)
+			result := HTMLToText(tt.html)
 			if result != tt.expected {
-				t.Errorf("stripHTMLTags() = %q, want %q", result, tt.expected)
+				t.Errorf("HTMLToText() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
