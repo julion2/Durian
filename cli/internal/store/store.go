@@ -28,8 +28,11 @@ func Open(dbPath string) (*DB, error) {
 		}
 
 		dir := filepath.Dir(dbPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return nil, fmt.Errorf("create db directory: %w", err)
+		}
+		if err := os.Chmod(dir, 0700); err != nil {
+			return nil, fmt.Errorf("chmod db directory: %w", err)
 		}
 	}
 

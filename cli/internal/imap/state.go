@@ -289,8 +289,11 @@ func (sm *StateManager) lockPath(email string) string {
 // Uses non-blocking flock with retry to avoid hanging indefinitely
 // when another process (e.g. watcher) holds the lock.
 func (sm *StateManager) acquireLock(email string) (*os.File, error) {
-	if err := os.MkdirAll(sm.cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(sm.cacheDir, 0700); err != nil {
 		return nil, fmt.Errorf("failed to create cache dir: %w", err)
+	}
+	if err := os.Chmod(sm.cacheDir, 0700); err != nil {
+		return nil, fmt.Errorf("failed to chmod cache dir: %w", err)
 	}
 
 	lockFile, err := os.OpenFile(sm.lockPath(email), os.O_CREATE|os.O_RDWR, 0644)

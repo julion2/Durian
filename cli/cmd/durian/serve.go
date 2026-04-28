@@ -48,7 +48,8 @@ func runServe(cmd *cobra.Command, args []string) {
 		level = slog.LevelDebug
 	}
 	stateDir := config.DefaultStateDir()
-	os.MkdirAll(stateDir, 0o755)
+	os.MkdirAll(stateDir, 0o700)
+	os.Chmod(stateDir, 0o700)
 	logPath := filepath.Join(stateDir, "serve.log")
 	if f, err := os.Create(logPath); err == nil {
 		defer f.Close()
