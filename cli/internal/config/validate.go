@@ -275,6 +275,8 @@ var (
 		"next_message": "Next message", "prev_message": "Previous message",
 		"next_profile": "Next profile", "prev_profile": "Previous profile",
 		"open_in_browser": "Open in browser", "copy_link": "Copy link",
+		"go_folder": "Go to folder by position", "next_folder": "Next folder",
+		"prev_folder": "Previous folder", "folder_picker": "Open folder picker",
 	}
 	validKeymapModifiers = map[string]bool{"cmd": true, "ctrl": true, "shift": true}
 	validKeymapContexts  = map[string]bool{
