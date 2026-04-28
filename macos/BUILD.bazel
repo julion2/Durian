@@ -247,6 +247,21 @@ swift_test(
 )
 
 swift_test(
+    name = "keymaps_merge_test",
+    size = "small",
+    srcs = ["tests/KeymapsMergeTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_keymaps_merge_test",
+    size = "small",
+    srcs = ["tests/KeymapsMergeTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
+swift_test(
     name = "sequence_matcher_test",
     size = "small",
     srcs = ["tests/SequenceMatcherTests.swift"],

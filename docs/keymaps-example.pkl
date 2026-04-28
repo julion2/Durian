@@ -1,12 +1,20 @@
 // Durian Keymaps Configuration
 // Copy to ~/.config/durian/keymaps.pkl
-// These are the defaults. Only include keymaps you want to change.
 //
-// All vim-style keybindings are fully configurable.
+// Your keymaps are MERGED with the built-in defaults below.
+// Only include keymaps you want to override, add, or disable.
+// Bindings match by (key + modifiers + context) — same combo = override.
+//
 // sequence = true  : multi-key sequence (e.g. "gg", "dd", "gi")
 // supports_count   : accepts count prefix (e.g. "5j" = move down 5)
+// enabled = false  : disable a default binding
 // modifiers        : { "cmd" }, { "ctrl" }, { "shift" }, or omit for none
 // context          : "list" (default), "search", "tag_picker", "thread", "compose_normal"
+//
+// Examples:
+//   Override:  new { action = "archive"; key = "e" }          // rebind archive from "a" to "e"
+//   Disable:   new { action = "delete"; key = "dd"; sequence = true; enabled = false }
+//   Add new:   new { action = "tag_op"; key = "T"; tags = "+todo -inbox" }
 
 global_settings {
   keymaps_enabled = true
@@ -14,10 +22,16 @@ global_settings {
   sequence_timeout = 1.0              // seconds to wait for next key in sequence
 }
 
+// ── Built-in defaults (reference) ────────────────────────────
+// These are active even without a keymaps.pkl file.
+// Copy only the lines you want to change into your keymaps.pkl.
+
 keymaps {
   // ── Navigation ─────────────────────────────────────────────
   new { action = "next_email";  key = "j";  supports_count = true }
   new { action = "prev_email";  key = "k";  supports_count = true }
+  new { action = "next_email";  key = "Down" }
+  new { action = "prev_email";  key = "Up" }
   new { action = "first_email"; key = "gg"; sequence = true }
   new { action = "last_email";  key = "G" }
   new { action = "page_down";   key = "d";  modifiers { "ctrl" }; supports_count = true }
@@ -25,15 +39,16 @@ keymaps {
 
   // ── Actions ────────────────────────────────────────────────
   new { action = "archive";      key = "a" }
-  new { action = "delete";       key = "dd"; sequence = true }
+  new { action = "delete";       key = "dd"; sequence = true; supports_count = true }
   new { action = "toggle_read";  key = "u" }
   new { action = "toggle_star";  key = "s" }
   new { action = "tag_picker";   key = "t" }
 
   // ── Tag Operations (configurable tag shortcuts) ────────────
   // tag_op applies +/- tag operations defined in the "tags" field.
-  new { action = "tag_op"; key = "T"; tags = "+todo -inbox" }
-  new { action = "tag_op"; key = "W"; tags = "+waiting -inbox" }
+  // These have no defaults — add your own:
+  // new { action = "tag_op"; key = "T"; tags = "+todo -inbox" }
+  // new { action = "tag_op"; key = "W"; tags = "+waiting -inbox" }
 
   // ── Compose ────────────────────────────────────────────────
   new { action = "compose";   key = "c" }
@@ -46,10 +61,24 @@ keymaps {
   new { action = "go_sent";    key = "gs"; sequence = true }
   new { action = "go_drafts";  key = "gd"; sequence = true }
   new { action = "go_archive"; key = "ga"; sequence = true }
+  new { action = "go_folder";  key = "g1"; sequence = true }
+  new { action = "go_folder";  key = "g2"; sequence = true }
+  new { action = "go_folder";  key = "g3"; sequence = true }
+  new { action = "go_folder";  key = "g4"; sequence = true }
+  new { action = "go_folder";  key = "g5"; sequence = true }
+  new { action = "go_folder";  key = "g6"; sequence = true }
+  new { action = "go_folder";  key = "g7"; sequence = true }
+  new { action = "go_folder";  key = "g8"; sequence = true }
+  new { action = "go_folder";  key = "g9"; sequence = true }
+  new { action = "next_folder"; key = "J" }
+  new { action = "prev_folder"; key = "K" }
+  new { action = "folder_picker"; key = "gf"; sequence = true }
 
   // ── Search & UI ────────────────────────────────────────────
   new { action = "search";       key = "/" }
+  new { action = "search";       key = "/"; modifiers { "cmd" } }
   new { action = "close_detail"; key = "q" }
+  new { action = "close_detail"; key = "Escape" }
   new { action = "reload_inbox"; key = "r"; modifiers { "cmd" } }
 
   // ── Selection (Visual Mode) ────────────────────────────────
@@ -61,10 +90,14 @@ keymaps {
   // ── Search Popup (context = "search") ──────────────────────
   new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "search" }
   new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "search" }
+  new { action = "select_next"; key = "n"; modifiers { "ctrl" }; context = "search" }
+  new { action = "select_prev"; key = "p"; modifiers { "ctrl" }; context = "search" }
 
   // ── Tag Picker (context = "tag_picker") ────────────────────
   new { action = "select_next"; key = "j"; modifiers { "ctrl" }; context = "tag_picker" }
   new { action = "select_prev"; key = "k"; modifiers { "ctrl" }; context = "tag_picker" }
+  new { action = "select_next"; key = "n"; modifiers { "ctrl" }; context = "tag_picker" }
+  new { action = "select_prev"; key = "p"; modifiers { "ctrl" }; context = "tag_picker" }
 
   // ── Compose Vim Mode (context = "compose_normal") ──────────
   new { action = "exit_insert"; key = "jk"; sequence = true; context = "compose_normal" }
@@ -73,8 +106,13 @@ keymaps {
   new { action = "enter_thread"; key = "l" }
   new { action = "scroll_down";  key = "j"; context = "thread"; supports_count = true }
   new { action = "scroll_up";    key = "k"; context = "thread"; supports_count = true }
+  new { action = "page_down";    key = "d"; modifiers { "ctrl" }; context = "thread"; supports_count = true }
+  new { action = "page_up";      key = "u"; modifiers { "ctrl" }; context = "thread"; supports_count = true }
   new { action = "next_message"; key = "n"; context = "thread"; supports_count = true }
   new { action = "prev_message"; key = "N"; context = "thread"; supports_count = true }
+  new { action = "first_email";  key = "gg"; sequence = true; context = "thread" }
+  new { action = "last_email";   key = "G"; context = "thread" }
   new { action = "close_detail"; key = "h"; context = "thread" }
+  new { action = "close_detail"; key = "Escape"; context = "thread" }
   new { action = "reply";        key = "r"; context = "thread" }
 }

@@ -31,7 +31,8 @@ class KeymapsManager: ObservableObject {
 
         do {
             keymaps = try PklEvaluator.evalSync(KeymapConfig.self, from: pklURL)
-            Log.info("KEYMAPS", "Loaded from: \(pklURL.path)")
+            keymaps.keymaps = mergeWithDefaults(userKeymaps: keymaps.keymaps)
+            Log.info("KEYMAPS", "Loaded \(keymaps.keymaps.count) keymaps (merged with defaults)")
         } catch {
             Log.error("KEYMAPS", "Failed to load: \(error)")
             keymaps = KeymapConfig()
@@ -121,6 +122,27 @@ class KeymapsManager: ObservableObject {
         ]
     }
 
+    /// Merges user-defined keymaps with the built-in defaults.
+    /// User entries override defaults that share the same (key + modifiers + context).
+    /// Entries with enabled=false are removed from the final result.
+    func mergeWithDefaults(userKeymaps: [KeymapEntry]) -> [KeymapEntry] {
+        let userByKey = Dictionary(userKeymaps.map { ($0.bindingKey, $0) }, uniquingKeysWith: { _, last in last })
+        var seen = Set<String>()
+
+        // Defaults first — replaced by user entry if same bindingKey exists
+        var merged = getDefaultKeymaps().map { entry -> KeymapEntry in
+            seen.insert(entry.bindingKey)
+            return userByKey[entry.bindingKey] ?? entry
+        }
+
+        // Append user entries that don't overlap with any default
+        for entry in userKeymaps where !seen.contains(entry.bindingKey) {
+            merged.append(entry)
+        }
+
+        return merged.filter { $0.enabled }
+    }
+
     private func getKeymapsURL() -> URL {
         let homeURL = FileManager.default.homeDirectoryForCurrentUser
         return homeURL.appendingPathComponent(".config/durian/keymaps.pkl")
@@ -191,13 +213,14 @@ struct KeymapEntry: Codable {
     var action: String
     var key: String
     var modifiers: [String]
+    var enabled: Bool
     var sequence: Bool
     var supportsCount: Bool
     var context: String
     var tags: String?  // For tag_op action: "+todo -inbox"
 
     enum CodingKeys: String, CodingKey {
-        case action, key, modifiers, sequence
+        case action, key, modifiers, enabled, sequence
         case supportsCount = "supports_count"
         case context, tags
     }
@@ -207,20 +230,28 @@ struct KeymapEntry: Codable {
         action = try container.decode(String.self, forKey: .action)
         key = try container.decode(String.self, forKey: .key)
         modifiers = try container.decodeIfPresent([String].self, forKey: .modifiers) ?? []
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         sequence = try container.decodeIfPresent(Bool.self, forKey: .sequence) ?? false
         supportsCount = try container.decodeIfPresent(Bool.self, forKey: .supportsCount) ?? false
         context = try container.decodeIfPresent(String.self, forKey: .context) ?? "list"
         tags = try container.decodeIfPresent(String.self, forKey: .tags)
     }
 
-    init(action: String, key: String, modifiers: [String] = [], sequence: Bool = false, supportsCount: Bool = false, context: String = "list", tags: String? = nil) {
+    init(action: String, key: String, modifiers: [String] = [], enabled: Bool = true, sequence: Bool = false, supportsCount: Bool = false, context: String = "list", tags: String? = nil) {
         self.action = action
         self.key = key
         self.modifiers = modifiers
+        self.enabled = enabled
         self.sequence = sequence
         self.supportsCount = supportsCount
         self.context = context
         self.tags = tags
+    }
+
+    /// The identity used for merging: same key + modifiers + context = same binding slot.
+    var bindingKey: String {
+        let mods = modifiers.sorted().joined(separator: "+")
+        return "\(key)|\(mods)|\(context)"
     }
 }
 
