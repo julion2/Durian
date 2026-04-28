@@ -1,6 +1,15 @@
 import Foundation
 
 extension FileManager {
+    /// Returns the durian config directory, respecting XDG_CONFIG_HOME.
+    /// Falls back to ~/.config/durian/ if XDG_CONFIG_HOME is unset.
+    func durianConfigURL() -> URL {
+        if let xdg = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"], !xdg.isEmpty {
+            return URL(fileURLWithPath: xdg).appendingPathComponent("durian")
+        }
+        return homeDirectoryForCurrentUser.appendingPathComponent(".config/durian")
+    }
+
     func resolveDurianPath() -> String? {
         // 1. Check ~/.local/bin/durian
         let homeURL = self.homeDirectoryForCurrentUser

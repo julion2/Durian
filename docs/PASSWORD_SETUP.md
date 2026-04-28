@@ -6,26 +6,29 @@ On Linux, install `secret-tool` (libsecret). Then use `durian auth login <accoun
 
 ## Config + Login
 
-Add to your config.toml:
+Add to your config.pkl:
 
-```toml
-[[accounts]]
-name = "GMX"
-email = "you@gmx.de"
-
-[accounts.smtp]
-host = "mail.gmx.net"
-port = 587
-auth = "password"
-max_attachment_size = "20MB"
-
-[accounts.imap]
-host = "imap.gmx.net"
-port = 993
-auth = "password"
-
-[accounts.auth]
-username = "you@gmx.de"
+```pkl
+accounts {
+  new {
+    name = "GMX"
+    email = "you@gmx.de"
+    smtp {
+      host = "mail.gmx.net"
+      port = 587
+      auth = "password"
+      max_attachment_size = "20MB"
+    }
+    imap {
+      host = "imap.gmx.net"
+      port = 993
+      auth = "password"
+    }
+    auth {
+      username = "you@gmx.de"
+    }
+  }
+}
 ```
 
 Then run:

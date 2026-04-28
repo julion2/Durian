@@ -163,9 +163,7 @@ struct DurianApp: App {
     }
 
     private func openConfig() {
-        let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        let configURL = homeURL.appendingPathComponent(".config/durian/config.pkl")
-        
+        let configURL = FileManager.default.durianConfigURL().appendingPathComponent("config.pkl")
         NSWorkspace.shared.open(configURL)
     }
 }

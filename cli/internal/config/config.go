@@ -44,6 +44,32 @@ func DefaultPath() string {
 	return filepath.Join(home, ".config", "durian", "config.pkl")
 }
 
+// DefaultDataDir returns the durian data directory.
+// Respects XDG_DATA_HOME, falls back to ~/.local/share/durian
+func DefaultDataDir() string {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "durian")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "share", "durian")
+}
+
+// DefaultStateDir returns the durian state directory.
+// Respects XDG_STATE_HOME, falls back to ~/.local/state/durian
+func DefaultStateDir() string {
+	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
+		return filepath.Join(xdg, "durian")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".local", "state", "durian")
+}
+
 // ExpandPath expands ~ and environment variables in path
 func ExpandPath(path string) string {
 	if path == "" {

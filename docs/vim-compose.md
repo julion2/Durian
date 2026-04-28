@@ -116,13 +116,11 @@ Yank and delete operations copy to the system clipboard.
 
 ## Configuration
 
-Exit sequences for insert → normal mode are configured in `keymaps.toml`:
+Exit sequences for insert → normal mode are configured in `keymaps.pkl`:
 
-```toml
-[[keymaps]]
-action = "exit_insert"
-key = "jk"
-context = "compose_normal"
-enabled = true
-sequence = true
+```pkl
+// In keymaps.pkl
+keymaps {
+  new { action = "exit_insert"; key = "jk"; context = "compose_normal"; sequence = true }
+}
 ```

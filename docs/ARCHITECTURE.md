@@ -64,13 +64,13 @@ The GUI never talks IMAP directly. Every action the user takes in the UI — ope
 
 ### Config file ownership
 
-`~/.config/durian/config.toml` is **read by both the Go CLI and the Swift GUI**, each with its own TOML parser. Fields land in one of three categories:
+`~/.config/durian/config.pkl` (or `$XDG_CONFIG_HOME/durian/config.pkl`) is **read by both the Go CLI and the Swift GUI**, each with its own Pkl evaluator. Fields land in one of three categories:
 
 - **Go-only** (e.g. `accounts.imap.host`, `sync.tag_sync.url`) — consumed by `durian sync`, `durian serve`, etc.
 - **Swift-only** (e.g. `settings.theme`, `sync.gui_auto_sync`) — read directly by `macos/durian/Managers/ConfigManager.swift`.
 - **Shared for validation** (e.g. `settings.accent_color`) — Go's `durian validate` checks format before Swift loads.
 
-Go's TOML parser is **non-strict**, so unknown keys are silently ignored on each side. This is intentional: adding a GUI-only field to config.toml doesn't need a matching Go struct.
+Pkl schemas enforce structure at eval time, but each side only decodes the fields it needs. This is intentional: adding a GUI-only field to config.pkl doesn't need a matching Go struct.
 
 ### The HTTP API
 

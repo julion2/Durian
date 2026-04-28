@@ -90,8 +90,8 @@ class ProfileManager: ObservableObject {
     }
 
     func loadProfiles() {
-        let configURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/durian/profiles.pkl")
+        let configURL = FileManager.default.durianConfigURL()
+            .appendingPathComponent("profiles.pkl")
 
         let config: ProfilesConfig
         do {

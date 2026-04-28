@@ -20,12 +20,13 @@ omit `client_id` (the default will be used).
 6. Grant admin consent (required for work/school accounts)
 7. Copy **Application (client) ID**
 
-Add to config.toml (custom app):
-```toml
-[accounts.oauth]
-provider = "microsoft"
-client_id = "your-client-id"
-# tenant = "common"   # Optional: "common", "organizations", or your tenant ID/domain
+Add to config.pkl (custom app):
+```pkl
+oauth {
+  provider = "microsoft"
+  client_id = "your-client-id"
+  // tenant = "common"   // Optional: "common", "organizations", or your tenant ID/domain
+}
 ```
 
 Shared mailboxes: configure the shared mailbox as its own `[[accounts]]` entry
@@ -42,12 +43,13 @@ and set `auth_email` to the delegating user who has Full Access + Send As.
 5. Authorized redirect URI: `http://localhost:8080/callback`
 6. Copy **Client ID** and **Client Secret**
 
-Add to config.toml:
-```toml
-[accounts.oauth]
-provider = "google"
-client_id = "your-client-id"
-client_secret = "your-client-secret"
+Add to config.pkl:
+```pkl
+oauth {
+  provider = "google"
+  client_id = "your-client-id"
+  client_secret = "your-client-secret"
+}
 ```
 
 ## Usage

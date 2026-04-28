@@ -144,8 +144,7 @@ class KeymapsManager: ObservableObject {
     }
 
     private func getKeymapsURL() -> URL {
-        let homeURL = FileManager.default.homeDirectoryForCurrentUser
-        return homeURL.appendingPathComponent(".config/durian/keymaps.pkl")
+        FileManager.default.durianConfigURL().appendingPathComponent("keymaps.pkl")
     }
 
     

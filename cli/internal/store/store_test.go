@@ -46,8 +46,8 @@ func TestDefaultDBPath(t *testing.T) {
 	if !contains(path, "email.db") {
 		t.Errorf("path %q does not contain email.db", path)
 	}
-	if !contains(path, ".config/durian/") {
-		t.Errorf("path %q does not contain .config/durian/", path)
+	if !contains(path, "durian/") {
+		t.Errorf("path %q does not contain durian/", path)
 	}
 }
 

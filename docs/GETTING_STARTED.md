@@ -32,12 +32,12 @@ The GUI launches `durian serve` automatically as a child process — no manual d
 
 ## 2. Create your config
 
-Durian reads `~/.config/durian/config.toml`. Start from the example:
+Durian reads `~/.config/durian/config.pkl` (or `$XDG_CONFIG_HOME/durian/config.pkl`). Start from the example:
 
 ```bash
 mkdir -p ~/.config/durian
-curl -o ~/.config/durian/config.toml \
-  https://raw.githubusercontent.com/julion2/Durian/main/docs/config-example.toml
+curl -o ~/.config/durian/config.pkl \
+  https://raw.githubusercontent.com/julion2/Durian/main/docs/config-example.pkl
 ```
 
 Open it and delete the example accounts you don't need. For each account you keep:
@@ -48,24 +48,27 @@ Open it and delete the example accounts you don't need. For each account you kee
 
 A minimal password-auth config:
 
-```toml
-[[accounts]]
-name = "Personal"
-email = "you@example.com"
-alias = "personal"
-
-[accounts.smtp]
-host = "smtp.example.com"
-port = 587
-auth = "password"
-
-[accounts.imap]
-host = "imap.example.com"
-port = 993
-auth = "password"
-
-[accounts.auth]
-username = "you@example.com"
+```pkl
+accounts {
+  new {
+    name = "Personal"
+    email = "you@example.com"
+    alias = "personal"
+    smtp {
+      host = "smtp.example.com"
+      port = 587
+      auth = "password"
+    }
+    imap {
+      host = "imap.example.com"
+      port = 993
+      auth = "password"
+    }
+    auth {
+      username = "you@example.com"
+    }
+  }
+}
 ```
 
 Validate the config before touching auth:
@@ -128,9 +131,9 @@ See `durian --help` for the full command list.
 
 ## 6. Common next steps
 
-- **Sidebar folders and profiles** — copy `docs/profiles-example.toml` to `~/.config/durian/profiles.toml`
-- **Custom keymaps** — copy `docs/keymaps-example.toml` to `~/.config/durian/keymaps.toml`
-- **Filter rules** (auto-tag on sync) — copy `docs/rules-example.toml` to `~/.config/durian/rules.toml`
+- **Sidebar folders and profiles** — copy `docs/profiles-example.pkl` to `~/.config/durian/profiles.pkl`
+- **Custom keymaps** — copy `docs/keymaps-example.pkl` to `~/.config/durian/keymaps.pkl`
+- **Filter rules** (auto-tag on sync) — copy `docs/rules-example.pkl` to `~/.config/durian/rules.pkl`
 - **Multi-machine tag sync** — [sync/README.md](../sync/README.md)
 - **How it actually works** — [ARCHITECTURE.md](ARCHITECTURE.md)
 
