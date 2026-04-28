@@ -118,6 +118,8 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
     private var durianProcess: Process?
     private let decoder = JSONDecoder()
     private let baseURL = URL(string: "http://localhost:9723/api/v1")!
+    // Auth token for the current server session — static for cross-component access
+    nonisolated(unsafe) static var authToken: String?
 
     // MARK: - Published State (Protocol conformance)
     @Published var isConnected = false
@@ -198,31 +200,45 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         env["PATH"] = (extraPaths + [currentPath]).joined(separator: ":")
         durianProcess?.environment = env
 
-        // Go manages serve.log directly (truncate-on-start, leveled via slog)
-        durianProcess?.standardOutput = FileHandle.nullDevice
+        // Capture stdout to read the READY line with auth token
+        let stdoutPipe = Pipe()
+        durianProcess?.standardOutput = stdoutPipe
         durianProcess?.standardError = FileHandle.nullDevice
 
         do {
             try durianProcess?.run()
             Log.info("BACKEND", "Started durian server process")
 
-            // Give the server a moment to start
-            try? await Task.sleep(for: .seconds(1))
-
-            // Check if the server is reachable
-            var request = URLRequest(url: baseURL)
-            request.httpMethod = "HEAD" // Lightweight request to check server status
-            request.timeoutInterval = 10
-
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 { // 404 is ok, means our base endpoint is handled
-                isConnected = true
-                connectionStatus = "Connected"
-                Log.info("BACKEND", "Server is responsive")
-                await selectFolder("inbox")
-            } else {
-                throw NSError(domain: "EmailBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server not responsive"])
+            // Read the READY line from stdout (blocks until the server prints it)
+            let token = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<String, Error>) in
+                stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    guard !data.isEmpty, let line = String(data: data, encoding: .utf8) else {
+                        handle.readabilityHandler = nil
+                        continuation.resume(throwing: NSError(domain: "EmailBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Server closed stdout without READY"]))
+                        return
+                    }
+                    // Parse "READY token=<hex> addr=<addr>\n"
+                    if line.hasPrefix("READY token=") {
+                        handle.readabilityHandler = nil
+                        let parts = line.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ")
+                        for part in parts {
+                            if part.hasPrefix("token=") {
+                                let tokenValue = String(part.dropFirst(6))
+                                continuation.resume(returning: tokenValue)
+                                return
+                            }
+                        }
+                        continuation.resume(throwing: NSError(domain: "EmailBackend", code: -1, userInfo: [NSLocalizedDescriptionKey: "Malformed READY line"]))
+                    }
+                }
             }
+
+            Self.authToken = token
+            isConnected = true
+            connectionStatus = "Connected"
+            Log.info("BACKEND", "Server is ready, auth token received")
+            await selectFolder("inbox")
         } catch {
             connectionStatus = "Failed to start or connect to server: \(error.localizedDescription)"
             Log.error("BACKEND", connectionStatus)
@@ -319,6 +335,9 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 10
+        if let token = Self.authToken {
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         if let bodyData {
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -543,6 +562,9 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 60
+        if let token = Self.authToken {
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
 
         let signposter = Log.signposter(for: "HTTP")
         let endpoint = "/messages/\(encodedId)/attachments/\(partId)"

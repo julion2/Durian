@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -93,6 +97,15 @@ func runServe(cmd *cobra.Command, args []string) {
 	h := handler.New(emailDB, contactsDB)
 	eventHub := handler.NewEventHub()
 
+	// Generate auth token for this session
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		slog.Error("Failed to generate auth token", "module", "SERVE", "err", err)
+		os.Exit(1)
+	}
+	authToken := hex.EncodeToString(tokenBytes)
+	expectedHeader := []byte("Bearer " + authToken)
+
 	r := mux.NewRouter()
 	addr := fmt.Sprintf("127.0.0.1:%d", servePort)
 	allowedHost := fmt.Sprintf("localhost:%d", servePort)
@@ -103,6 +116,12 @@ func runServe(cmd *cobra.Command, args []string) {
 			if host != allowedHost && host != allowedHostIP &&
 				host != "localhost" && host != "127.0.0.1" {
 				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			// Verify auth token
+			auth := []byte(req.Header.Get("Authorization"))
+			if subtle.ConstantTimeCompare(auth, expectedHeader) != 1 {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
 			next.ServeHTTP(w, req)
@@ -193,22 +212,29 @@ func runServe(cmd *cobra.Command, args []string) {
 	}
 
 	server := &http.Server{
-		Addr:           addr,
 		Handler:        r,
 		ReadTimeout:    30 * time.Second,
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
-	// Graceful shutdown
+	// Bind first, then signal readiness with auth token on stdout
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		slog.Error("Could not listen", "module", "SERVE", "addr", addr, "err", err)
+		fmt.Fprintln(os.Stderr, "Error: could not listen on", addr, err)
+		os.Exit(1)
+	}
+
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Could not listen", "module", "SERVE", "addr", server.Addr, "err", err)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server error", "module", "SERVE", "err", err)
 			os.Exit(1)
 		}
 	}()
 
-	fmt.Println("Server is ready to handle requests at", server.Addr)
+	// Machine-readable ready line — GUI parses this from stdout pipe
+	fmt.Printf("READY token=%s addr=%s\n", authToken, addr)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

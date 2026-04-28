@@ -25,6 +25,12 @@ class DraftManager {
 
     private init() {}
 
+    private func authHeader(for request: inout URLRequest) {
+        if let token = EmailBackend.authToken {
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
     func saveDraft(_ draft: EmailDraft) {
         var cleaned = draft
         cleaned.to = Self.filterValidAddresses(draft.to)
@@ -42,6 +48,7 @@ class DraftManager {
             request.addValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
             request.timeoutInterval = 5
+            authHeader(for: &request)
 
             URLSession.shared.dataTask(with: request) { _, response, error in
                 if let error {
@@ -61,6 +68,7 @@ class DraftManager {
         var request = URLRequest(url: baseURL.appendingPathComponent(id.uuidString))
         request.httpMethod = "DELETE"
         request.timeoutInterval = 5
+        authHeader(for: &request)
 
         URLSession.shared.dataTask(with: request) { _, _, error in
             if let error {
