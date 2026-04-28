@@ -224,7 +224,7 @@ func (h *Handler) DownloadAttachment(messageID string, partID int, w http.Respon
 	defer cancel()
 
 	return h.fetcher.FetchAttachment(ctx, msg.Account, msg.Mailbox,
-		msg.UID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
+		msg.UID, messageID, storeAtt.Filename, storeAtt.ContentType, storeAtt.PartID, w)
 }
 
 // extractSenderEmail returns the lowercase email address from a

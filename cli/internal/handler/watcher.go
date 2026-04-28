@@ -24,6 +24,8 @@ import (
 type FetchRequest struct {
 	Mailbox     string    // mailbox to SELECT (e.g. "INBOX")
 	UID         uint32    // message UID
+	MessageID   string    // RFC 822 Message-ID for stale UID recovery
+	Account     string    // account identifier for DB updates
 	Filename    string    // primary match key for BODYSTRUCTURE walk
 	ContentType string    // secondary match key
 	PartIndex   int       // 1-based attachment index (store part_id) for fallback
@@ -268,12 +270,30 @@ func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchReques
 		return fmt.Errorf("select mailbox %s: %w", req.Mailbox, err)
 	}
 
-	bs, err := client.FetchBodyStructure(req.UID)
-	if err != nil {
-		return fmt.Errorf("fetch BODYSTRUCTURE: %w", err)
-	}
-	if bs == nil {
-		return fmt.Errorf("nil BODYSTRUCTURE for UID %d", req.UID)
+	uid := req.UID
+	bs, err := client.FetchBodyStructure(uid)
+	if err != nil || bs == nil {
+		// UID may be stale (message moved/expunged). Try to find current UID by Message-ID.
+		if req.MessageID != "" {
+			newUID, searchErr := client.SearchByMessageID(req.MessageID)
+			if searchErr == nil && newUID != 0 {
+				w.log.Info("Stale UID recovered via Message-ID search",
+					"old_uid", uid, "new_uid", newUID, "message_id", req.MessageID)
+				uid = newUID
+				if w.store != nil {
+					if dbErr := w.store.UpdateMailbox(req.MessageID, req.Account, req.Mailbox, newUID); dbErr != nil {
+						w.log.Warn("Failed to update stale UID in store", "message_id", req.MessageID, "err", dbErr)
+					}
+				}
+				bs, err = client.FetchBodyStructure(uid)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("fetch BODYSTRUCTURE: %w", err)
+		}
+		if bs == nil {
+			return fmt.Errorf("no message found for UID %d", uid)
+		}
 	}
 
 	sectionPath, encoding := findAttachmentSection(bs, req.Filename, req.PartIndex)
@@ -281,7 +301,7 @@ func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchReques
 		return fmt.Errorf("attachment %q not found in BODYSTRUCTURE", req.Filename)
 	}
 
-	w.log.Debug("Streaming attachment", "uid", req.UID, "section", sectionPath,
+	w.log.Debug("Streaming attachment", "uid", uid, "section", sectionPath,
 		"filename", req.Filename, "encoding", encoding)
 
 	// IMAP FETCH BODY[section] returns raw transfer-encoded bytes.
@@ -292,7 +312,7 @@ func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchReques
 		pr, pw := io.Pipe()
 		defer pr.Close()
 		go func() {
-			err := client.FetchBodySection(req.UID, sectionPath, pw)
+			err := client.FetchBodySection(uid, sectionPath, pw)
 			pw.CloseWithError(err)
 		}()
 		decoder := base64.NewDecoder(base64.StdEncoding, pr)
@@ -302,21 +322,21 @@ func (w *WatcherManager) handleFetchRequest(client *imap.Client, req FetchReques
 		pr, pw := io.Pipe()
 		defer pr.Close()
 		go func() {
-			err := client.FetchBodySection(req.UID, sectionPath, pw)
+			err := client.FetchBodySection(uid, sectionPath, pw)
 			pw.CloseWithError(err)
 		}()
 		_, err := io.Copy(dest, quotedprintable.NewReader(pr))
 		return err
 	default:
 		// 7bit, 8bit, binary — no decoding needed
-		return client.FetchBodySection(req.UID, sectionPath, dest)
+		return client.FetchBodySection(uid, sectionPath, dest)
 	}
 }
 
 // FetchAttachment implements AttachmentFetcher. Routes the request to the
 // appropriate account watcher's fetchCh, breaking its IDLE to perform the fetch.
 func (w *WatcherManager) FetchAttachment(ctx context.Context, account, mailbox string,
-	uid uint32, filename, contentType string, partIndex int, writer io.Writer) error {
+	uid uint32, messageID, filename, contentType string, partIndex int, writer io.Writer) error {
 
 	aw, ok := w.watchers[account]
 	if !ok {
@@ -326,6 +346,8 @@ func (w *WatcherManager) FetchAttachment(ctx context.Context, account, mailbox s
 	req := FetchRequest{
 		Mailbox:     mailbox,
 		UID:         uid,
+		MessageID:   messageID,
+		Account:     account,
 		Filename:    filename,
 		ContentType: contentType,
 		PartIndex:   partIndex,

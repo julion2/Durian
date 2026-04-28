@@ -17,7 +17,7 @@ type mockFetcher struct {
 }
 
 func (m *mockFetcher) FetchAttachment(_ context.Context, _, _ string,
-	_ uint32, _, _ string, _ int, w io.Writer) error {
+	_ uint32, _, _, _ string, _ int, w io.Writer) error {
 	_, err := w.Write(m.data)
 	return err
 }
