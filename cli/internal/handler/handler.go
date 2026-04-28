@@ -16,7 +16,7 @@ import (
 // Implemented by WatcherManager to break IDLE and stream BODY[section].
 type AttachmentFetcher interface {
 	FetchAttachment(ctx context.Context, account, mailbox string,
-		uid uint32, filename, contentType string, partIndex int,
+		uid uint32, messageID, filename, contentType string, partIndex int,
 		w io.Writer) error
 }
 
