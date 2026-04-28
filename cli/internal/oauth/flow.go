@@ -50,10 +50,10 @@ func StartFlow(provider *Provider, clientID, redirectURI string, pkce *PKCE) (*F
 	}
 	defer server.Shutdown(context.Background())
 
-	// Update redirect URI with actual port if using dynamic port
-	actualRedirectURI := fmt.Sprintf("http://localhost:%d%s", port, CallbackPath)
-	if redirectURI != actualRedirectURI {
-		authURL = provider.AuthorizationURL(clientID, actualRedirectURI, state, pkce)
+	// Verify callback server is on the expected port
+	if fmt.Sprintf("http://localhost:%d%s", port, CallbackPath) != redirectURI {
+		server.Shutdown(context.Background())
+		return nil, fmt.Errorf("callback server port mismatch")
 	}
 
 	// Open browser (user-facing CLI prompts go to stderr per CLI convention)
@@ -82,21 +82,10 @@ func StartFlow(provider *Provider, clientID, redirectURI string, pkce *PKCE) (*F
 
 // startCallbackServer starts an HTTP server to receive the OAuth callback
 func startCallbackServer(expectedState string, resultChan chan *FlowResult, errChan chan error) (*http.Server, int, error) {
-	// Try ports 8080-8090
-	var listener net.Listener
-	var port int
-	var err error
-
-	for p := 8080; p <= 8090; p++ {
-		listener, err = net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
-		if err == nil {
-			port = p
-			break
-		}
-	}
-
-	if listener == nil {
-		return nil, 0, fmt.Errorf("could not find available port (tried 8080-8090): %w", err)
+	const port = 8080
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return nil, 0, fmt.Errorf("OAuth callback port %d is in use, please free it and retry: %w", port, err)
 	}
 
 	mux := http.NewServeMux()
@@ -218,17 +207,12 @@ func Authenticate(provider *Provider, clientID, clientSecret, email string) (*To
 		return nil, fmt.Errorf("failed to generate PKCE: %w", err)
 	}
 
-	// Use a placeholder redirect URI - will be updated with actual port
 	redirectURI := "http://localhost:8080" + CallbackPath
 
-	// Start OAuth flow
 	result, err := StartFlow(provider, clientID, redirectURI, pkce)
 	if err != nil {
 		return nil, err
 	}
-
-	// Determine actual redirect URI (port might have changed)
-	// For now, we'll reconstruct it - in practice the server handles this
 
 	fmt.Fprintln(os.Stderr, "Exchanging authorization code for tokens...")
 
