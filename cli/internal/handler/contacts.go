@@ -100,6 +100,7 @@ func (h *Handler) IncrementContactUsageHandler(w http.ResponseWriter, r *http.Re
 	var req struct {
 		Emails []string `json:"emails"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
