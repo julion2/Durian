@@ -88,7 +88,11 @@ class EventStreamClient: ObservableObject {
     // MARK: - SSE Parser
 
     private func readStream() async throws {
-        let (bytes, response) = try await URLSession.shared.bytes(from: eventsURL)
+        var request = URLRequest(url: eventsURL)
+        if let token = EmailBackend.authToken {
+            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             Log.warning("EVENTS", "Server returned non-200, will retry")
