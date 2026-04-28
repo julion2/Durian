@@ -47,7 +47,9 @@ func runServe(cmd *cobra.Command, args []string) {
 	if debugMode {
 		level = slog.LevelDebug
 	}
-	logPath := filepath.Join(filepath.Dir(config.DefaultPath()), "serve.log")
+	stateDir := config.DefaultStateDir()
+	os.MkdirAll(stateDir, 0o755)
+	logPath := filepath.Join(stateDir, "serve.log")
 	if f, err := os.Create(logPath); err == nil {
 		defer f.Close()
 		slog.SetDefault(slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{Level: level})))

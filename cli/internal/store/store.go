@@ -209,9 +209,13 @@ func (d *DB) Init() error {
 }
 
 // DefaultDBPath returns the default database path for the email store.
+// Respects XDG_DATA_HOME, falls back to ~/.local/share/durian/email.db
 func DefaultDBPath() string {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "durian", "email.db")
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "durian", "email.db")
+	return filepath.Join(home, ".local", "share", "durian", "email.db")
 }
 
 // migrate checks the current schema version and applies pending migrations.

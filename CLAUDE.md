@@ -11,7 +11,8 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **Integration Tests:** `bazel test //integration:integration_test` (starts real server, validates API contract via curl+jq)
 - **Validate Config:** `durian validate` (checks config.pkl, rules.pkl, profiles.pkl, keymaps.pkl, groups.pkl)
 - **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
-- **Logs (CLI/Go):** `~/.config/durian/serve.log` (truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
+- **Logs (CLI/Go):** `~/.local/state/durian/serve.log` (or `$XDG_STATE_HOME/durian/serve.log`; truncated on each `durian serve` start). Default: Info+, with `--debug`: Debug+. Other commands: Error → stderr, with `--debug`: Debug+ → stderr.
+- **Data:** `~/.local/share/durian/` (or `$XDG_DATA_HOME/durian/`) — `email.db`, `contacts.db`
 
 ## Project Structure
 

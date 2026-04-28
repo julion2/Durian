@@ -12,10 +12,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// DefaultDBPath returns the default contacts database path
+// DefaultDBPath returns the default contacts database path.
+// Respects XDG_DATA_HOME, falls back to ~/.local/share/durian/contacts.db
 func DefaultDBPath() string {
+	if xdg := os.Getenv("XDG_DATA_HOME"); xdg != "" {
+		return filepath.Join(xdg, "durian", "contacts.db")
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "durian", "contacts.db")
+	return filepath.Join(home, ".local", "share", "durian", "contacts.db")
 }
 
 // DB represents a contacts database connection
