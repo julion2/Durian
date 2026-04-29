@@ -40,9 +40,9 @@ swift_library(
 )
 
 # Core library for CI tests — models, managers, utilities only (no Views).
-# Views use macOS 26 APIs (glassEffect) that require Xcode 26, but
-# rules_swift test_discoverer crashes on Xcode 26. This target compiles
-# on Xcode 16+ and is used by CI test targets.
+# Views use macOS 26 APIs (glassEffect) that require Xcode 26, but CI
+# runs on macos-15 with Xcode 16 which lacks these APIs. This target
+# compiles on Xcode 16+ and is used by CI test targets.
 swift_library(
     name = "durian_core",
     testonly = True,
