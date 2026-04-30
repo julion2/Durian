@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/smtp"
 	"strings"
@@ -112,6 +113,7 @@ func (c *Client) Send(msg *Message) error {
 
 	if c.Port == 465 {
 		// Port 465: implicit TLS — wrap connection in TLS before SMTP handshake
+		slog.Debug("Using implicit TLS", "module", "SMTP", "host", c.Host, "port", c.Port)
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: c.Host})
 		if err := tlsConn.Handshake(); err != nil {
 			return fmt.Errorf("TLS handshake failed: %w", err)
@@ -136,7 +138,7 @@ func (c *Client) Send(msg *Message) error {
 		return fmt.Errorf("HELO failed: %w", err)
 	}
 
-	// Check for STARTTLS support (not needed for port 465 which is already TLS)
+	// Require STARTTLS for all non-implicit-TLS connections
 	if c.Port != 465 {
 		if ok, _ := client.Extension("STARTTLS"); ok {
 			config := &tls.Config{
@@ -145,14 +147,15 @@ func (c *Client) Send(msg *Message) error {
 			if err := client.StartTLS(config); err != nil {
 				return fmt.Errorf("STARTTLS failed: %w", err)
 			}
-		} else if c.Port == 587 {
-			// Port 587 should support STARTTLS
-			return fmt.Errorf("server does not support STARTTLS")
+			slog.Debug("STARTTLS negotiated", "module", "SMTP", "host", c.Host, "port", c.Port)
+		} else {
+			return fmt.Errorf("server does not support STARTTLS (port %d)", c.Port)
 		}
 	}
 
 	// Authenticate
 	if c.Auth != nil {
+		slog.Debug("Authenticating", "module", "SMTP", "method", c.Auth.Method())
 		var smtpAuth smtp.Auth
 
 		switch a := c.Auth.(type) {
