@@ -1,4 +1,7 @@
-# Getting Started
+---
+title: Getting Started
+weight: 1
+---
 
 A sequential walkthrough from zero to a working inbox. If you already know how to install and configure an email client, skip to step 2.
 
@@ -7,23 +10,26 @@ A sequential walkthrough from zero to a working inbox. If you already know how t
 The CLI is the backend for everything — install it first, even if you plan to use the GUI.
 
 **macOS or Linux (Homebrew):**
+
 ```bash
 brew tap julion2/tap
 brew install durian             # CLI
 brew install --cask durian      # GUI (optional, macOS only)
 ```
 
-Linuxbrew (Homebrew on Linux) works for the CLI the same way. The macOS GUI cask is macOS-only; on Linux see [linux/README.md](../linux/README.md) for the experimental Qt GUI.
+Linuxbrew (Homebrew on Linux) works for the CLI the same way. The macOS GUI cask is macOS-only; on Linux see the [Linux GUI README](https://github.com/julion2/durian/tree/main/linux) for the experimental Qt GUI.
 
 **From source (macOS or Linux):**
+
 ```bash
-git clone https://github.com/julion2/Durian.git
-cd Durian
+git clone https://github.com/julion2/durian.git
+cd durian
 ./cli/install.sh            # CLI → /usr/local/bin
 ./macos/install.sh          # GUI → /Applications/Durian.app (macOS only)
 ```
 
 Verify:
+
 ```bash
 durian --version
 ```
@@ -37,7 +43,7 @@ Durian reads `~/.config/durian/config.pkl` (or `$XDG_CONFIG_HOME/durian/config.p
 ```bash
 mkdir -p ~/.config/durian
 curl -o ~/.config/durian/config.pkl \
-  https://raw.githubusercontent.com/julion2/Durian/main/docs/config-example.pkl
+  https://raw.githubusercontent.com/julion2/durian/main/docs/config-example.pkl
 ```
 
 Open it and delete the example accounts you don't need. For each account you keep:
@@ -72,6 +78,7 @@ accounts {
 ```
 
 Validate the config before touching auth:
+
 ```bash
 durian validate
 ```
@@ -80,13 +87,15 @@ durian validate
 
 Pick one guide based on your provider:
 
-- **Gmail or Microsoft 365** → [OAUTH_SETUP.md](OAUTH_SETUP.md)
-- **GMX, web.de, iCloud, Fastmail, custom IMAP** → [PASSWORD_SETUP.md](PASSWORD_SETUP.md)
+- **Gmail or Microsoft 365** → [OAuth setup](../auth/oauth/)
+- **GMX, web.de, iCloud, Fastmail, custom IMAP** → [Password setup](../auth/password/)
 
 After following the guide, you should be able to run:
+
 ```bash
 durian auth status
 ```
+
 and see your account marked as authenticated.
 
 ## 4. First sync
@@ -96,7 +105,8 @@ durian sync personal        # by alias
 ```
 
 You'll see progress output:
-```
+
+```text
 Syncing personal@example.com...
   ↓ INBOX: batch 1/3 (1-500)...
   ↓ INBOX: batch 2/3 (501-1000)...
@@ -108,6 +118,7 @@ If your mailbox is large, the first sync can take a few minutes. Subsequent sync
 ## 5. Use it
 
 ### Option A: GUI
+
 Launch **Durian.app** from `/Applications`. It'll auto-start the backend and show your inbox. Vim-style navigation is enabled by default:
 
 - `j` / `k` — next / previous email
@@ -116,9 +127,10 @@ Launch **Durian.app** from `/Applications`. It'll auto-start the backend and sho
 - `/` — search (Cmd+/ also works)
 - `gi` / `gs` / `gd` / `ga` — go to inbox / sent / drafts / archive
 
-Full keybinding reference: [vim-compose.md](vim-compose.md) (covers the compose editor; list navigation uses the standard vim keys above).
+Full keybinding reference: [Vim compose](../keymaps/vim-compose/) covers the compose editor; list navigation uses the standard vim keys above.
 
 ### Option B: CLI
+
 ```bash
 durian search "tag:inbox" -l 10       # latest 10 inbox emails
 durian search "from:boss@company.com" # everything from a sender
@@ -127,15 +139,15 @@ durian tag <thread-id> +important     # add a tag
 durian send --to bob@x.com --subject Hi --body "Hello"
 ```
 
-See `durian --help` for the full command list.
+See `durian --help` for the full command list, or `man durian-<cmd>` for detailed reference.
 
 ## 6. Common next steps
 
-- **Sidebar folders and profiles** — copy `docs/profiles-example.pkl` to `~/.config/durian/profiles.pkl`
-- **Custom keymaps** — copy `docs/keymaps-example.pkl` to `~/.config/durian/keymaps.pkl`
-- **Filter rules** (auto-tag on sync) — copy `docs/rules-example.pkl` to `~/.config/durian/rules.pkl`
-- **Multi-machine tag sync** — [sync/README.md](../sync/README.md)
-- **How it actually works** — [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Sidebar folders and profiles** — copy [profiles-example.pkl](https://github.com/julion2/durian/blob/main/docs/profiles-example.pkl) to `~/.config/durian/profiles.pkl`
+- **Custom keymaps** — copy [keymaps-example.pkl](https://github.com/julion2/durian/blob/main/docs/keymaps-example.pkl) to `~/.config/durian/keymaps.pkl`
+- **Filter rules** (auto-tag on sync) — copy [rules-example.pkl](https://github.com/julion2/durian/blob/main/docs/rules-example.pkl) to `~/.config/durian/rules.pkl`
+- **Multi-machine tag sync** — see the [tag sync server README](https://github.com/julion2/durian/tree/main/sync)
+- **How it actually works** — [Architecture](../architecture/)
 
 ## Troubleshooting
 
@@ -145,6 +157,6 @@ See `durian --help` for the full command list.
 | Auth fails | `durian auth status`, re-run `durian auth login <alias>` |
 | GUI doesn't start | Verify `durian --version` works standalone; check Console.app for `org.js-lab.durian` |
 | Config parse error | `durian validate` — it tells you the exact field |
-| Keychain dialogs on macOS | See "Disabling the Keychain Access Dialog" in [PASSWORD_SETUP.md](PASSWORD_SETUP.md) |
+| Keychain dialogs on macOS | See [Disabling the Keychain Access Dialog](../auth/password/#disabling-the-keychain-access-dialog) |
 
-If you're still stuck, [file an issue](https://github.com/julion2/Durian/issues) with `durian --version`, `durian validate` output, and the relevant log lines.
+If you're still stuck, [file an issue](https://github.com/julion2/durian/issues) with `durian --version`, `durian validate` output, and the relevant log lines.

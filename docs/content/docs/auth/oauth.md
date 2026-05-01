@@ -1,13 +1,13 @@
-# OAuth Setup
+---
+title: OAuth Setup
+weight: 1
+---
 
 Durian supports OAuth 2.0 for Microsoft 365 and Google/Gmail.
 
 ## Microsoft 365
 
-Durian can use a built-in Microsoft OAuth app by default. If you want to use
-your own Azure app (recommended for organizations), follow the steps below and
-set `client_id` in your config. Otherwise, you can skip app registration and
-omit `client_id` (the default will be used).
+Durian can use a built-in Microsoft OAuth app by default. If you want to use your own Azure app (recommended for organizations), follow the steps below and set `client_id` in your config. Otherwise, you can skip app registration and omit `client_id` (the default will be used).
 
 1. Go to [Azure Portal](https://portal.azure.com) → App registrations → New registration
 2. Name: "Durian Mail" (or anything)
@@ -21,6 +21,7 @@ omit `client_id` (the default will be used).
 7. Copy **Application (client) ID**
 
 Add to config.pkl (custom app):
+
 ```pkl
 oauth {
   provider = "microsoft"
@@ -29,12 +30,13 @@ oauth {
 }
 ```
 
-Shared mailboxes: configure the shared mailbox as its own `[[accounts]]` entry
-and set `auth_email` to the delegating user who has Full Access + Send As.
+Shared mailboxes: configure the shared mailbox as its own `[[accounts]]` entry and set `auth_email` to the delegating user who has Full Access + Send As.
 
 ## Google
 
-> **Note:** Google OAuth tokens expire every 7 days while the app is in "Testing" mode in Google Cloud Console. You will need to re-authenticate periodically with `durian auth login`. This is a Google limitation for unverified apps (see [#147](https://github.com/julion2/Durian/issues/147)).
+{{< callout type="warning" >}}
+Google OAuth tokens expire every 7 days while the app is in "Testing" mode in Google Cloud Console. You will need to re-authenticate periodically with `durian auth login`. This is a Google limitation for unverified apps (see [#147](https://github.com/julion2/durian/issues/147)).
+{{< /callout >}}
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com) → APIs & Services → Credentials
 2. Create project (if needed)
@@ -44,6 +46,7 @@ and set `auth_email` to the delegating user who has Full Access + Send As.
 6. Copy **Client ID** and **Client Secret**
 
 Add to config.pkl:
+
 ```pkl
 oauth {
   provider = "google"
@@ -66,7 +69,7 @@ Tokens are stored securely in macOS Keychain and auto-refresh when near expiry.
 ## Troubleshooting
 
 | Error | Solution |
-|-------|----------|
+|---|---|
 | `client_secret is missing` | Add `client_secret` to config (required for Google) |
 | `redirect_uri_mismatch` | Ensure redirect URI is exactly `http://localhost:8080/callback` |
 | `invalid_grant` | Token expired, run `durian auth login` again |

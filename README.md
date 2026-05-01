@@ -28,7 +28,7 @@
 
 Tags instead of folders. Full-text search. Multi-account with OAuth (Gmail, Microsoft 365) and password auth. IMAP sync to a local SQLite store — fast offline search, no Maildir. Configurable keybindings, filter rules, and HTML signatures. All in a native GUI backed by a Go CLI.
 
-> **Early Alpha** — Expect bugs and breaking changes. No security audit. Use at your own risk.
+> **Early Alpha** — Expect bugs and breaking changes. No external security audit.
 > This is a side project — features, improvements, and bug fixes happen as time allows.
 
 ## Install
@@ -127,12 +127,14 @@ durian sync --debug                   # debug output on stderr
 
 ## Docs
 
-- [Getting Started](docs/GETTING_STARTED.md) — Install → config → first sync
-- [Architecture](docs/ARCHITECTURE.md) — How CLI, GUI, and sync server fit together
-- [OAuth Setup](docs/OAUTH_SETUP.md) — Gmail & Microsoft 365
-- [Password Setup](docs/PASSWORD_SETUP.md) — IMAP/SMTP with password auth
+Full documentation: **<https://julion2.github.io/durian/>**
+
+- [Getting Started](https://julion2.github.io/durian/docs/getting-started/) — Install → config → first sync
+- [Architecture](https://julion2.github.io/durian/docs/architecture/) — How CLI, GUI, and sync server fit together
+- [OAuth Setup](https://julion2.github.io/durian/docs/auth/oauth/) — Gmail & Microsoft 365
+- [Password Setup](https://julion2.github.io/durian/docs/auth/password/) — IMAP/SMTP with password auth
+- [Vim Compose](https://julion2.github.io/durian/docs/keymaps/vim-compose/) — Vim keybindings in the compose editor
 - [Tag Sync](sync/README.md) — Multi-machine tag sync via self-hosted server
-- [Vim Compose](docs/vim-compose.md) — Vim keybindings in the compose editor
 
 ## Alternatives
 

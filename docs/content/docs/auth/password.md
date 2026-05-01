@@ -1,4 +1,7 @@
-# Password Authentication Setup
+---
+title: Password Setup
+weight: 2
+---
 
 For email providers that don't support OAuth (e.g., GMX, web.de, custom SMTP), Durian uses password authentication with the OS keychain.
 
@@ -67,7 +70,7 @@ After this, `durian` will no longer prompt for Keychain access.
 ## Common Providers
 
 | Provider | SMTP Host | Port | Notes |
-|----------|-----------|------|-------|
+|---|---|---|---|
 | GMX | mail.gmx.net | 587 | Max 20MB attachments |
 | web.de | smtp.web.de | 587 | Max 20MB attachments |
 | Yahoo | smtp.mail.yahoo.com | 587 | Use app password |
@@ -77,10 +80,10 @@ After this, `durian` will no longer prompt for Keychain access.
 ## Troubleshooting
 
 | Error | Solution |
-|-------|----------|
+|---|---|
 | `keychain entry not found` | Run `durian auth login <account>` again |
 | `failed to get password from keychain` | Ensure the email/alias matches your config and retry login |
-| Repeated access dialogs | Follow "Disabling the Keychain Access Dialog" above |
+| Repeated access dialogs | Follow [Disabling the Keychain Access Dialog](#disabling-the-keychain-access-dialog) above |
 | `authentication failed` | Verify password is correct, try app-specific password |
 
 ## App-Specific Passwords

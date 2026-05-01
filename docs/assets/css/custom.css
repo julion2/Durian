@@ -1,0 +1,44 @@
+/*
+ * Accent color: lavender/purple matching the habric profile (#cbbce8).
+ * Light mode tones it down for contrast on white; dark mode stays close to
+ * the source color for visibility on dark backgrounds.
+ */
+:root {
+  --primary-hue: 263deg;
+  --primary-saturation: 55%;
+  --primary-lightness: 55%;
+}
+
+.dark {
+  --primary-hue: 263deg;
+  --primary-saturation: 60%;
+  --primary-lightness: 75%;
+}
+
+/* Softer corners on sidebar items (Hextra default is rounded-sm = 2px).
+ * Applies to both default and :hover state so the hover background also
+ * follows the rounded edge. */
+.hextra-sidebar-item > a,
+.hextra-sidebar-item > a:hover,
+.hextra-sidebar-item > a:focus {
+  border-radius: 0.5rem;
+}
+
+/* Match the search input radius to the sidebar feel. */
+.hextra-search-input {
+  border-radius: 0.75rem;
+}
+
+/* Constrain markdown-rendered screenshots (which sit inside <p><img>) so they
+ * don't stretch on ultrawide monitors. Direct <img> children of containers
+ * (like the hero logo) keep their explicit width attribute. */
+main .content > p:has(> img) {
+  text-align: center;
+}
+
+main .content > p > img {
+  max-width: 1100px;
+  width: 100%;
+  height: auto;
+  display: inline-block;
+}

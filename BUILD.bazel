@@ -1,3 +1,5 @@
 load("@gazelle//:def.bzl", "gazelle")
 
+# gazelle:exclude docs
+
 gazelle(name = "gazelle")

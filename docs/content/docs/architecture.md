@@ -1,10 +1,13 @@
-# Architecture
+---
+title: Architecture
+weight: 5
+---
 
 Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GUI MVP on Linux. This document explains how the pieces fit together so you can navigate the codebase without reading every file.
 
 ## Components
 
-```
+```text
 ┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
 │  Swift GUI       │       │  Qt GUI (Linux,  │       │  Tag Sync Server │
 │  (macos/)        │       │  experimental)   │       │  (sync/, opt.)   │
@@ -31,7 +34,7 @@ Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GU
                           via `durian tagsync push/pull`)
 ```
 
-**One backend, many frontends.** The Go CLI is the only component that talks IMAP/SMTP and owns the SQLite store. Both GUIs are thin HTTP clients to `localhost:9723` — they never touch the DB directly. This boundary is enforced by convention (see `CLAUDE.md`).
+**One backend, many frontends.** The Go CLI is the only component that talks IMAP/SMTP and owns the SQLite store. Both GUIs are thin HTTP clients to `localhost:9723` — they never touch the DB directly.
 
 ## Directory layout
 
@@ -41,12 +44,12 @@ Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GU
 | `cli/internal/handler/` | HTTP API handlers + IMAP IDLE watcher + SSE event hub |
 | `cli/internal/imap/` | IMAP sync logic (mailbox discovery, flag sync, message insertion, Gmail label handling) |
 | `cli/internal/store/` | SQLite schema, FTS5 search, tags, attachments, local drafts, outbox |
-| `cli/internal/config/` | TOML parsing + `durian validate` |
+| `cli/internal/config/` | Pkl parsing + `durian validate` |
 | `cli/internal/oauth/` | OAuth flows (Google, Microsoft) |
 | `cli/internal/smtp/`, `draft/`, `sanitize/`, `contacts/` | Supporting packages |
 | `macos/durian/` | Swift GUI: `Managers/` (state), `Views/` (SwiftUI), `Models/`, `Network/EmailBackend.swift`, `Keymaps/` (vim engine) |
-| `linux/` | Qt6/QML GUI (read-only MVP) — see [linux/README.md](../linux/README.md) |
-| `sync/` | Optional self-hosted tag sync server — see [sync/README.md](../sync/README.md) |
+| `linux/` | Qt6/QML GUI (read-only MVP) |
+| `sync/` | Optional self-hosted tag sync server |
 | `integration/` | Shell-based API contract tests |
 
 ## Runtime topology
@@ -70,7 +73,7 @@ The GUI never talks IMAP directly. Every action the user takes in the UI — ope
 - **Swift-only** (e.g. `settings.theme`, `sync.gui_auto_sync`) — read directly by `macos/durian/Managers/ConfigManager.swift`.
 - **Shared for validation** (e.g. `settings.accent_color`) — Go's `durian validate` checks format before Swift loads.
 
-Pkl schemas enforce structure at eval time, but each side only decodes the fields it needs. This is intentional: adding a GUI-only field to config.pkl doesn't need a matching Go struct.
+Pkl schemas enforce structure at eval time, but each side only decodes the fields it needs. Adding a GUI-only field to config.pkl doesn't need a matching Go struct.
 
 ### The HTTP API
 
@@ -115,9 +118,9 @@ Per account, `durian serve` runs an IDLE loop in `handler/watcher.go`:
 
 **Flag sync**: bidirectional. Local tag changes are uploaded to IMAP (mapped to the corresponding flag or folder move), and server-side flag changes are pulled down. See `cli/internal/imap/sync_flags.go`.
 
-## Optional tag sync (`sync/`)
+## Optional tag sync
 
-For multi-machine setups, `sync/` contains a small self-hosted server that stores `(message_id, account, tag, action, timestamp)` tuples. Clients push local changes and pull remote ones via HTTP. Auth is a shared API key; **run it only on a trusted network** (Tailnet, LAN) — it has no TLS and no rate limiting. See [sync/README.md](../sync/README.md) for setup.
+For multi-machine setups, `sync/` contains a small self-hosted server that stores `(message_id, account, tag, action, timestamp)` tuples. Clients push local changes and pull remote ones via HTTP. Auth is a shared API key; **run it only on a trusted network** (Tailnet, LAN) — it has no TLS and no rate limiting. See the [tag sync README](https://github.com/julion2/durian/tree/main/sync) for setup.
 
 ## Design decisions
 
@@ -139,12 +142,10 @@ Three languages (Go, Swift, C++/Qt), two platforms, one binary cache, reproducib
 - **Swift GUI**: wrapped in `macos/durian/Utilities/Log.swift` using `os.Logger`. View in Console.app with subsystem filter `org.js-lab.durian` (release) or `org.js-lab.durian.nightly` (debug).
 - **Tag sync server**: stdout + systemd journal.
 
-See `CLAUDE.md` for the exact log commands.
-
 ## Where to look next
 
 - **Adding a new API endpoint**: `cli/internal/handler/` + matching entry in `cli/cmd/durian/serve.go` route list + `openapi.yaml`.
 - **Changing the sync logic**: `cli/internal/imap/sync_mailbox.go` is the main loop; `sync_flags.go` handles flag/tag propagation.
 - **Adding a GUI feature**: start in the appropriate Swift Manager (`macos/durian/Managers/`), wire it to views.
 - **Adding a CLI command**: `cli/cmd/durian/` — each command is a Cobra subcommand.
-- **Onboarding end users**: [GETTING_STARTED.md](GETTING_STARTED.md).
+- **Onboarding end users**: [Getting Started](../getting-started/).
