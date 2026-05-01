@@ -20,6 +20,8 @@ struct EmailRowView: View, Equatable {
         lhs.email.tags == rhs.email.tags &&
         lhs.email.isRead == rhs.email.isRead &&
         lhs.email.isPinned == rhs.email.isPinned &&
+        lhs.email.previewText == rhs.email.previewText &&
+        lhs.email.bodyState == rhs.email.bodyState &&
         lhs.isSelected == rhs.isSelected &&
         lhs.isFirstInGroup == rhs.isFirstInGroup &&
         lhs.isLastInGroup == rhs.isLastInGroup &&
