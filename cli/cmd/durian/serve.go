@@ -33,8 +33,7 @@ var serveContactsDB string
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start OpenAPI HTTP server (for GUI integration)",
-	Long: `Start the OpenAPI HTTP server that provides a RESTful API for the GUI.
-This replaces the old JSON protocol server.`,
+	Long: "Start the HTTP server that provides a RESTful API for the GUI.",
 	Run: runServe,
 }
 

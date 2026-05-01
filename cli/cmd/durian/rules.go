@@ -21,13 +21,8 @@ var rulesCmd = &cobra.Command{
 var rulesApplyCmd = &cobra.Command{
 	Use:   "apply",
 	Short: "Apply filter rules to all existing messages",
-	Long: `Apply filter rules from rules.pkl to all messages in the database.
-Uses stored headers from message_headers table for header-based matching.
-
-Run with --dry-run first to preview what would be changed.
-
-Examples:
-  durian rules apply --dry-run
+	Long:  "Apply filter rules from rules.pkl. Use --dry-run to preview.",
+	Example: `  durian rules apply --dry-run
   durian rules apply`,
 	RunE: runRulesApply,
 }

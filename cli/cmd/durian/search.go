@@ -18,15 +18,7 @@ var searchLimit int
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search emails using notmuch query syntax",
-	Long: `Search for emails using notmuch query syntax.
-
-The query follows notmuch search syntax. Common examples:
-  tag:inbox          - all emails with inbox tag
-  tag:unread         - all unread emails
-  from:alice@ex.com  - emails from Alice
-  subject:meeting    - emails with "meeting" in subject
-  date:yesterday..   - emails from yesterday onwards
-  group:investor     - emails from contact group (expands to from: OR-chain)`,
+	Long:  "Search the local email database using notmuch query syntax.",
 	Example: `  durian search "tag:inbox"
   durian search "tag:inbox AND tag:unread"
   durian search "from:alice@example.com" --limit 10

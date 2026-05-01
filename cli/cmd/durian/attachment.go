@@ -14,10 +14,7 @@ import (
 var attachmentCmd = &cobra.Command{
 	Use:   "attachment <message-id>",
 	Short: "List or download attachments",
-	Long: `List attachments for a message, or download a specific part.
-
-Without --save, lists all attachments with part IDs.
-With --save, downloads the specified part to the current directory.`,
+	Long: "List attachments for a message, or download a specific part with --save.",
 	Example: `  durian attachment msg-id@example.com
   durian attachment msg-id@example.com --save 1
   durian attachment msg-id@example.com --save 1 --output ~/Downloads/`,

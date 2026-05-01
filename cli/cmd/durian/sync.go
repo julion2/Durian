@@ -24,34 +24,14 @@ var (
 var syncCmd = &cobra.Command{
 	Use:   "sync [account] [mailbox]",
 	Short: "Sync email via IMAP",
-	Long: `Sync email from IMAP server to local SQLite store.
-
-By default, sync is bidirectional: messages are downloaded from the server,
-and flag changes (read/unread, starred, etc.) are synchronized both ways.
-
-The account can be specified by alias, name, or email address.
-
-Examples:
-  # Sync all configured accounts (bidirectional)
-  durian sync
-
-  # Sync specific account (by alias or email)
+	Long:  "Sync email from IMAP to local SQLite. Bidirectional by default.",
+	Example: `  durian sync
   durian sync gmail
   durian sync you@company.com
-
-  # Sync specific mailbox
   durian sync gmail INBOX
-
-  # Download only (no flag upload to server)
   durian sync --download-only
-
-  # Upload only (sync local flag changes to server)
   durian sync --upload-only
-
-  # Skip flag synchronization entirely
   durian sync --no-flags
-
-  # Dry run - show what would be synced
   durian sync --dry-run`,
 	RunE: runSync,
 }

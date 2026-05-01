@@ -27,10 +27,7 @@ var contactsInitCmd = &cobra.Command{
 var contactsImportCmd = &cobra.Command{
 	Use:   "import",
 	Short: "Import contacts from email store",
-	Long: `Import email addresses from the local email store.
-
-Extracts unique email addresses from From, To, and Cc headers
-of all emails in the SQLite store.`,
+	Long: "Import email addresses from the local email store (From, To, Cc headers).",
 	RunE: runContactsImport,
 }
 

@@ -15,12 +15,7 @@ import (
 var groupCmd = &cobra.Command{
 	Use:   "group",
 	Short: "Manage contact groups",
-	Long: `Manage contact groups defined in groups.pkl.
-
-Groups map roles (investor, advisor, press) to email addresses or domain
-wildcards. Use group:NAME in search queries for automatic expansion.
-
-Edit ~/.config/durian/groups.pkl directly to add or modify groups.`,
+	Long: "Manage contact groups defined in groups.pkl. Edit the file directly to modify.",
 }
 
 var groupListCmd = &cobra.Command{

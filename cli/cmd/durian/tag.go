@@ -25,10 +25,7 @@ var tagListCmd = &cobra.Command{
 var tagCmd = &cobra.Command{
 	Use:   "tag <query> <tags...>",
 	Short: "Modify tags on emails",
-	Long: `Add or remove tags from emails matching the query.
-
-Tags must be prefixed with + (add) or - (remove).
-Multiple tags can be specified.`,
+	Long:  "Add or remove tags. Tags must be prefixed with + (add) or - (remove).",
 	Example: `  durian tag "thread:00000000000022ca" +read
   durian tag "thread:00000000000022ca" +read -unread
   durian tag "tag:inbox" +archived -inbox

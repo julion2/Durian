@@ -15,8 +15,7 @@ import (
 var validateCmd = &cobra.Command{
 	Use:   "validate [config|rules|profiles|keymaps|groups]",
 	Short: "Validate configuration files",
-	Long: `Validate Durian configuration files for errors.
-Without arguments, validates all files. Pass a name to validate just one.`,
+	Long: "Validate Durian config files. Pass a name to validate just one.",
 	Example: `  durian validate
   durian validate config
   durian validate rules

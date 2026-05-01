@@ -36,33 +36,14 @@ var (
 var sendCmd = &cobra.Command{
 	Use:   "send",
 	Short: "Send an email via SMTP",
-	Long: `Send an email via SMTP with OAuth2 or password authentication.
-
-Examples:
-  # Send with all flags
-  durian send --to "recipient@example.com" --subject "Hello" --body "Message"
-
-  # Send with CC and BCC
+	Long:  "Send an email via SMTP. Omit --body to compose in $EDITOR.",
+	Example: `  durian send --to "recipient@example.com" --subject "Hello" --body "Message"
   durian send --to "main@example.com" --cc "copy@example.com" --bcc "hidden@example.com" --subject "Hello" --body "Message"
-
-  # Send with attachment
-  durian send --to "..." --subject "..." --body "..." --attach file.pdf
-
-  # Send with multiple attachments
-  durian send --to "..." --subject "..." --body "..." --attach file1.pdf --attach file2.jpg
-
-  # Read body from file
+  durian send --to "..." --subject "..." --body "..." --attach file.pdf --attach file2.jpg
   durian send --to "..." --subject "..." --body-file message.txt
-
-  # Send HTML email
   durian send --to "..." --subject "Newsletter" --body-file newsletter.html --html
-
-  # Interactive mode (prompts for missing fields, opens $EDITOR for body)
   durian send --to "recipient@example.com" --subject "Hello"
-
-  # Specify sender account (by alias or email)
-  durian send --from gmail --to "..." --subject "..." --body "..."
-  durian send --from you@company.com --to "recipient@example.com" --subject "..." --body "..."`,
+  durian send --from gmail --to "..." --subject "..." --body "..."`,
 	RunE: runSend,
 }
 

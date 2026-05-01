@@ -16,10 +16,7 @@ const usageTemplate = `{{header "Usage:"}}{{if .Runnable}}
   {{name .CommandPath}} {{arg "[command]"}}{{end}}{{if gt (len .Aliases) 0}}
 
 {{header "Aliases:"}}
-  {{.NameAndAliases}}{{end}}{{if .HasExample}}
-
-{{header "Examples:"}}
-{{.Example}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.NameAndAliases}}{{end}}{{if .HasAvailableSubCommands}}
 
 {{header "Available Commands:"}}{{range .Commands}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
   {{cmdPad .Name .NamePadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}

@@ -30,16 +30,7 @@ var authCmd = &cobra.Command{
 var authLoginCmd = &cobra.Command{
 	Use:   "login <account>",
 	Short: "Authenticate with an email account",
-	Long: `Authenticate with an email account using OAuth or password.
-
-For OAuth accounts (Gmail, Microsoft 365):
-  Opens your browser to complete the authentication.
-
-For password accounts:
-  Prompts for your password and stores it securely in Keychain.
-
-The account can be specified by email address, alias, or name.
-The account must be configured in your config.pkl.`,
+	Long: "Authenticate with an email account using OAuth or password.",
 	Example: `  durian auth login gmail       # Use alias
   durian auth login work         # Use alias
   durian auth login you@company.com  # Use full email`,
@@ -57,9 +48,7 @@ var authStatusCmd = &cobra.Command{
 var authLogoutCmd = &cobra.Command{
 	Use:   "logout <account>",
 	Short: "Remove credentials for an account",
-	Long: `Remove stored OAuth tokens or passwords from the keychain.
-
-The account can be specified by email address, alias, or name.`,
+	Long: "Remove stored OAuth tokens or passwords from the keychain.",
 	Args: cobra.ExactArgs(1),
 	RunE: runAuthLogout,
 }
@@ -67,9 +56,7 @@ The account can be specified by email address, alias, or name.`,
 var authRefreshCmd = &cobra.Command{
 	Use:   "refresh <account>",
 	Short: "Manually refresh OAuth token for an account",
-	Long: `Force a token refresh for the specified account. This is normally done automatically.
-
-The account can be specified by email address, alias, or name.`,
+	Long: "Force a token refresh (normally done automatically).",
 	Args: cobra.ExactArgs(1),
 	RunE: runAuthRefresh,
 }

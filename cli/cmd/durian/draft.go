@@ -40,37 +40,19 @@ var draftCmd = &cobra.Command{
 var draftSaveCmd = &cobra.Command{
 	Use:   "save",
 	Short: "Save a draft to IMAP Drafts folder",
-	Long: `Save an email draft to the IMAP Drafts folder.
-
-The draft will be stored on the IMAP server.
-
-Examples:
-  # Save a new draft
-  durian draft save --account "user@example.com" --to "recipient@example.com" --subject "Hello" --body "Message"
-
-  # Replace an existing draft
+	Long:  "Save a draft to IMAP. Use --replace to overwrite by Message-ID.",
+	Example: `  durian draft save --account "user@example.com" --to "recipient@example.com" --subject "Hello" --body "Message"
   durian draft save --account "user@example.com" --to "..." --subject "..." --body "..." --replace "<old-message-id@host>"
-
-  # Save with attachments
-  durian draft save --account "..." --to "..." --subject "..." --body "..." --attach file.pdf
-
-Output (JSON):
-  {"ok": true, "message_id": "<uuid@hostname>", "uid": 12345}`,
+  durian draft save --account "..." --to "..." --subject "..." --body "..." --attach file.pdf`,
 	RunE: runDraftSave,
 }
 
 var draftDeleteCmd = &cobra.Command{
-	Use:   "delete <message-id>",
-	Short: "Delete a draft from IMAP",
-	Long: `Delete a draft from the IMAP Drafts folder.
-
-Examples:
-  durian draft delete --account "user@example.com" "<message-id@host>"
-
-Output (JSON):
-  {"ok": true}`,
-	Args: cobra.ExactArgs(1),
-	RunE: runDraftDelete,
+	Use:     "delete <message-id>",
+	Short:   "Delete a draft from IMAP by Message-ID",
+	Example: `  durian draft delete --account "user@example.com" "<message-id@host>"`,
+	Args:    cobra.ExactArgs(1),
+	RunE:    runDraftDelete,
 }
 
 func init() {
