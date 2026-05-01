@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install durian-sync server on Linux
-# Usage: curl -sSL https://raw.githubusercontent.com/julion2/Durian/main/sync/install.sh | bash -s -- --api-key "your-secret"
+# Usage: curl -sSL https://raw.githubusercontent.com/julion2/durian/main/sync/install.sh | bash -s -- --api-key "your-secret"
 #
 # Options:
 #   --api-key KEY    Required. Shared secret for authentication.
@@ -42,7 +42,7 @@ esac
 
 # Get latest version if not specified
 if [[ "$VERSION" == "latest" ]]; then
-  VERSION=$(curl -sSL https://api.github.com/repos/julion2/Durian/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
+  VERSION=$(curl -sSL https://api.github.com/repos/julion2/durian/releases/latest | grep '"tag_name"' | cut -d'"' -f4)
   VERSION="${VERSION#v}"
 fi
 
@@ -50,7 +50,7 @@ echo "Installing durian-sync v${VERSION} (linux-${ARCH})..."
 
 # Download and install binary
 TARBALL="durian-sync-${VERSION}-linux-${ARCH}.tar.gz"
-URL="https://github.com/julion2/Durian/releases/download/v${VERSION}/${TARBALL}"
+URL="https://github.com/julion2/durian/releases/download/v${VERSION}/${TARBALL}"
 curl -sSL "$URL" | tar -xz -C "$INSTALL_DIR"
 chmod +x "${INSTALL_DIR}/durian-sync-linux-${ARCH}"
 mv "${INSTALL_DIR}/durian-sync-linux-${ARCH}" "${INSTALL_DIR}/durian-sync"

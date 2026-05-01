@@ -26,18 +26,18 @@ The sync server stores `(message_id, account, tag, action, timestamp)` tuples. E
 ### Quick Install (Linux)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/julion2/Durian/main/sync/install.sh | sudo bash -s -- --api-key "your-secret"
+curl -sSL https://raw.githubusercontent.com/julion2/durian/main/sync/install.sh | sudo bash -s -- --api-key "your-secret"
 ```
 
 This downloads the latest binary, installs it to `/usr/local/bin`, and sets up a systemd service on port 8724.
 
 ### Manual Install
 
-Pre-built binaries for Linux (amd64/arm64) are included in each [GitHub release](https://github.com/julion2/Durian/releases).
+Pre-built binaries for Linux (amd64/arm64) are included in each [GitHub release](https://github.com/julion2/durian/releases).
 
 ```bash
 # Download and run
-curl -sSL https://github.com/julion2/Durian/releases/latest/download/durian-sync-linux-amd64.tar.gz | tar -xz
+curl -sSL https://github.com/julion2/durian/releases/latest/download/durian-sync-linux-amd64.tar.gz | tar -xz
 ./durian-sync-linux-amd64 --api-key "your-secret" --port 8724 --db /var/lib/durian-sync.db
 ```
 

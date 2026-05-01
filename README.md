@@ -51,7 +51,7 @@ brew install durian
 
 > An experimental Linux GUI is available — see [linux/README.md](linux/README.md).
 
-Or download pre-built binaries from [GitHub Releases](https://github.com/julion2/Durian/releases). Or build from source (see below).
+Or download pre-built binaries from [GitHub Releases](https://github.com/julion2/durian/releases). Or build from source (see below).
 
 ## Build from Source
 
@@ -148,7 +148,7 @@ If Durian isn't for you, check out these excellent more classic vim-style email 
 
 ## Contributing
 
-Found a bug or have a feature request? [Open an issue](https://github.com/julion2/Durian/issues).
+Found a bug or have a feature request? [Open an issue](https://github.com/julion2/durian/issues).
 
 ## License
 
