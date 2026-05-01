@@ -15,15 +15,24 @@ class AttachmentCacheManager: ObservableObject {
     private let fileManager = FileManager.default
     private let indexFile: URL
     private let cacheDir: URL
+    private let settingsProvider: () -> AttachmentCacheSettings
     private var index: [String: CachedAttachment] = [:]
     private var prefetchTasks: [String: Task<Void, Never>] = [:]
     private var failedKeys: Set<String> = []
 
-    private init() {
-        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        cacheDir = caches.appendingPathComponent("org.js-lab.durian/attachments", isDirectory: true)
-        indexFile = cacheDir.appendingPathComponent(".cache-index.json")
-        try? fileManager.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+    init(cacheDir: URL? = nil,
+         settingsProvider: @escaping () -> AttachmentCacheSettings = { SettingsManager.shared.attachmentCacheSettings }) {
+        let resolvedDir: URL
+        if let cacheDir {
+            resolvedDir = cacheDir
+        } else {
+            let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            resolvedDir = caches.appendingPathComponent("org.js-lab.durian/attachments", isDirectory: true)
+        }
+        self.cacheDir = resolvedDir
+        self.indexFile = resolvedDir.appendingPathComponent(".cache-index.json")
+        self.settingsProvider = settingsProvider
+        try? fileManager.createDirectory(at: resolvedDir, withIntermediateDirectories: true)
         loadIndex()
         evict()
     }
@@ -35,9 +44,9 @@ class AttachmentCacheManager: ObservableObject {
         let key = cacheKey(messageId: messageId, partId: partId)
         guard var entry = index[key] else { return nil }
 
-        // Check TTL
-        let settings = SettingsManager.shared.attachmentCacheSettings
-        if Date().timeIntervalSince(entry.cachedAt) > settings.ttl {
+        // TTL check — pinned entries are exempt (consistent with evict()).
+        let settings = settingsProvider()
+        if !entry.pinned && Date().timeIntervalSince(entry.cachedAt) > settings.ttl {
             remove(key: key)
             return nil
         }
@@ -48,13 +57,15 @@ class AttachmentCacheManager: ObservableObject {
             return nil
         }
 
-        // Update access metadata
+        guard let data = try? Data(contentsOf: entry.localPath) else { return nil }
+
+        // Update access metadata in-memory only; the next put/evict/clear
+        // will persist it. Avoids a JSON-encode + disk-write per cache hit.
         entry.lastAccessDate = Date()
         entry.accessCount += 1
         index[key] = entry
-        saveIndex()
 
-        return try? Data(contentsOf: entry.localPath)
+        return data
     }
 
     /// Store attachment data in cache.
@@ -90,8 +101,8 @@ class AttachmentCacheManager: ObservableObject {
         let key = cacheKey(messageId: messageId, partId: partId)
         if failedKeys.contains(key) { return false }
         guard let entry = index[key] else { return false }
-        let settings = SettingsManager.shared.attachmentCacheSettings
-        if Date().timeIntervalSince(entry.cachedAt) > settings.ttl {
+        let settings = settingsProvider()
+        if !entry.pinned && Date().timeIntervalSince(entry.cachedAt) > settings.ttl {
             return false
         }
         return fileManager.fileExists(atPath: entry.localPath.path)
@@ -158,17 +169,22 @@ class AttachmentCacheManager: ObservableObject {
     // MARK: - Eviction
 
     private func evict() {
-        let settings = SettingsManager.shared.attachmentCacheSettings
+        let settings = settingsProvider()
         let now = Date()
 
-        // Phase 1: Remove expired entries
-        for (key, entry) in index where !entry.pinned {
-            if now.timeIntervalSince(entry.cachedAt) > settings.ttl {
-                remove(key: key)
-            }
+        // Phase 1: Remove expired entries. Snapshot the keys first — mutating
+        // `index` during iteration is undefined behavior in Swift.
+        let expiredKeys: [String] = index.compactMap { key, entry in
+            guard !entry.pinned else { return nil }
+            return now.timeIntervalSince(entry.cachedAt) > settings.ttl ? key : nil
+        }
+        for key in expiredKeys {
+            remove(key: key)
         }
 
-        // Phase 2: LRU eviction if still over size limit
+        // Phase 2: LRU eviction if still over size limit. Pinned entries are
+        // immune — the loop bails when no unpinned candidates remain, even if
+        // pinned alone exceeds the cap.
         while totalSize > settings.maxSizeBytes {
             guard let oldest = index
                 .filter({ !$0.value.pinned })
