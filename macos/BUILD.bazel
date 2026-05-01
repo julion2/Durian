@@ -276,6 +276,21 @@ swift_test(
     deps = [":durian_core"],
 )
 
+swift_test(
+    name = "attachment_cache_manager_test",
+    size = "small",
+    srcs = ["tests/AttachmentCacheManagerTests.swift"],
+    deps = [":durian_testlib"],
+)
+
+swift_test(
+    name = "ci_attachment_cache_manager_test",
+    size = "small",
+    srcs = ["tests/AttachmentCacheManagerTests.swift"],
+    tags = ["ci"],
+    deps = [":durian_core"],
+)
+
 genrule(
     name = "StampedInfoPlist",
     srcs = ["Info.plist"],
