@@ -10,6 +10,7 @@ go_library(
         "group.go",
         "help.go",
         "main.go",
+        "manpage.go",
         "root.go",
         "rules.go",
         "search.go",
@@ -41,6 +42,7 @@ go_library(
         "@com_github_fatih_color//:color",
         "@com_github_gorilla_mux//:mux",
         "@com_github_spf13_cobra//:cobra",
+        "@com_github_spf13_cobra//doc",
         "@org_golang_x_term//:term",
     ],
 )

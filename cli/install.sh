@@ -26,3 +26,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
 fi
 
 echo "Installed $BINARY to $INSTALL_DIR/$BINARY"
+
+# Generate and install man pages
+MAN_DIR="/usr/local/share/man/man1"
+TMP_MAN="$(mktemp -d)"
+trap 'rm -rf "$TMP_MAN"' EXIT
+"$INSTALL_DIR/$BINARY" gen-man "$TMP_MAN"
+sudo mkdir -p "$MAN_DIR"
+sudo cp "$TMP_MAN"/durian*.1 "$MAN_DIR/"
+echo "Installed man pages to $MAN_DIR (try: man durian)"
