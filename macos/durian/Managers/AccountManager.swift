@@ -155,6 +155,10 @@ class AccountManager: ObservableObject {
         syncFromBackend()
         return standalone
     }
+
+    func prefetchAroundCursor(cursorId: String) {
+        emailBackend?.prefetchAroundCursor(cursorId: cursorId)
+    }
     
     func markAsRead(id: String) async {
         guard let backend = emailBackend else { return }

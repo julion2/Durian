@@ -136,6 +136,7 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
     // Cancellation support for prefetch and active search
     private var prefetchTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var cursorPrefetchTask: Task<Void, Never>?
     private var shouldCancelPrefetch = false
 
     // Generation counter to discard stale search results on rapid folder/profile switches
@@ -882,6 +883,88 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         prefetchTask = Task {
             await prefetchInitialBodiesInternal(count: count)
         }
+    }
+
+    /// Triggered when the cursor moves to a new email. Debounces 200ms (so j/k
+    /// spam doesn't fire 100 requests), then prefetches bodies in a window
+    /// around the cursor with a concurrency cap of 3.
+    func prefetchAroundCursor(cursorId: String, before: Int = 5, after: Int = 15) {
+        cursorPrefetchTask?.cancel()
+        cursorPrefetchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled, let self else { return }
+
+            guard let cursorIndex = self.emails.firstIndex(where: { $0.id == cursorId }) else {
+                return
+            }
+
+            let toFetch = self.selectEmailsAroundCursor(
+                cursorIndex: cursorIndex,
+                before: before,
+                after: after
+            )
+            guard !toFetch.isEmpty else { return }
+
+            Log.debug("BACKEND", "Cursor prefetch: \(toFetch.count) bodies around index \(cursorIndex)")
+
+            // Concurrency cap of 3 — both for server load and for limiting
+            // @Published mutation storms that cause SwiftUI re-renders.
+            await withTaskGroup(of: Void.self) { group in
+                var inFlight = 0
+                let cap = 3
+                for id in toFetch {
+                    if Task.isCancelled { break }
+                    if inFlight >= cap {
+                        await group.next()
+                        inFlight -= 1
+                    }
+                    group.addTask { [weak self] in
+                        _ = await self?.fetchEmailBodyInternal(id: id, isPrefetch: true)
+                    }
+                    inFlight += 1
+                }
+            }
+        }
+    }
+
+    /// Returns the email IDs to prefetch around the cursor, in fetch-priority
+    /// order (first one fetched first). Skip emails whose body is already
+    /// loaded/loading. Window is `before` rows above and `after` rows below
+    /// the cursor.
+    private func selectEmailsAroundCursor(cursorIndex: Int, before: Int, after: Int) -> [String] {
+        guard !emails.isEmpty, cursorIndex >= 0, cursorIndex < emails.count else { return [] }
+
+        let needsFetch: (Int) -> Bool = { idx in
+            switch self.emails[idx].bodyState {
+            case .notLoaded, .failed: return true
+            case .loading, .loaded:   return false
+            }
+        }
+
+        var result: [String] = []
+
+        // Cursor itself first — most likely what the user wants to see right now.
+        if needsFetch(cursorIndex) {
+            result.append(emails[cursorIndex].id)
+        }
+
+        // Forward window (j-direction, most common scroll path).
+        let forwardEnd = min(cursorIndex + after, emails.count - 1)
+        if forwardEnd > cursorIndex {
+            for i in (cursorIndex + 1)...forwardEnd where needsFetch(i) {
+                result.append(emails[i].id)
+            }
+        }
+
+        // Backward window (k-direction).
+        let backwardStart = max(cursorIndex - before, 0)
+        if backwardStart < cursorIndex {
+            for i in stride(from: cursorIndex - 1, through: backwardStart, by: -1) where needsFetch(i) {
+                result.append(emails[i].id)
+            }
+        }
+
+        return result
     }
 }
 

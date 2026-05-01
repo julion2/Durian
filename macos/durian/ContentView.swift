@@ -447,6 +447,11 @@ struct ContentView: View {
                 handleEmailSelection(emailId)
             }
         }
+        .onChange(of: cursorEmailId) { _, newId in
+            if let id = newId {
+                accountManager.prefetchAroundCursor(cursorId: id)
+            }
+        }
         .onChange(of: showSearchPopup) { _, isShowing in
             keymapHandler.engine.setContext(isShowing ? .search : .list)
         }
