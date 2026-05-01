@@ -8,9 +8,9 @@ sh_test(
         "$(location testdata/config.pkl)",
     ],
     data = [
-        "//cli/cmd/testseeder",
-        "//cli/cmd/durian",
         "testdata/config.pkl",
+        "//cli/cmd/durian",
+        "//cli/cmd/testseeder",
     ],
     tags = ["integration"],
 )

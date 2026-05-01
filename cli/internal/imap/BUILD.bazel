@@ -20,8 +20,8 @@ go_library(
         "//cli/internal/config",
         "//cli/internal/keychain",
         "//cli/internal/mail",
-        "//cli/internal/store",
         "//cli/internal/oauth",
+        "//cli/internal/store",
         "@com_github_emersion_go_imap//:go-imap",
         "@com_github_emersion_go_imap//client",
         "@com_github_emersion_go_sasl//:go-sasl",
@@ -41,6 +41,8 @@ go_test(
     ],
     embed = [":imap"],
     deps = [
+        "//cli/internal/config",
+        "//cli/internal/store",
         "@com_github_emersion_go_imap//:go-imap",
     ],
 )

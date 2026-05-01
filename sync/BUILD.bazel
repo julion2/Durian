@@ -9,7 +9,7 @@ go_library(
 
 go_binary(
     name = "durian-sync",
-    embed = [":sync_lib"],
+    embed = [":lib"],
     visibility = ["//visibility:public"],
 )
 
@@ -18,4 +18,18 @@ go_test(
     size = "small",
     srcs = ["main_test.go"],
     embed = [":sync_lib"],
+)
+
+go_library(
+    name = "lib",
+    srcs = ["main.go"],
+    importpath = "",
+    visibility = ["//visibility:private"],
+    deps = ["@org_modernc_sqlite//:sqlite"],
+)
+
+go_test(
+    name = "lib_test",
+    srcs = ["main_test.go"],
+    embed = [":lib"],
 )

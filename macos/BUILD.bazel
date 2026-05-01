@@ -1,5 +1,5 @@
-load("@rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 load("@rules_apple//apple:macos.bzl", "macos_application")
+load("@rules_swift//swift:swift.bzl", "swift_library", "swift_test")
 
 config_setting(
     name = "release",
@@ -31,11 +31,11 @@ swift_library(
 swift_library(
     name = "durian_testlib",
     testonly = True,
-    module_name = "durian_lib",
     srcs = glob(
         ["durian/**/*.swift"],
         exclude = ["durian/DurianApp.swift"],
     ),
+    module_name = "durian_lib",
     deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
@@ -46,7 +46,6 @@ swift_library(
 swift_library(
     name = "durian_core",
     testonly = True,
-    module_name = "durian_lib",
     srcs = glob([
         "durian/Models/**/*.swift",
         "durian/Managers/**/*.swift",
@@ -54,6 +53,7 @@ swift_library(
         "durian/Network/**/*.swift",
         "durian/Keymaps/**/*.swift",
     ]),
+    module_name = "durian_lib",
     deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
@@ -313,10 +313,6 @@ macos_application(
         ":release": glob(["durian/AppIcon.icon/**"]),
         "//conditions:default": glob(["durian/AppIcon-Debug.icon/**"]),
     }),
-    resources = ["//schema:pkl_schemas"] + select({
-        ":ci": glob(["durian/CompiledIcons/release/**"]),
-        "//conditions:default": [],
-    }),
     bundle_id = select({
         ":release": "org.js-lab.durian",
         "//conditions:default": "org.js-lab.durian.nightly",
@@ -328,5 +324,9 @@ macos_application(
     entitlements = "durian/Durian.entitlements",
     infoplists = [":StampedInfoPlist"],
     minimum_os_version = "26.0",
+    resources = ["//schema:pkl_schemas"] + select({
+        ":ci": glob(["durian/CompiledIcons/release/**"]),
+        "//conditions:default": [],
+    }),
     deps = [":durian_lib"],
 )

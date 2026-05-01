@@ -61,10 +61,19 @@ genrule(
 
 cc_test(
     name = "icon_map_test",
-    srcs = ["tests/icon_map_test.cc", "models/IconMap.h"],
-    copts = ["-std=c++17", "-Ilinux"],
     size = "small",
-    deps = ["@googletest//:gtest_main", "@qt//:qt6"],
+    srcs = [
+        "models/IconMap.h",
+        "tests/icon_map_test.cc",
+    ],
+    copts = [
+        "-std=c++17",
+        "-Ilinux",
+    ],
+    deps = [
+        "@googletest//:gtest_main",
+        "@qt//:qt6",
+    ],
 )
 
 genrule(
@@ -77,16 +86,19 @@ genrule(
 
 cc_test(
     name = "thread_model_test",
+    size = "small",
     srcs = [
-        "tests/thread_model_test.cc",
-        "models/ThreadModel.h",
         "data/SeedData.h",
+        "models/ThreadModel.h",
+        "tests/thread_model_test.cc",
         ":moc_thread_model",
         ":moc_thread_model_test",
     ],
-    copts = ["-std=c++17", "-Ilinux"],
+    copts = [
+        "-std=c++17",
+        "-Ilinux",
+    ],
     includes = ["."],
-    size = "small",
     deps = ["@qt//:qt6"],
 )
 
@@ -100,37 +112,45 @@ genrule(
 
 cc_test(
     name = "profile_model_test",
+    size = "small",
     srcs = [
-        "tests/profile_model_test.cc",
-        "models/ProfileModel.h",
         "models/IconMap.h",
+        "models/ProfileModel.h",
+        "tests/profile_model_test.cc",
         "third_party/toml.hpp",
         ":moc_profile_model",
         ":moc_profile_model_test",
     ],
-    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
+    copts = [
+        "-std=c++17",
+        "-Ilinux",
+        "-Wno-deprecated-literal-operator",
+    ],
     includes = ["."],
-    size = "small",
     deps = ["@qt//:qt6"],
 )
 
 cc_binary(
     name = "durian",
     srcs = [
+        "data/SeedData.h",
         "main.cc",
-        "models/ThreadModel.h",
-        "models/ProfileModel.h",
+        "models/AvatarProvider.h",
         "models/IconMap.h",
         "models/NetworkClient.h",
-        "models/AvatarProvider.h",
-        "data/SeedData.h",
+        "models/ProfileModel.h",
+        "models/ThreadModel.h",
         "third_party/toml.hpp",
-        ":qml_resources",
-        ":moc_thread_model",
-        ":moc_profile_model",
         ":moc_avatar_provider",
         ":moc_network_client",
+        ":moc_profile_model",
+        ":moc_thread_model",
+        ":qml_resources",
     ],
-    copts = ["-std=c++17", "-Ilinux", "-Wno-deprecated-literal-operator"],
+    copts = [
+        "-std=c++17",
+        "-Ilinux",
+        "-Wno-deprecated-literal-operator",
+    ],
     deps = ["@qt//:qt6"],
 )

@@ -53,6 +53,8 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "enable debug logging")
 
+	installColoredHelp(rootCmd)
+
 	// Load config before command execution
 	cobra.OnInitialize(initConfig, initLogger)
 }
