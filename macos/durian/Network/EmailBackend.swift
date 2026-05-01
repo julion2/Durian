@@ -418,7 +418,7 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
     
     /// Shared search pipeline: build URL, request, parse results, apply enrichment.
     /// Returns nil on request failure, empty array on no results.
-    private func performSearch(query: String, limit: Int, enrich: Int = 30) async -> [MailMessage]? {
+    private func performSearch(query: String, limit: Int, enrich: Int = 50) async -> [MailMessage]? {
         var components = URLComponents()
         components.path = "/search"
         components.queryItems = [
@@ -455,7 +455,7 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
         return emails
     }
 
-    private func search(_ query: String, limit: Int = 200) async {
+    private func search(_ query: String, limit: Int = 2000) async {
         searchGeneration += 1
         let myGeneration = searchGeneration
 
