@@ -7,7 +7,6 @@ Email client: Go CLI backend + Swift macOS GUI.
 - **CLI:** `bazel build //cli/cmd/durian` → install: `cli/install.sh` (copies to /usr/local/bin)
 - **GUI:** `bazel build //macos:Durian` → dev run: `macos/run.sh` (debug build → `/Applications/DurianNightly.app`) → install: `macos/install.sh` (release build → `/Applications/Durian.app`)
 - **Tests:** `bazel test //cli/...` (CLI) / `bazel test //macos/...` (GUI, requires Xcode 26) / `bazel test //...` (all)
-- **CI Tests (GUI):** `bazel test //macos:ci_config_test //macos:ci_profile_test //macos:ci_banner_manager_test //macos:ci_model_test //macos:ci_sync_manager_test //macos:ci_search_manager_test //macos:ci_outbox_manager_test //macos:ci_attachment_cache_manager_test` (uses `durian_core` target, no Views, works on Xcode 16+)
 - **Integration Tests:** `bazel test //integration:integration_test` (starts real server, validates API contract via curl+jq)
 - **Validate Config:** `durian validate` (checks config.pkl, rules.pkl, profiles.pkl, keymaps.pkl, groups.pkl)
 - **Logs (GUI/Swift):** `log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'` (nightly) / `subsystem == "org.js-lab.durian"` (release)
@@ -33,9 +32,7 @@ Email client: Go CLI backend + Swift macOS GUI.
 
 - GitHub Actions: `.github/workflows/test.yml`
 - **CLI job** runs on `ubuntu-latest` (Go tests + build)
-- **GUI job** runs on `macos-15` with `ci_*` test targets using `durian_core` (models/managers/utilities, no Views)
-- Views use macOS 26 APIs (`glassEffect`) requiring Xcode 26, but `rules_swift` `test_discoverer` crashes on Xcode 26. The `durian_core` target splits out testable code that compiles on Xcode 16+.
-- When adding new GUI tests: add both a regular `swift_test` (deps `durian_testlib`) and a `ci_*` variant (deps `durian_core`) in `macos/BUILD.bazel`
+- **GUI job** runs on `macos-26` with `DEVELOPER_DIR=/Applications/Xcode_26.4.1.app/...` (macOS 26 SDK required for `glassEffect` etc.)
 
 ## Code Style
 

@@ -39,24 +39,6 @@ swift_library(
     deps = ["@swiftpkg_pkl_swift//:PklSwift"],
 )
 
-# Core library for CI tests — models, managers, utilities only (no Views).
-# Views use macOS 26 APIs (glassEffect) that require Xcode 26, but CI
-# runs on macos-15 with Xcode 16 which lacks these APIs. This target
-# compiles on Xcode 16+ and is used by CI test targets.
-swift_library(
-    name = "durian_core",
-    testonly = True,
-    srcs = glob([
-        "durian/Models/**/*.swift",
-        "durian/Managers/**/*.swift",
-        "durian/Utilities/**/*.swift",
-        "durian/Network/**/*.swift",
-        "durian/Keymaps/**/*.swift",
-    ]),
-    module_name = "durian_lib",
-    deps = ["@swiftpkg_pkl_swift//:PklSwift"],
-)
-
 swift_test(
     name = "config_test",
     size = "small",
@@ -89,43 +71,6 @@ swift_test(
     deps = [":durian_testlib"],
 )
 
-# CI test targets — use durian_core (no Views) to avoid Xcode 26 requirement
-swift_test(
-    name = "ci_config_test",
-    size = "small",
-    srcs = ["tests/ConfigTests.swift"],
-    tags = ["ci"],
-    deps = [
-        ":durian_core",
-    ],
-)
-
-swift_test(
-    name = "ci_profile_test",
-    size = "small",
-    srcs = ["tests/ProfileTests.swift"],
-    tags = ["ci"],
-    deps = [
-        ":durian_core",
-    ],
-)
-
-swift_test(
-    name = "ci_banner_manager_test",
-    size = "small",
-    srcs = ["tests/BannerManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
-    name = "ci_model_test",
-    size = "small",
-    srcs = ["tests/ModelTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
 swift_test(
     name = "sync_manager_test",
     size = "small",
@@ -148,42 +93,10 @@ swift_test(
 )
 
 swift_test(
-    name = "ci_sync_manager_test",
-    size = "small",
-    srcs = ["tests/SyncManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
-    name = "ci_search_manager_test",
-    size = "small",
-    srcs = ["tests/SearchManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
-    name = "ci_outbox_manager_test",
-    size = "small",
-    srcs = ["tests/OutboxManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
     name = "sending_manager_test",
     size = "small",
     srcs = ["tests/EmailSendingManagerTests.swift"],
     deps = [":durian_testlib"],
-)
-
-swift_test(
-    name = "ci_sending_manager_test",
-    size = "small",
-    srcs = ["tests/EmailSendingManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
 )
 
 swift_test(
@@ -194,26 +107,10 @@ swift_test(
 )
 
 swift_test(
-    name = "ci_contacts_manager_test",
-    size = "small",
-    srcs = ["tests/ContactsManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
     name = "email_sending_test",
     size = "small",
     srcs = ["tests/EmailSendingTests.swift"],
     deps = [":durian_testlib"],
-)
-
-swift_test(
-    name = "ci_email_sending_test",
-    size = "small",
-    srcs = ["tests/EmailSendingTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
 )
 
 swift_test(
@@ -224,26 +121,10 @@ swift_test(
 )
 
 swift_test(
-    name = "ci_account_manager_test",
-    size = "small",
-    srcs = ["tests/AccountManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
     name = "key_buffer_test",
     size = "small",
     srcs = ["tests/KeyBufferTests.swift"],
     deps = [":durian_testlib"],
-)
-
-swift_test(
-    name = "ci_key_buffer_test",
-    size = "small",
-    srcs = ["tests/KeyBufferTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
 )
 
 swift_test(
@@ -254,14 +135,6 @@ swift_test(
 )
 
 swift_test(
-    name = "ci_keymaps_merge_test",
-    size = "small",
-    srcs = ["tests/KeymapsMergeTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
     name = "sequence_matcher_test",
     size = "small",
     srcs = ["tests/SequenceMatcherTests.swift"],
@@ -269,26 +142,10 @@ swift_test(
 )
 
 swift_test(
-    name = "ci_sequence_matcher_test",
-    size = "small",
-    srcs = ["tests/SequenceMatcherTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
-)
-
-swift_test(
     name = "attachment_cache_manager_test",
     size = "small",
     srcs = ["tests/AttachmentCacheManagerTests.swift"],
     deps = [":durian_testlib"],
-)
-
-swift_test(
-    name = "ci_attachment_cache_manager_test",
-    size = "small",
-    srcs = ["tests/AttachmentCacheManagerTests.swift"],
-    tags = ["ci"],
-    deps = [":durian_core"],
 )
 
 genrule(
