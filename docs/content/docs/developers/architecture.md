@@ -1,6 +1,6 @@
 ---
 title: Architecture
-weight: 5
+weight: 1
 ---
 
 Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GUI MVP on Linux. This document explains how the pieces fit together so you can navigate the codebase without reading every file.
@@ -59,7 +59,7 @@ Durian is a terminal-first email client with a SwiftUI GUI on macOS and a Qt6 GU
 When the GUI launches, it spawns `durian serve` as a child process (see `macos/durian/Network/EmailBackend.swift`). `durian serve`:
 
 1. Starts an HTTP server on `localhost:9723` (configurable via `--port`).
-2. Opens the SQLite store at `~/.config/durian/email.db`.
+2. Opens the SQLite store at `~/.local/share/durian/email.db` (or `$XDG_DATA_HOME/durian/email.db`).
 3. Starts one IDLE watcher goroutine per configured account (`cli/internal/handler/watcher.go`).
 4. Streams `new_mail` and `outbox_update` events to connected SSE subscribers via `cli/internal/handler/events.go`.
 
@@ -90,7 +90,7 @@ Integration tests in `integration/integration_test.sh` exercise the contract end
 
 ## Storage model
 
-One SQLite file at `~/.config/durian/email.db`:
+One SQLite file at `~/.local/share/durian/email.db` (or `$XDG_DATA_HOME/durian/email.db`):
 
 - `messages` — core email rows (message_id, thread_id, account, mailbox, UID, flags, body, html, timestamps)
 - `message_tags` — tag join table (one row per (message_id, tag))
@@ -138,7 +138,7 @@ Three languages (Go, Swift, C++/Qt), two platforms, one binary cache, reproducib
 
 ## Logging
 
-- **Go CLI**: `log/slog` with a `"module"` key. `durian serve` writes to `~/.config/durian/serve.log` (truncated on each start). Other commands write to stderr. Debug level via `--debug`.
+- **Go CLI**: `log/slog` with a `"module"` key. `durian serve` writes to `~/.local/state/durian/serve.log` (or `$XDG_STATE_HOME/durian/serve.log`, truncated on each start). Other commands write to stderr. Debug level via `--debug`.
 - **Swift GUI**: wrapped in `macos/durian/Utilities/Log.swift` using `os.Logger`. View in Console.app with subsystem filter `org.js-lab.durian` (release) or `org.js-lab.durian.nightly` (debug).
 - **Tag sync server**: stdout + systemd journal.
 
@@ -148,4 +148,4 @@ Three languages (Go, Swift, C++/Qt), two platforms, one binary cache, reproducib
 - **Changing the sync logic**: `cli/internal/imap/sync_mailbox.go` is the main loop; `sync_flags.go` handles flag/tag propagation.
 - **Adding a GUI feature**: start in the appropriate Swift Manager (`macos/durian/Managers/`), wire it to views.
 - **Adding a CLI command**: `cli/cmd/durian/` — each command is a Cobra subcommand.
-- **Onboarding end users**: [Getting Started](../getting-started/).
+- **Onboarding end users**: [Getting Started](../../getting-started/).

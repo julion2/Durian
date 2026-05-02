@@ -40,11 +40,15 @@ width: wide
 {{< cards >}}
   {{< card link="docs/getting-started" title="Getting Started" icon="lightning-bolt"
       subtitle="Install, configure your first account, send mail." >}}
+  {{< card link="docs/gui" title="GUI" icon="desktop-computer"
+      subtitle="The macOS app — compose, search, profiles, keymaps." >}}
+  {{< card link="docs/cli" title="CLI" icon="terminal"
+      subtitle="Every durian subcommand with practical examples." >}}
+  {{< card link="docs/configuration" title="Configuration" icon="cog"
+      subtitle="Typed Pkl files for accounts, rules, profiles, groups." >}}
   {{< card link="docs/auth" title="Authentication" icon="lock-closed"
-      subtitle="OAuth (Gmail, Microsoft 365) or password (everywhere else)." >}}
-  {{< card link="docs/keymaps" title="Keymaps" icon="hand"
-      subtitle="Vim-style navigation and modal compose editor." >}}
-  {{< card link="docs/architecture" title="Architecture" icon="cube-transparent"
+      subtitle="OAuth (Gmail, Microsoft 365) or password." >}}
+  {{< card link="docs/developers/architecture" title="Architecture" icon="cube-transparent"
       subtitle="How the CLI, GUI, and IMAP sync fit together." >}}
 {{< /cards >}}
 

@@ -39,8 +39,8 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 9723, "port to listen on")
-	serveCmd.Flags().StringVar(&serveDB, "db", "", "path to email database (default: ~/.config/durian/email.db)")
-	serveCmd.Flags().StringVar(&serveContactsDB, "contacts-db", "", "path to contacts database (default: ~/.config/durian/contacts.db)")
+	serveCmd.Flags().StringVar(&serveDB, "db", "", "path to email database (default: ~/.local/share/durian/email.db)")
+	serveCmd.Flags().StringVar(&serveContactsDB, "contacts-db", "", "path to contacts database (default: ~/.local/share/durian/contacts.db)")
 	rootCmd.AddCommand(serveCmd)
 }
 

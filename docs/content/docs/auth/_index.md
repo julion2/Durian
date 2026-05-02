@@ -1,6 +1,6 @@
 ---
 title: Authentication
-weight: 3
+weight: 5
 sidebar:
   open: true
 ---

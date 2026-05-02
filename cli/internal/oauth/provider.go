@@ -63,7 +63,7 @@ func Google() *Provider {
 		},
 		SASlMethod:          "OAUTHBEARER",
 		// No default credentials — users must configure their own Google OAuth app.
-		// See docs/OAUTH_SETUP.md for instructions.
+		// See https://julion2.github.io/durian/docs/auth/oauth/ for instructions.
 	}
 }
 

@@ -127,7 +127,7 @@ Launch **Durian.app** from `/Applications`. It'll auto-start the backend and sho
 - `/` — search (Cmd+/ also works)
 - `gi` / `gs` / `gd` / `ga` — go to inbox / sent / drafts / archive
 
-Full keybinding reference: [Vim compose](../keymaps/vim-compose/) covers the compose editor; list navigation uses the standard vim keys above.
+Full keybinding reference: [Vim compose](../gui/keymaps/vim-compose/) covers the compose editor; list navigation uses the standard vim keys above.
 
 ### Option B: CLI
 
@@ -147,13 +147,13 @@ See `durian --help` for the full command list, or `man durian-<cmd>` for detaile
 - **Custom keymaps** — copy [keymaps-example.pkl](https://github.com/julion2/durian/blob/main/docs/keymaps-example.pkl) to `~/.config/durian/keymaps.pkl`
 - **Filter rules** (auto-tag on sync) — copy [rules-example.pkl](https://github.com/julion2/durian/blob/main/docs/rules-example.pkl) to `~/.config/durian/rules.pkl`
 - **Multi-machine tag sync** — see the [tag sync server README](https://github.com/julion2/durian/tree/main/sync)
-- **How it actually works** — [Architecture](../architecture/)
+- **How it actually works** — [Architecture](../developers/architecture/)
 
 ## Troubleshooting
 
 | Problem | Check |
 |---|---|
-| `durian sync` hangs | `tail -f ~/.config/durian/serve.log`, kill stale serve with `pkill durian` |
+| `durian sync` hangs | `tail -f ~/.local/state/durian/serve.log`, kill stale serve with `pkill durian` |
 | Auth fails | `durian auth status`, re-run `durian auth login <alias>` |
 | GUI doesn't start | Verify `durian --version` works standalone; check Console.app for `org.js-lab.durian` |
 | Config parse error | `durian validate` — it tells you the exact field |

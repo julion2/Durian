@@ -41,7 +41,7 @@ type TagSyncConfig struct {
 // ContactsConfig contains contacts database settings
 type ContactsConfig struct {
 	Enabled bool   `pkl:"enabled" json:"enabled"` // Enable contacts feature (default: true)
-	DBPath  string `pkl:"db_path" json:"db_path"` // Path to SQLite DB (default: ~/.config/durian/contacts.db)
+	DBPath  string `pkl:"db_path" json:"db_path"` // Path to SQLite DB (default: ~/.local/share/durian/contacts.db)
 }
 
 // AccountConfig represents a single email account

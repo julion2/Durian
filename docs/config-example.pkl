@@ -11,7 +11,8 @@ settings {
 }
 
 // Optional: override the contacts database location.
-// contacts { db_path = "~/.config/durian/contacts.db" }
+// Default: ~/.local/share/durian/contacts.db (XDG_DATA_HOME)
+// contacts { db_path = "~/.local/share/durian/contacts.db" }
 
 sync {
   gui_auto_sync = true                // GUI auto-syncs on launch and periodically
@@ -65,7 +66,7 @@ accounts {
   }
 
   // ── Microsoft 365 Shared Mailbox ─────────────────────────
-  // See docs/OAUTH_SETUP.md for shared mailbox OAuth setup.
+  // See https://julion2.github.io/durian/docs/auth/oauth/ for shared mailbox OAuth setup.
   (C.microsoft365Shared) {
     name = "Support"
     email = "support@company.com"
@@ -81,8 +82,8 @@ accounts {
     email = "you@gmail.com"
     alias = "gmail"
     oauth {
-      client_id = "your-google-client-id"         // Required, see docs/OAUTH_SETUP.md
-      client_secret = "your-google-client-secret"  // Required, see docs/OAUTH_SETUP.md
+      client_id = "your-google-client-id"         // Required, see https://julion2.github.io/durian/docs/auth/oauth/
+      client_secret = "your-google-client-secret"  // Required, see https://julion2.github.io/durian/docs/auth/oauth/
     }
     // Then run: durian auth login gmail
   }
