@@ -57,10 +57,8 @@ Or download pre-built binaries from [GitHub Releases](https://github.com/julion2
 
 ### Requirements
 
-- **macOS:** macOS 26+, Xcode 26+ (CLI + GUI)
-- **Linux:** Go 1.24+, `secret-tool` (libsecret) for credential storage (CLI only)
-- [Bazelisk](https://github.com/bazelbuild/bazelisk)
-- [Pkl](https://pkl-lang.org) (`brew install pkl`) — config language runtime
+- **CLI** (macOS or Linux): Go 1.24+, [Bazelisk](https://github.com/bazelbuild/bazelisk), [Pkl](https://pkl-lang.org) (`brew install pkl`). Linux additionally needs `secret-tool` (libsecret) for credential storage.
+- **GUI** (macOS only): macOS 26+, Xcode 26+ (uses macOS 26 APIs).
 
 ### Build & Install
 
@@ -121,20 +119,21 @@ log stream --level debug --predicate 'subsystem == "org.js-lab.durian.nightly"'
 log stream --level debug --predicate 'subsystem == "org.js-lab.durian"'
 
 # CLI (Go → slog)
-tail -f ~/.config/durian/serve.log    # durian serve logs
-durian sync --debug                   # debug output on stderr
+tail -f ~/.local/state/durian/serve.log    # durian serve logs
+durian sync --debug                        # debug output on stderr
 ```
 
 ## Docs
 
 Full documentation: **<https://julion2.github.io/durian/>**
 
-- [Getting Started](https://julion2.github.io/durian/docs/getting-started/) — Install → config → first sync
-- [Architecture](https://julion2.github.io/durian/docs/architecture/) — How CLI, GUI, and sync server fit together
-- [OAuth Setup](https://julion2.github.io/durian/docs/auth/oauth/) — Gmail & Microsoft 365
-- [Password Setup](https://julion2.github.io/durian/docs/auth/password/) — IMAP/SMTP with password auth
-- [Vim Compose](https://julion2.github.io/durian/docs/keymaps/vim-compose/) — Vim keybindings in the compose editor
-- [Tag Sync](sync/README.md) — Multi-machine tag sync via self-hosted server
+- [Getting Started](https://julion2.github.io/durian/docs/getting-started/) — install → config → first sync
+- [GUI](https://julion2.github.io/durian/docs/gui/) — compose, sidebar, search, drafts, attachments, notifications, keymaps
+- [CLI Reference](https://julion2.github.io/durian/docs/cli/) — every `durian` subcommand with examples
+- [Configuration](https://julion2.github.io/durian/docs/configuration/) — typed Pkl files for accounts, rules, profiles, groups
+- [Authentication](https://julion2.github.io/durian/docs/auth/) — OAuth (Gmail, Microsoft 365) or password
+- [Architecture](https://julion2.github.io/durian/docs/developers/architecture/) — how the pieces fit together
+- [Tag Sync](sync/README.md) — multi-machine tag sync via self-hosted server
 
 ## Alternatives
 
