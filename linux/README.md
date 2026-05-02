@@ -37,7 +37,10 @@ bazel build //linux:durian
 bazel run //linux:durian --repo_env=QTDIR=$QTDIR
 ```
 
-Requires `durian serve` running on `localhost:9723`.
+Requires `durian serve --no-auth` running on `localhost:9723`. The Linux
+GUI does not yet support the bearer-token auth used by the macOS GUI, so
+`--no-auth` is required for the experimental client. Loopback-only
+access is still enforced.
 
 ## Tests
 
