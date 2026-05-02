@@ -846,10 +846,12 @@ class EmailBackend: ObservableObject, SearchBackend, OutboxBackend {
 
                 let previewBody = cached.messages.first?.body ?? ""
                 emails[index].previewText = String(previewBody.prefix(200))
-                if cached.messages.contains(where: { $0.html != nil && !($0.html?.isEmpty ?? true) }) {
-                    let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
-                    emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
-                }
+                // Restore .loaded regardless of HTML presence — plaintext-only threads
+                // are valid loaded state too. Without this, auto-sync regresses
+                // plaintext mails to .notLoaded and the detail view flips back to
+                // "Click to load".
+                let combinedBody = cached.messages.map { $0.body }.joined(separator: "\n\n---\n\n")
+                emails[index].bodyState = .loaded(body: combinedBody, attributedBody: nil)
                 restoredCount += 1
             }
         }
