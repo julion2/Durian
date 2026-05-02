@@ -117,15 +117,14 @@ cc_test(
         "models/IconMap.h",
         "models/ProfileModel.h",
         "tests/profile_model_test.cc",
-        "third_party/toml.hpp",
         ":moc_profile_model",
         ":moc_profile_model_test",
     ],
     copts = [
         "-std=c++17",
         "-Ilinux",
-        "-Wno-deprecated-literal-operator",
     ],
+    data = ["//schema:pkl_schemas"],
     includes = ["."],
     deps = ["@qt//:qt6"],
 )
@@ -140,7 +139,6 @@ cc_binary(
         "models/NetworkClient.h",
         "models/ProfileModel.h",
         "models/ThreadModel.h",
-        "third_party/toml.hpp",
         ":moc_avatar_provider",
         ":moc_network_client",
         ":moc_profile_model",
@@ -150,7 +148,7 @@ cc_binary(
     copts = [
         "-std=c++17",
         "-Ilinux",
-        "-Wno-deprecated-literal-operator",
     ],
+    data = ["//schema:pkl_schemas"],
     deps = ["@qt//:qt6"],
 )

@@ -55,7 +55,7 @@ private slots:
         ProfileModel model;
         model.load();
 
-        // These emails should be in config.toml
+        // These emails should be in config.pkl
         // At minimum, the first account email should match
         auto profiles = model.profileNames();
         if (!profiles.isEmpty()) {

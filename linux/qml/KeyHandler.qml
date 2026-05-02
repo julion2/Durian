@@ -1,8 +1,8 @@
 import QtQuick
 
-// TODO: load keybindings from ~/.config/durian/keymaps.toml instead of hardcoding
+// TODO: load keybindings from ~/.config/durian/keymaps.pkl instead of hardcoding
 // The macOS GUI uses a full KeySequenceEngine (gui/durian/Keymaps/) that parses
-// keymaps.toml with support for sequences, counts, modifiers, and contexts.
+// keymaps.pkl with support for sequences, counts, modifiers, and contexts.
 
 Item {
     id: handler
