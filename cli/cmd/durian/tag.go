@@ -37,6 +37,7 @@ var tagCmd = &cobra.Command{
 func init() {
 	tagCmd.Flags().SetInterspersed(false)
 	tagListCmd.Flags().StringVar(&tagAccountFilter, "account", "", "filter by account (comma-separated)")
+	_ = tagListCmd.RegisterFlagCompletionFunc("account", completeAccounts)
 	tagCmd.AddCommand(tagListCmd)
 	rootCmd.AddCommand(tagCmd)
 }

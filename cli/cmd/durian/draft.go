@@ -70,10 +70,13 @@ func init() {
 	draftSaveCmd.Flags().StringVar(&draftInReplyTo, "in-reply-to", "", "Message-ID of the message being replied to")
 	draftSaveCmd.Flags().StringVar(&draftReferences, "references", "", "space-separated Message-IDs of the thread")
 	draftSaveCmd.MarkFlagRequired("account")
+	_ = draftSaveCmd.RegisterFlagCompletionFunc("account", completeAccounts)
+	_ = draftSaveCmd.RegisterFlagCompletionFunc("from", completeAccounts)
 
 	// Delete command flags
 	draftDeleteCmd.Flags().StringVar(&draftAccount, "account", "", "account email (required)")
 	draftDeleteCmd.MarkFlagRequired("account")
+	_ = draftDeleteCmd.RegisterFlagCompletionFunc("account", completeAccounts)
 
 	draftCmd.AddCommand(draftSaveCmd)
 	draftCmd.AddCommand(draftDeleteCmd)

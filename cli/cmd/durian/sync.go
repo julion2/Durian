@@ -33,6 +33,12 @@ var syncCmd = &cobra.Command{
   durian sync --upload-only
   durian sync --no-flags
   durian sync --dry-run`,
+	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) == 0 {
+			return completeAccounts(cmd, args, toComplete)
+		}
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	},
 	RunE: runSync,
 }
 
