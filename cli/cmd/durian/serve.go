@@ -29,6 +29,7 @@ import (
 var servePort int
 var serveDB string
 var serveContactsDB string
+var serveNoAuth bool
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -41,6 +42,7 @@ func init() {
 	serveCmd.Flags().IntVar(&servePort, "port", 9723, "port to listen on")
 	serveCmd.Flags().StringVar(&serveDB, "db", "", "path to email database (default: ~/.local/share/durian/email.db)")
 	serveCmd.Flags().StringVar(&serveContactsDB, "contacts-db", "", "path to contacts database (default: ~/.local/share/durian/contacts.db)")
+	serveCmd.Flags().BoolVar(&serveNoAuth, "no-auth", false, "disable bearer-token auth (loopback-only; for experimental clients)")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -96,14 +98,21 @@ func runServe(cmd *cobra.Command, args []string) {
 	h := handler.New(emailDB, contactsDB)
 	eventHub := handler.NewEventHub()
 
-	// Generate auth token for this session
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		slog.Error("Failed to generate auth token", "module", "SERVE", "err", err)
-		os.Exit(1)
+	// Generate auth token for this session (unless --no-auth)
+	var authToken string
+	var expectedHeader []byte
+	if !serveNoAuth {
+		tokenBytes := make([]byte, 32)
+		if _, err := rand.Read(tokenBytes); err != nil {
+			slog.Error("Failed to generate auth token", "module", "SERVE", "err", err)
+			os.Exit(1)
+		}
+		authToken = hex.EncodeToString(tokenBytes)
+		expectedHeader = []byte("Bearer " + authToken)
+	} else {
+		slog.Warn("Auth disabled via --no-auth (loopback-only access still enforced)", "module", "SERVE")
+		fmt.Fprintln(os.Stderr, "Warning: --no-auth disables bearer-token authentication. Loopback-only access is still enforced, but any local process can hit the API.")
 	}
-	authToken := hex.EncodeToString(tokenBytes)
-	expectedHeader := []byte("Bearer " + authToken)
 
 	r := mux.NewRouter()
 	addr := fmt.Sprintf("127.0.0.1:%d", servePort)
@@ -117,11 +126,12 @@ func runServe(cmd *cobra.Command, args []string) {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
-			// Verify auth token
-			auth := []byte(req.Header.Get("Authorization"))
-			if subtle.ConstantTimeCompare(auth, expectedHeader) != 1 {
-				http.Error(w, "unauthorized", http.StatusUnauthorized)
-				return
+			if !serveNoAuth {
+				auth := []byte(req.Header.Get("Authorization"))
+				if subtle.ConstantTimeCompare(auth, expectedHeader) != 1 {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+					return
+				}
 			}
 			next.ServeHTTP(w, req)
 		})
@@ -233,7 +243,11 @@ func runServe(cmd *cobra.Command, args []string) {
 	}()
 
 	// Machine-readable ready line — GUI parses this from stdout pipe
-	fmt.Printf("READY token=%s addr=%s\n", authToken, addr)
+	if serveNoAuth {
+		fmt.Printf("READY token= addr=%s\n", addr)
+	} else {
+		fmt.Printf("READY token=%s addr=%s\n", authToken, addr)
+	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
