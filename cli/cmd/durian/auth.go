@@ -35,6 +35,7 @@ var authLoginCmd = &cobra.Command{
   durian auth login work         # Use alias
   durian auth login you@company.com  # Use full email`,
 	Args: cobra.ExactArgs(1),
+	ValidArgsFunction: completeAccounts,
 	RunE: runAuthLogin,
 }
 
@@ -50,6 +51,7 @@ var authLogoutCmd = &cobra.Command{
 	Short: "Remove credentials for an account",
 	Long: "Remove stored OAuth tokens or passwords from the keychain.",
 	Args: cobra.ExactArgs(1),
+	ValidArgsFunction: completeAccounts,
 	RunE: runAuthLogout,
 }
 
@@ -58,6 +60,7 @@ var authRefreshCmd = &cobra.Command{
 	Short: "Manually refresh OAuth token for an account",
 	Long: "Force a token refresh (normally done automatically).",
 	Args: cobra.ExactArgs(1),
+	ValidArgsFunction: completeAccounts,
 	RunE: runAuthRefresh,
 }
 

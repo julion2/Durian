@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "attachment.go",
         "auth.go",
+        "completion.go",
         "contacts.go",
         "draft.go",
         "group.go",

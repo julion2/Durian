@@ -60,6 +60,7 @@ func init() {
 	sendCmd.Flags().BoolVar(&sendForce, "force", false, "send even if attachments exceed size limit")
 	sendCmd.Flags().StringVar(&sendInReplyTo, "in-reply-to", "", "Message-ID of the message being replied to")
 	sendCmd.Flags().StringVar(&sendReferences, "references", "", "space-separated Message-IDs of the thread")
+	_ = sendCmd.RegisterFlagCompletionFunc("from", completeAccounts)
 
 	rootCmd.AddCommand(sendCmd)
 }
