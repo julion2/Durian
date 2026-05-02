@@ -1,22 +1,28 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <QByteArray>
+#include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
+#include <QProcess>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QVariantList>
 #include <QVariantMap>
-
-#define TOML_HEADER_ONLY 1
-#include "third_party/toml.hpp"
 
 #include "models/IconMap.h"
 
 struct FolderConfig {
     QString name;
-    QString icon;    // SF Symbol name from TOML
+    QString icon;    // SF Symbol name
     QString query;
 };
 
@@ -55,54 +61,48 @@ public:
         return xdg + "/durian";
     }
 
+    // Locate the schema directory (Profiles.pkl, Config.pkl, ...).
+    // Order:
+    //   1. $DURIAN_SCHEMA_DIR
+    //   2. <binary dir>/../schema  (Bazel runfiles layout)
+    //   3. <binary dir>/schema
+    //   4. /usr/local/share/durian/schema
+    //   5. /usr/share/durian/schema
+    static QString schemaDir() {
+        auto envVal = [](const char *name) -> QString {
+            return QProcessEnvironment::systemEnvironment().value(name);
+        };
+
+        QString env = envVal("DURIAN_SCHEMA_DIR");
+        if (!env.isEmpty() && QFileInfo(env + "/Profiles.pkl").exists())
+            return env;
+
+        // Bazel runfiles: $RUNFILES_DIR/_main/schema or <binary>.runfiles/_main/schema
+        QString runfiles = envVal("RUNFILES_DIR");
+        if (runfiles.isEmpty()) {
+            QString self = QCoreApplication::applicationFilePath();
+            if (!self.isEmpty()) runfiles = self + ".runfiles";
+        }
+
+        QString appDir = QCoreApplication::applicationDirPath();
+        for (const QString &candidate : {
+                 runfiles + "/_main/schema",
+                 appDir + "/../schema",
+                 appDir + "/schema",
+                 QStringLiteral("/usr/local/share/durian/schema"),
+                 QStringLiteral("/usr/share/durian/schema"),
+             }) {
+            if (QFileInfo(candidate + "/Profiles.pkl").exists())
+                return QDir(candidate).absolutePath();
+        }
+        return {};
+    }
+
     Q_INVOKABLE void load() {
         profiles_.clear();
         ownEmails_.clear();
         loadConfig();
-        QString path = configDir() + "/profiles.toml";
-
-        try {
-            auto tbl = toml::parse_file(path.toStdString());
-            if (auto arr = tbl.get_as<toml::array>("profile")) {
-                for (auto &item : *arr) {
-                    auto *ptbl = item.as_table();
-                    if (!ptbl) continue;
-
-                    Profile p;
-                    if (auto n = ptbl->get_as<std::string>("name"))
-                        p.name = QString::fromStdString(**n);
-                    if (auto d = ptbl->get_as<bool>("default"))
-                        p.isDefault = **d;
-                    if (auto c = ptbl->get_as<std::string>("color"))
-                        p.color = QString::fromStdString(**c);
-                    if (auto accs = ptbl->get_as<toml::array>("accounts")) {
-                        for (auto &a : *accs) {
-                            if (auto s = a.as_string())
-                                p.accounts.append(QString::fromStdString(**s));
-                        }
-                    }
-
-                    if (auto folders = ptbl->get_as<toml::array>("folders")) {
-                        for (auto &f : *folders) {
-                            auto *ftbl = f.as_table();
-                            if (!ftbl) continue;
-                            FolderConfig fc;
-                            if (auto n = ftbl->get_as<std::string>("name"))
-                                fc.name = QString::fromStdString(**n);
-                            if (auto i = ftbl->get_as<std::string>("icon"))
-                                fc.icon = QString::fromStdString(**i);
-                            if (auto q = ftbl->get_as<std::string>("query"))
-                                fc.query = QString::fromStdString(**q);
-                            p.folders.append(fc);
-                        }
-                    }
-
-                    profiles_.append(p);
-                }
-            }
-        } catch (...) {
-            // Fallback: empty profiles
-        }
+        loadProfiles();
 
         // Find default profile
         currentProfile_ = 0;
@@ -179,23 +179,79 @@ signals:
     void configLoaded();
 
 private:
+    // Run `pkl eval --format json [--module-path <schemaDir>] <file>` and
+    // return the JSON document. Returns a null document on failure.
+    static QJsonDocument pklEval(const QString &pklFile) {
+        if (!QFileInfo(pklFile).exists())
+            return {};
+
+        QStringList args = {"eval", "--format", "json"};
+        QString sd = schemaDir();
+        if (!sd.isEmpty()) {
+            // pkl rejects --module-path entries that contain symlinks; resolve
+            // to the canonical path so Bazel runfiles trees work too.
+            QString sdReal = QFileInfo(sd + "/Profiles.pkl").canonicalFilePath();
+            if (!sdReal.isEmpty())
+                sd = QFileInfo(sdReal).absolutePath();
+            args << "--module-path" << sd
+                 << "--allowed-modules" << "file:,modulepath:";
+        }
+        args << pklFile;
+
+        // Resolve pkl absolute path (Bazel-run may strip PATH).
+        QString pklBin = QStandardPaths::findExecutable("pkl");
+        if (pklBin.isEmpty()) {
+            for (const QString &c : {"/opt/homebrew/bin/pkl", "/usr/local/bin/pkl", "/usr/bin/pkl"}) {
+                if (QFileInfo(c).isExecutable()) { pklBin = c; break; }
+            }
+        }
+        if (pklBin.isEmpty()) pklBin = "pkl";
+
+        QProcess proc;
+        proc.start(pklBin, args);
+        if (!proc.waitForFinished(10000) || proc.exitStatus() != QProcess::NormalExit ||
+            proc.exitCode() != 0) {
+            return {};
+        }
+        QByteArray out = proc.readAllStandardOutput();
+        QJsonParseError err{};
+        QJsonDocument doc = QJsonDocument::fromJson(out, &err);
+        if (err.error != QJsonParseError::NoError)
+            return {};
+        return doc;
+    }
+
+    void loadProfiles() {
+        QJsonDocument doc = pklEval(configDir() + "/profiles.pkl");
+        if (!doc.isObject()) return;
+        QJsonArray arr = doc.object().value("profiles").toArray();
+        for (const QJsonValue &v : arr) {
+            QJsonObject obj = v.toObject();
+            Profile p;
+            p.name = obj.value("name").toString();
+            p.isDefault = obj.value("default").toBool();
+            p.color = obj.value("color").toString();
+            for (const QJsonValue &a : obj.value("accounts").toArray())
+                p.accounts.append(a.toString());
+            for (const QJsonValue &f : obj.value("folders").toArray()) {
+                QJsonObject fobj = f.toObject();
+                FolderConfig fc;
+                fc.name = fobj.value("name").toString();
+                fc.icon = fobj.value("icon").toString();
+                fc.query = fobj.value("query").toString();
+                p.folders.append(fc);
+            }
+            profiles_.append(p);
+        }
+    }
+
     void loadConfig() {
-        QString path = configDir() + "/config.toml";
-        try {
-            auto tbl = toml::parse_file(path.toStdString());
-            if (auto accs = tbl.get_as<toml::array>("accounts")) {
-                for (auto &item : *accs) {
-                    auto *atbl = item.as_table();
-                    if (!atbl) continue;
-                    if (auto e = atbl->get_as<std::string>("email"))
-                        ownEmails_.append(QString::fromStdString(**e).toLower());
-                }
-            }
-            if (auto settings = tbl.get_as<toml::table>("settings")) {
-                if (auto lri = settings->get_as<bool>("load_remote_images"))
-                    loadRemoteImages_ = **lri;
-            }
-        } catch (...) {}
+        QJsonDocument doc = pklEval(configDir() + "/config.pkl");
+        if (doc.isObject()) {
+            QJsonObject root = doc.object();
+            QJsonObject settings = root.value("settings").toObject();
+            loadRemoteImages_ = settings.value("load_remote_images").toBool(false);
+        }
         emit configLoaded();
     }
 

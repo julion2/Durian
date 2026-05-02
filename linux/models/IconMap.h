@@ -3,7 +3,7 @@
 #include <QHash>
 #include <QString>
 
-// Maps SF Symbol names (from profiles.toml) to Material Symbols Unicode codepoints.
+// Maps SF Symbol names (from profiles.pkl) to Material Symbols Unicode codepoints.
 class IconMap {
 public:
     static QString toMaterialSymbol(const QString &sfSymbol) {

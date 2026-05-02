@@ -8,6 +8,7 @@ Connects to the Durian CLI backend via HTTP API on `localhost:9723`.
 
 - Qt6 (Core, Gui, Quick, Qml, QuickControls2, WebEngine, Network, Test)
 - Bazel
+- [Pkl](https://pkl-lang.org) CLI (`pkl eval` is invoked as a subprocess to read `profiles.pkl` / `config.pkl`)
 
 ### Fedora / KDE
 
@@ -57,7 +58,7 @@ linux/
 ├── qt_repo.bzl             # Qt6 Bazel repository rule
 ├── models/
 │   ├── ThreadModel.h       # QAbstractListModel for email threads
-│   ├── ProfileModel.h      # Reads profiles.toml + config.toml
+│   ├── ProfileModel.h      # Reads profiles.pkl + config.pkl via `pkl eval`
 │   ├── NetworkClient.h     # HTTP client (search, threads, attachments)
 │   ├── AvatarProvider.h    # Gravatar + Brandfetch async image provider
 │   └── IconMap.h           # SF Symbol → Material Symbol mapping
@@ -74,8 +75,6 @@ linux/
 │   ├── SearchPopup.qml     # Raycast-style search
 │   ├── Avatar.qml          # Avatar with image + initials fallback
 │   └── AvatarHelper.js     # Avatar color/initials logic
-├── third_party/
-│   └── toml.hpp            # toml++ header-only TOML parser
 └── tests/
     ├── icon_map_test.cc
     ├── thread_model_test.cc
