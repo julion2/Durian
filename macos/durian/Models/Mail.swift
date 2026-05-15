@@ -38,6 +38,10 @@ struct ThreadMessage: Decodable, Identifiable, Equatable {
     let hidden_signature: String?
     let attachments: [AttachmentInfo]?
     let tags: [String]?
+
+    var isDraft: Bool {
+        tags?.contains("draft") ?? false
+    }
 }
 
 // MARK: - Email Body State

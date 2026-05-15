@@ -213,15 +213,42 @@ func runDraftDelete(cmd *cobra.Command, args []string) error {
 		return outputDraftError(fmt.Sprintf("no IMAP host configured for %s", account.Email))
 	}
 
-	// Delete draft
+	// Delete draft from IMAP
 	service := draft.NewService(account)
 	if err := service.Delete(messageID); err != nil {
 		return outputDraftError(fmt.Sprintf("failed to delete draft: %v", err))
 	}
 
+	// Also drop the local DB row so the draft tag disappears immediately.
+	// `durian draft save` inserts the draft into the local store with tag:draft
+	// so the GUI can show it without waiting for IMAP sync. Without this delete,
+	// the row (and its tag) lives on after the IMAP draft is gone, and every
+	// sent reply ends up with thread tags = sent,draft,... forever.
+	deleteDraftFromLocalStore(account, messageID)
+
 	// Output success
 	resp := draftResponse{OK: true}
 	return outputJSON(resp)
+}
+
+// deleteDraftFromLocalStore removes the local draft row mirroring the IMAP
+// delete. Best-effort: errors are logged but do not affect the API result.
+func deleteDraftFromLocalStore(account *config.AccountConfig, messageID string) {
+	messageID = strings.Trim(messageID, "<>")
+	if messageID == "" {
+		return
+	}
+
+	db, err := store.Open(store.DefaultDBPath())
+	if err != nil {
+		slog.Debug("Could not open store for draft delete", "module", "DRAFT", "err", err)
+		return
+	}
+	defer db.Close()
+
+	if err := db.DeleteByMessageIDAndAccount(messageID, account.AccountIdentifier()); err != nil {
+		slog.Debug("Local draft row not deleted", "module", "DRAFT", "message_id", messageID, "err", err)
+	}
 }
 
 // saveDraftToLocalStore inserts the draft into SQLite so the Drafts folder
