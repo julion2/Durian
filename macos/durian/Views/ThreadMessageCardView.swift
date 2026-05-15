@@ -601,7 +601,7 @@ struct ThreadMessageCardView: View {
         HStack {
             Spacer()
 
-            if email.isDraft, let onEditDraft = onEditDraft {
+            if message.isDraft, let onEditDraft = onEditDraft {
                 Button(action: onEditDraft) {
                     HStack(spacing: 6) {
                         Image(systemName: "pencil")
