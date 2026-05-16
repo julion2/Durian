@@ -1,6 +1,6 @@
 module github.com/durian-dev/durian/cli
 
-go 1.25.0
+go 1.25.10
 
 require (
 	github.com/apple/pkl-go v0.13.2
