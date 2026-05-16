@@ -62,6 +62,16 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AppIcon" gui_repack/Durian.app/Contents/Info.plist 2>/dev/null || true
           cd gui_repack && zip -r $GITHUB_WORKSPACE/dist/Durian-${{ steps.version.outputs.version }}.zip Durian.app
 
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          # cyclonedx-gomod resolves the dependency tree (incl. transitive)
+          # of the cli/ module and emits a CycloneDX 1.5 JSON document.
+          # sync/ shares the same module so one SBOM covers both binaries.
+          # Format choice: JSON over XML for grep/jq friendliness.
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+          cd cli
+          cyclonedx-gomod app -main ./cmd/durian -output ../dist/durian-${{ steps.version.outputs.version }}.cdx.json -json -licenses
+
       - name: Package
         run: |
           cd dist
@@ -71,7 +81,7 @@ jobs:
           tar -czf durian-${{ steps.version.outputs.version }}-linux-arm64.tar.gz durian-linux-arm64
           tar -czf durian-sync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz durian-sync-linux-amd64
           tar -czf durian-sync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz durian-sync-linux-arm64
-          shasum -a 256 *.tar.gz *.zip > checksums.txt
+          shasum -a 256 *.tar.gz *.zip *.cdx.json > checksums.txt
           cat checksums.txt
 
       - name: Create Release
@@ -84,6 +94,7 @@ jobs:
             dist/durian-sync-${{ steps.version.outputs.version }}-linux-amd64.tar.gz \
             dist/durian-sync-${{ steps.version.outputs.version }}-linux-arm64.tar.gz \
             dist/Durian-${{ steps.version.outputs.version }}.zip \
+            dist/durian-${{ steps.version.outputs.version }}.cdx.json \
             dist/checksums.txt \
             --title "Durian ${{ github.ref_name }}" \
             --generate-notes
