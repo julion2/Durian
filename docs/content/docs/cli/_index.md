@@ -1,182 +1,45 @@
 ---
-title: CLI Reference
-weight: 3
+title: CLI
+weight: 2
 sidebar:
   open: true
 ---
 
-The `durian` CLI is the engine — it handles IMAP sync, SMTP send, SQLite storage, and exposes the HTTP API the GUI talks to.
+The terminal client and engine. `durian` handles IMAP sync, SMTP send, the
+local SQLite store, and the HTTP API the GUI talks to. If you live in a
+terminal, it's the whole product. If you use the GUI, it's still running
+under the hood.
 
-For terse flag-level reference, the man pages are installed alongside the binary:
+The CLI is built with [Cobra](https://github.com/spf13/cobra) — every
+subcommand has `--help`, ships a man page, and supports tab completion.
 
-```bash
-man durian-sync
-man durian-search
-durian <cmd> --help
-```
+{{< cards >}}
+  {{< card link="reference" title="Reference" subtitle="Every subcommand with practical examples." >}}
+  {{< card link="completion" title="Shell Completion" subtitle="Tab-complete account names in zsh, bash, fish, carapace." >}}
+{{< /cards >}}
 
-This page covers each subcommand with one or two practical examples. Run `durian` (no args) for the full list.
-
-## sync — fetch and push mail
-
-```bash
-durian sync                          # all accounts, all mailboxes
-durian sync personal                 # one account by alias
-durian sync personal INBOX           # one mailbox
-durian sync --debug                  # verbose logging to stderr
-```
-
-Bidirectional by default — local tag changes are uploaded as IMAP flags / folder moves, and server-side flag changes are pulled down. The first sync of a large mailbox can take a few minutes; subsequent syncs are incremental.
-
-The GUI runs `durian serve`, which keeps a long-lived IDLE connection open per account — explicit `durian sync` is mainly useful for cron jobs or troubleshooting.
-
-## search — query the local store
+## At a glance
 
 ```bash
-durian search "tag:inbox" -l 10
-durian search "from:boss@company.com AND has:attachment:pdf"
-durian search "group:vip AND date:1w.." --json
-durian search count "tag:unread"
+durian sync                       # pull mail via IMAP, push tag/flag changes
+durian search "tag:inbox"         # query the local store (notmuch syntax)
+durian tag <thread> +todo         # add/remove tags
+durian show <thread>              # render a thread to stdout
+durian send --to ...              # send mail (with $EDITOR fallback)
+durian auth status                # OAuth/password state per account
 ```
 
-Uses [notmuch-style syntax](../gui/search/) — terms are ANDed by default; `OR`/`NOT` are explicit. `--json` emits machine-readable output for piping into other tools.
+Run `durian` with no arguments for the complete list.
 
-## tag — modify tags
+## Files
 
-```bash
-durian tag "tag:inbox AND from:newsletter" +newsletter -inbox
-durian tag <thread-id> +todo
-durian tag list                       # show all tags + counts
-```
-
-Tags must be prefixed with `+` (add) or `-` (remove). Both can be mixed in one call.
-
-## show — display a thread
-
-```bash
-durian show <thread-id>
-durian show <thread-id> --html
-```
-
-Renders the thread to stdout — useful for piping into `less` or grepping a specific thread.
-
-## attachment — list or download
-
-```bash
-durian attachment <message-id>                          # list parts
-durian attachment <message-id> --part 2 --save ./out/   # download part 2
-```
-
-Part IDs come from the `list` output. `--save` writes the original filename into the target directory.
-
-## send — send an email
-
-```bash
-durian send --to bob@x.com --subject Hi --body "Hello"
-durian send --to bob@x.com --subject Draft       # opens $EDITOR
-durian send --to bob@x.com --subject "PR" --attachment patch.diff
-```
-
-If `--body` is omitted, your `$EDITOR` opens with a temp file.
-
-## draft — manage IMAP drafts
-
-```bash
-durian draft save --to alice@x.com --subject WIP --body "..."
-durian draft save --replace --message-id "<original-id>" ...
-durian draft delete "<message-id>"
-```
-
-`--replace` overwrites an existing draft on IMAP by Message-ID — useful for autosave loops in scripts.
-
-## rules — apply filter rules
-
-```bash
-durian rules apply                    # apply rules.pkl to all messages
-durian rules apply --dry-run          # preview changes without writing
-```
-
-Rules normally run automatically on incoming mail during sync. `apply` is for backfilling — e.g. after editing `rules.pkl` you may want to re-tag your existing inbox.
-
-## validate — check config
-
-```bash
-durian validate                       # all files
-durian validate config                # just config.pkl
-durian validate rules
-durian validate profiles
-durian validate keymaps
-durian validate groups
-```
-
-Reports the offending field with file path and line. Run before `auth login` or `sync` if you've edited Pkl files.
-
-## auth — manage credentials
-
-```bash
-durian auth login personal            # interactive (password or OAuth)
-durian auth status                    # all accounts + token state
-durian auth refresh personal          # force OAuth token refresh
-durian auth logout personal           # remove from keychain
-```
-
-Credentials live in the macOS Keychain — see [OAuth setup](../auth/oauth/) and [Password setup](../auth/password/).
-
-## contacts — local address book
-
-```bash
-durian contacts init                  # create the contacts DB (auto on first sync)
-durian contacts import                # extract addresses from email store
-durian contacts list
-durian contacts search alice
-durian contacts add bob@x.com "Bob Roberts"
-durian contacts delete bob@x.com
-```
-
-Used by the GUI compose autocomplete. `import` walks your existing mail and seeds the DB.
-
-## group — list contact groups
-
-```bash
-durian group list                     # all groups + member counts
-durian group members vip              # members of one group
-```
-
-Groups are defined in `groups.pkl` — edit the file to add or remove members. The CLI is read-only.
-
-## tag-sync — multi-machine tag replication
-
-```bash
-durian tag-sync push                  # push local tag changes to server
-durian tag-sync pull                  # pull remote changes
-durian tag-sync push-all              # initial sync (all tags)
-```
-
-Optional. Requires a self-hosted [tag sync server](https://github.com/julion2/durian/tree/main/sync) configured in `config.pkl`:
-
-```pkl
-sync {
-  tag_sync { url = "http://nas:8724"; api_key = "your-secret" }
-}
-```
-
-Run only on a trusted network — the protocol has no TLS or rate limiting.
-
-## serve — HTTP API for the GUI
-
-```bash
-durian serve                          # default port 9723
-durian serve --port 8080
-durian serve --debug                  # debug-level logging to serve.log
-```
-
-Used by the GUI as a child process — you don't normally need to start this yourself. Logs go to `~/.local/state/durian/serve.log` (truncated on each start).
-
-## Global flags
-
-| Flag | Effect |
+| Path | What |
 |---|---|
-| `--debug` | Debug-level logging |
-| `--json` | Machine-readable JSON output (where supported) |
-| `-c, --config <file>` | Override config file (default `~/.config/durian/config.pkl`) |
-| `--help` | Per-command help |
+| `~/.config/durian/` | Pkl config files — `config.pkl`, `profiles.pkl`, `rules.pkl`, `keymaps.pkl`, `groups.pkl` |
+| `~/.local/share/durian/email.db` | SQLite store: messages, tags, attachments |
+| `~/.local/share/durian/contacts.db` | Local address book |
+| `~/.local/state/durian/serve.log` | HTTP server log (truncated on each `durian serve` start) |
+| `~/.cache/durian/<email>-imap-state.json` | Per-account IMAP sync state (UIDs, flags) |
+
+XDG variables are respected — set `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`,
+`$XDG_STATE_HOME` to override.
